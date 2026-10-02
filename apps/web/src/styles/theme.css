@@ -234,6 +234,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono
 .unit.out_of_service::after{background:var(--crit)}
 .unit.vacant_ready::after{background:var(--accent)}
 .unit:hover{border-color:var(--line-2);background:var(--panel-2)}
+.unit.picked{border-color:var(--accent);background:var(--panel-2);box-shadow:inset 0 0 0 2px var(--accent)}
 .unit b{display:block;font-family:var(--cond);font-size:1.0625rem;font-weight:600;letter-spacing:.02em}
 .unit span{display:block;font-family:var(--mono);font-size:0.5625rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
 .unit i{display:block;margin-top:3px;font-family:var(--mono);font-size:0.5625rem;font-style:normal;color:var(--crit);letter-spacing:.06em;text-transform:uppercase}

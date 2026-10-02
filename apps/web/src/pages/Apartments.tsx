@@ -4,10 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qk, ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
 import { titleCase, when } from '../lib/format';
-import { Card, Chip, Loading, ErrorNote, Empty, Btn, Modal, Field, Tabs, Flash, Tile } from '../components/Bits';
+import { Card, Chip, Loading, ErrorNote, Empty, Btn, Modal, Field, Tabs, Flash, Tile,
+         DeleteBtn } from '../components/Bits';
 
 interface Apartment {
-  id: string; unit_no: string; block: string | null; floor: string | null; unit_type: string | null;
+  id: string; unit_no: string; name: string | null;
+  block: string | null; floor: string | null; unit_type: string | null;
   status: string; open_jobs: number; occupant_ref: string | null;
   last_inspection_at: string | null; notes: string | null;
 }
@@ -21,12 +23,29 @@ export function Apartments() {
   const { can } = useSession();
   const [filter, setFilter] = useState<string>('');
   const [open, setOpen] = useState<Apartment | null>(null);
-  const [modal, setModal] = useState<'add' | 'import' | null>(null);
+  const [modal, setModal] = useState<'add' | 'import' | 'merge' | 'delete' | 'retire' | null>(null);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  // Select mode: tapping a unit picks it instead of opening it, for acting on many at once.
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const q = useQuery<{ apartments: Apartment[]; summary: { status: string; n: number }[] }>({
     queryKey: qk.apartments, queryFn: () => api.get('/api/apartments'),
   });
+  const dups = useQuery<{ duplicates: Duplicate[] }>({
+    queryKey: [...qk.apartments, 'duplicates'], queryFn: () => api.get('/api/apartments/duplicates'),
+    enabled: can('apartment.manage'),
+  });
+  const duplicates = dups.data?.duplicates ?? [];
+
+  function toggle(ids: string[], on: boolean) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) { if (on) next.add(id); else next.delete(id); }
+      return next;
+    });
+  }
+  function stopPicking() { setPicking(false); setPicked(new Set()); }
 
   const blocks = useMemo(() => {
     const list = (q.data?.apartments ?? []).filter((a) => !filter || a.status === filter);
@@ -39,7 +58,8 @@ export function Apartments() {
   }, [q.data, filter]);
 
   const total = q.data?.apartments.length ?? 0;
-  function done(text: string) { setModal(null); setOpen(null); setMsg({ text }); }
+  function done(text: string, bad = false) { setModal(null); setOpen(null); setMsg({ text, bad }); }
+  const pickedUnits = (q.data?.apartments ?? []).filter((a) => picked.has(a.id));
 
   return (
     <main className="view">
@@ -51,6 +71,12 @@ export function Apartments() {
         </div>
         {can('apartment.manage') && (
           <div className="acts">
+            {total > 0 && (
+              <Btn tone={picking ? 'on' : undefined}
+                   onClick={() => (picking ? stopPicking() : setPicking(true))}>
+                {picking ? 'Done selecting' : 'Select'}
+              </Btn>
+            )}
             {can('apartment.import') && (
               <Btn icon="doc" onClick={() => setModal('import')}>Import a unit list</Btn>)}
             <Btn icon="plus" tone="pri" onClick={() => setModal('add')}>Add units</Btn>
@@ -59,6 +85,37 @@ export function Apartments() {
       </div>
 
       <Flash msg={msg} />
+
+      {/* The usual way a register gets doubled: the list imported again with the name
+          column as the unit number. Said once, at the top, with the fix one button away. */}
+      {duplicates.length > 0 && (
+        <div className="note warn" style={{ marginBottom: 14 }}>
+          <b>{duplicates.length} unit{duplicates.length === 1 ? ' looks' : 's look'} like {duplicates.length === 1 ? 'a copy' : 'copies'} of another.</b>
+          {' '}Their unit number is another unit's name in the same block — for example
+          {' '}<span className="mono">{duplicates[0]!.duplicate.unitNo}</span> beside
+          {' '}<span className="mono">{duplicates[0]!.candidates[0]?.unitNo}</span> ({duplicates[0]!.candidates[0]?.name}).
+          That happens when a list is imported a second time with the name column picked as the number.
+          <p style={{ margin: '8px 0 0' }}>
+            <Btn size="sm" tone="pri" onClick={() => setModal('merge')}>Review and merge</Btn>
+          </p>
+        </div>
+      )}
+
+      {picking && (
+        <div className="note" style={{ marginBottom: 14, display: 'flex', gap: 8, flexWrap: 'wrap',
+                                       alignItems: 'center', position: 'sticky', top: 8, zIndex: 2 }}>
+          <b>{picked.size} selected</b>
+          <span className="sub">Tap units to select them, or use “Select all” on a block.</span>
+          <span style={{ flex: 1 }} />
+          <Btn size="sm" disabled={picked.size === 0} onClick={() => setPicked(new Set())}>Clear</Btn>
+          <Btn size="sm" disabled={picked.size === 0} onClick={() => setModal('retire')}>
+            Retire selected
+          </Btn>
+          <Btn size="sm" tone="danger" disabled={picked.size === 0} onClick={() => setModal('delete')}>
+            Delete selected
+          </Btn>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         <button className={`btn sm ${filter === '' ? 'on' : ''}`} onClick={() => setFilter('')}>
@@ -83,6 +140,14 @@ export function Apartments() {
         : blocks.map(([block, units]) => (
           <Card key={block} title={block === 'Unassigned' ? 'Unassigned to a block' : `Block ${block}`}
                 right={<>
+                  {picking && (() => {
+                    const all = units.every((u) => picked.has(u.id));
+                    return (
+                      <Btn size="sm" onClick={() => toggle(units.map((u) => u.id), !all)}>
+                        {all ? 'Unselect block' : 'Select all'}
+                      </Btn>
+                    );
+                  })()}
                   <Chip>{units.length} units</Chip>
                   {units.some((u) => u.open_jobs > 0) && (
                     <Chip tone="warn" lamp>
@@ -92,9 +157,13 @@ export function Apartments() {
                 </>}>
             <div className="units">
               {units.map((u) => (
-                <button key={u.id} className={`unit ${u.status}`} onClick={() => setOpen(u)}
+                <button key={u.id}
+                        className={`unit ${u.status} ${picked.has(u.id) ? 'picked' : ''}`}
+                        aria-pressed={picking ? picked.has(u.id) : undefined}
+                        onClick={() => (picking ? toggle([u.id], !picked.has(u.id)) : setOpen(u))}
                         style={{ width: '100%' }}>
                   <b>{u.unit_no}</b>
+                  {u.name && u.name !== u.unit_no && <span>{u.name}</span>}
                   <span>{titleCase(u.status)}</span>
                   {u.open_jobs > 0 && <i>{u.open_jobs} job{u.open_jobs > 1 ? 's' : ''}</i>}
                 </button>
@@ -106,7 +175,195 @@ export function Apartments() {
       {open && <UnitDetail unit={open} onClose={() => setOpen(null)} onDone={done} />}
       {modal === 'add' && <AddUnits onClose={() => setModal(null)} onDone={done} />}
       {modal === 'import' && <ImportUnits onClose={() => setModal(null)} onDone={done} />}
+      {modal === 'merge' && (
+        <MergeDuplicates duplicates={duplicates} onClose={() => setModal(null)} onDone={done} />
+      )}
+      {(modal === 'delete' || modal === 'retire') && (
+        <BatchAction mode={modal} units={pickedUnits} onClose={() => setModal(null)}
+                     onDone={(text, bad) => { stopPicking(); done(text, bad); }} />
+      )}
     </main>
+  );
+}
+
+function unitLabel(u: { block: string | null; unit_no: string; name?: string | null }): string {
+  return `${u.block ? `${u.block} · ` : ''}${u.unit_no}${u.name && u.name !== u.unit_no ? ` (${u.name})` : ''}`;
+}
+
+interface Duplicate {
+  duplicate: { id: string; unitNo: string; name: string | null; block: string | null };
+  target: { id: string; unitNo: string; name: string | null } | null;
+  candidates: { id: string; unitNo: string; name: string | null }[];
+  attached: number;
+}
+
+/**
+ * Fold copied units back into the real ones.
+ *
+ * A merge, not a delete, because by the time anybody notices, jobs have been raised
+ * against the copies. Everything attached to a copy moves to the real unit first, then
+ * the copy and its place go. Where two real units share the name there is no honest
+ * guess, so the person picks — or unticks it and leaves it for later.
+ */
+function MergeDuplicates({ duplicates, onClose, onDone }: {
+  duplicates: Duplicate[]; onClose: () => void; onDone: (text: string, bad?: boolean) => void;
+}) {
+  const qc = useQueryClient();
+  const [choice, setChoice] = useState<Record<string, string>>(() =>
+    Object.fromEntries(duplicates.map((d) => [d.duplicate.id, d.target?.id ?? ''])));
+  const pairs = duplicates
+    .filter((d) => choice[d.duplicate.id])
+    .map((d) => ({ duplicateId: d.duplicate.id, targetId: choice[d.duplicate.id]! }));
+  const attached = duplicates.reduce((n, d) => n + (choice[d.duplicate.id] ? d.attached : 0), 0);
+
+  const merge = useMutation({
+    mutationFn: () => api.post<{ message: string; failed: number }>('/api/apartments/merge', { pairs }),
+    onSuccess: async (r) => {
+      await qc.invalidateQueries({ queryKey: qk.apartments });
+      await qc.invalidateQueries({ queryKey: qk.locations });
+      onDone(r.message, r.failed > 0);
+    },
+  });
+  const err = merge.error as ApiError | null;
+
+  return (
+    <Modal title="Merge duplicated units" onClose={onClose} wide>
+      <div className="note" style={{ marginBottom: 12 }}>
+        Each copy on the left is merged into the real unit on the right: any jobs, requests,
+        assets or meters attached to the copy are moved onto the real unit, then the copy and
+        its place are deleted. {attached > 0 && <b>{attached} attached record{attached === 1 ? '' : 's'} will move.</b>}
+      </div>
+      <div className="tw" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+        <table className="wide">
+          <thead><tr><th>Copy</th><th className="num">Attached</th><th>Merge into</th></tr></thead>
+          <tbody>
+            {duplicates.map((d) => (
+              <tr key={d.duplicate.id}>
+                <td className="mono">{unitLabel({ block: d.duplicate.block, unit_no: d.duplicate.unitNo, name: d.duplicate.name })}</td>
+                <td className="num">{d.attached || '—'}</td>
+                <td>
+                  <select className="inp" value={choice[d.duplicate.id] ?? ''}
+                          onChange={(e) => setChoice({ ...choice, [d.duplicate.id]: e.target.value })}>
+                    <option value="">{d.target ? 'Leave it alone' : 'Two units share this name — choose one'}</option>
+                    {d.candidates.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {unitLabel({ block: d.duplicate.block, unit_no: c.unitNo, name: c.name })}
+                      </option>))}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {err && <div className="note crit" style={{ marginTop: 12 }} role="alert">{err.message}</div>}
+      <div className="modal-foot">
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn tone="pri" disabled={pairs.length === 0 || merge.isPending} onClick={() => merge.mutate()}>
+          {merge.isPending ? 'Merging…' : `Merge ${pairs.length}`}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Retire or delete many units at once.
+ *
+ * Delete is judged unit by unit exactly as a single delete is: one that a job still points
+ * at is refused by name and the rest still go. Retire always works.
+ */
+function BatchAction({ mode, units, onClose, onDone }: {
+  mode: 'delete' | 'retire'; units: Apartment[];
+  onClose: () => void; onDone: (text: string, bad?: boolean) => void;
+}) {
+  const qc = useQueryClient();
+  const [refused, setRefused] = useState<string[]>([]);
+  const withJobs = units.filter((u) => u.open_jobs > 0);
+
+  const run = useMutation({
+    mutationFn: async () => {
+      if (mode === 'delete') {
+        return api.post<{ message: string; refused: number; results: { id: string; ok: boolean; message: string }[] }>(
+          '/api/records/apartment/delete-batch', { ids: units.map((u) => u.id) });
+      }
+      // Retiring a few hundred units is a few hundred small requests on a LAN, which is
+      // quicker than it sounds, and each one keeps its own blocker check.
+      const results: { id: string; ok: boolean; message: string }[] = [];
+      for (const u of units) {
+        try {
+          await api.post(`/api/retire/apartment/${u.id}`, { active: false });
+          results.push({ id: u.id, ok: true, message: '' });
+        } catch (e) {
+          results.push({ id: u.id, ok: false, message: `${unitLabel(u)}: ${(e as ApiError).message}` });
+        }
+      }
+      const ok = results.filter((r) => r.ok).length;
+      return {
+        results, refused: results.length - ok,
+        message: `${ok} unit${ok === 1 ? '' : 's'} retired.`
+          + (results.length > ok ? ` ${results.length - ok} could not be.` : ''),
+      };
+    },
+    onSuccess: async (r) => {
+      await qc.invalidateQueries({ queryKey: qk.apartments });
+      await qc.invalidateQueries({ queryKey: qk.locations });
+      if (r.refused > 0) {
+        // Keep the dialog open on the reasons: a list of what did not go is the useful part.
+        setRefused(r.results.filter((x) => !x.ok).map((x) => x.message));
+        return;
+      }
+      onDone(r.message);
+    },
+  });
+  const err = run.error as ApiError | null;
+
+  return (
+    <Modal title={`${mode === 'delete' ? 'Delete' : 'Retire'} ${units.length} unit${units.length === 1 ? '' : 's'}?`}
+           onClose={() => (run.isSuccess ? onDone(`${run.data?.message ?? ''}`, true) : onClose())}>
+      {!run.isSuccess && (
+        <>
+          <p style={{ margin: '0 0 10px', lineHeight: 1.55 }}>
+            {units.slice(0, 12).map(unitLabel).join(', ')}{units.length > 12 ? ` and ${units.length - 12} more` : ''}.
+          </p>
+          {mode === 'delete' ? (
+            <div className="note crit" style={{ marginBottom: 12 }}>
+              Deleted units and their places are removed for good. Any unit a job, request,
+              asset or meter still points at is <b>not</b> deleted — it is listed afterwards,
+              and can be retired instead.
+              {withJobs.length > 0 && <> {withJobs.length} of these have open jobs and will be refused.</>}
+            </div>
+          ) : (
+            <div className="note" style={{ marginBottom: 12 }}>
+              Retired units leave every list and picker. Nothing is deleted, and their jobs keep
+              reading correctly.
+            </div>
+          )}
+        </>
+      )}
+      {run.isSuccess && refused.length > 0 && (
+        <div className="note warn" style={{ marginBottom: 12, maxHeight: '45vh', overflowY: 'auto' }}>
+          <b>{run.data.message}</b>
+          <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
+            {refused.map((m) => <li key={m} style={{ marginBottom: 4 }}>{m}</li>)}
+          </ul>
+        </div>
+      )}
+      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
+      <div className="modal-foot">
+        {run.isSuccess ? (
+          <Btn tone="pri" onClick={() => onDone(run.data.message, true)}>Close</Btn>
+        ) : (
+          <>
+            <Btn onClick={onClose}>Cancel</Btn>
+            <Btn tone={mode === 'delete' ? 'danger' : 'pri'} disabled={run.isPending || units.length === 0}
+                 onClick={() => run.mutate()}>
+              {run.isPending ? 'Working…' : mode === 'delete' ? `Delete ${units.length}` : `Retire ${units.length}`}
+            </Btn>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -169,6 +426,14 @@ function UnitDetail({ unit, onClose, onDone }: {
         <Link className="btn" to={`/jobs?q=${encodeURIComponent(unit.unit_no)}`} onClick={onClose}>
           See its jobs
         </Link>
+        {can('apartment.manage') && (
+          <DeleteBtn kind="apartment" id={unit.id} label={unitLabel(unit)}
+                     onDone={async (m) => {
+                       await qc.invalidateQueries({ queryKey: qk.apartments });
+                       await qc.invalidateQueries({ queryKey: qk.locations });
+                       onDone(m);
+                     }} />
+        )}
         {can('apartment.manage') && (
           <Btn tone="pri" icon="check" disabled={status === unit.status || save.isPending}
                onClick={() => save.mutate()}>
@@ -281,6 +546,8 @@ interface ReadResult {
   fields: string[];
   mapping: Record<string, string>;
   missing: string[];
+  /** Set when the mapping would import names as unit numbers. Nothing is written. */
+  mappingProblem: string | null;
   ignored: string[];
   rowsRead: number;
   wouldCreate: number;
@@ -377,7 +644,7 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
     onError: (e) => setErr((e as ApiError).message),
   });
 
-  const ready = !!read && read.missing.length === 0 && read.wouldCreate > 0;
+  const ready = !!read && read.missing.length === 0 && !read.mappingProblem && read.wouldCreate > 0;
 
   return (
     <Modal title="Import units" onClose={onClose} wide>
@@ -435,6 +702,11 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
               {read.missing.length > 0 && (
                 <div className="note crit" style={{ marginTop: 12 }}>
                   Tell it which column holds the <b>unit number</b> before going on.
+                </div>
+              )}
+              {read.mappingProblem && (
+                <div className="note crit" style={{ marginTop: 12 }} role="alert">
+                  {read.mappingProblem}
                 </div>
               )}
 

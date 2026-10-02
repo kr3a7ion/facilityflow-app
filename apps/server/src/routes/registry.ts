@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as unitImport from '../services/unitImport.js';
+import * as apartmentMerge from '../services/apartmentMerge.js';
 import { z } from 'zod';
 import { requirePermission } from '../auth/guard.js';
 import { ulid } from '../lib/ids.js';
@@ -136,6 +137,48 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
     return { apartments: rows, summary };
   });
 
+  /** Units that look like copies of another — see services/apartmentMerge.ts. */
+  app.get('/api/apartments/duplicates', { preHandler: requirePermission('apartment.manage') }, async (req) => ({
+    duplicates: apartmentMerge.findDuplicates(app.db, req.principal!.propertyId),
+  }));
+
+  /**
+   * Fold copies back into the real units, many at once.
+   *
+   * Each pair is its own transaction: one that clashes is reported and left exactly as it
+   * was, and does not stop the other hundred from being cleaned up.
+   */
+  app.post('/api/apartments/merge', { preHandler: requirePermission('apartment.manage') }, async (req, reply) => {
+    const body = z.object({
+      pairs: z.array(z.object({ duplicateId: z.string().max(40), targetId: z.string().max(40) }))
+        .min(1).max(2000),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+    const me = req.principal!;
+    const results = body.data.pairs.map((p) => {
+      try {
+        const r = apartmentMerge.mergeInto(app.db, me.propertyId, p.duplicateId, p.targetId);
+        audit(app.db, {
+          propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+          action: 'apartment.merged', entityType: 'apartment', entityId: p.duplicateId,
+          before: { duplicate: r.duplicate }, after: { mergedInto: r.target, targetId: p.targetId, moved: r.moved },
+          ip: req.ip,
+        });
+        return { ...p, ok: true, moved: r.moved, message: `${r.duplicate} merged into ${r.target}.` };
+      } catch (e) {
+        return { ...p, ok: false, moved: 0, message: (e as Error).message };
+      }
+    });
+    const merged = results.filter((r) => r.ok).length;
+    const moved = results.reduce((n, r) => n + r.moved, 0);
+    return {
+      merged, failed: results.length - merged, results,
+      message: `${merged} duplicate unit${merged === 1 ? '' : 's'} merged`
+        + (moved ? `, ${moved} linked record${moved === 1 ? '' : 's'} moved onto the real unit` : '')
+        + (results.length > merged ? `. ${results.length - merged} could not be merged.` : '.'),
+    };
+  });
+
   app.post('/api/apartments/:id/status', { preHandler: requirePermission('apartment.manage') }, async (req, reply) => {
     const body = z.object({ status: z.enum(APT_STATUS), note: z.string().max(500).optional() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
@@ -184,15 +227,19 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
           if (!mapping[k]) delete mapping[k];
         }
         const missing = unitImport.REQUIRED.filter((f) => !mapping[f]);
-        const { units, rejected } = missing.length === 0
+        const parsed = missing.length === 0
           ? unitImport.toUnits(file.rows, mapping)
           : { units: [], rejected: [] };
+        const mappingProblem = unitImport.mappingProblem(mapping, parsed.units);
+        // A mapping that would import the names as unit numbers writes nothing at all.
+        const { units, rejected } = mappingProblem ? { units: [], rejected: [] } : parsed;
 
         const me = req.principal!;
         const hereRows = app.db.prepare(
-          'SELECT block, unit_no FROM apartments WHERE property_id = ?'
-        ).all(me.propertyId) as { block: string | null; unit_no: string }[];
+          'SELECT block, unit_no, name FROM apartments WHERE property_id = ?'
+        ).all(me.propertyId) as { block: string | null; unit_no: string; name: string | null }[];
         const here = new Map(hereRows.map((r) => [unitImport.unitKey(r.block, r.unit_no), true]));
+        const byName = unitImport.namesHere(hereRows);
 
         const seen = new Set<string>();
         const already: string[] = [];
@@ -203,6 +250,8 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
           const key = unitImport.unitKey(u.block, u.unitNo);
           const label = u.block ? `${u.block} · ${u.unitNo}` : u.unitNo;
           if (here.has(key)) { already.push(label); continue; }
+          // A unit number that is an existing unit's *name* is that unit, listed by name.
+          if (byName.has(key)) { already.push(`${label} (= ${byName.get(key)})`); continue; }
           // Same rule as the write below, so the preview is the truth and not an estimate.
           if (!u.block) {
             const matches = hereRows.filter(
@@ -221,6 +270,7 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
           fields: unitImport.FIELDS,
           mapping,
           missing,
+          mappingProblem,
           // Named, so nobody wonders whether their access-control columns were silently
           // imported somewhere.
           ignored: file.headers.filter((h) => h && !Object.values(mapping).includes(h)),
@@ -266,10 +316,14 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
      * number alone threw away four out of five real units and told nobody — which is how
      * the department's own list silently became a quarter of itself.
      */
+    const problem = unitImport.mappingProblem({}, body.data.units.map((u) => ({ unitNo: u.unitNo, name: u.name })));
+    if (problem) return reply.code(409).send({ error: 'names_as_numbers', message: problem });
+
     const here = app.db.prepare(
-      'SELECT block, unit_no FROM apartments WHERE property_id = ?'
-    ).all(me.propertyId) as { block: string | null; unit_no: string }[];
+      'SELECT block, unit_no, name FROM apartments WHERE property_id = ?'
+    ).all(me.propertyId) as { block: string | null; unit_no: string; name: string | null }[];
     const existing = new Set(here.map((r) => unitImport.unitKey(r.block, r.unit_no)));
+    const byName = unitImport.namesHere(here);
 
     const seen = new Set<string>();
     const alreadyHere: string[] = [];
@@ -284,6 +338,9 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
       const label = block ? `${block} · ${unitNo}` : unitNo;
 
       if (existing.has(key)) { alreadyHere.push(label); continue; }
+      // The same list imported again with the name column as the unit number: `Seville`
+      // in MAIN BUILDING is unit 001, which is already here.
+      if (byName.has(key)) { alreadyHere.push(`${label} (= ${byName.get(key)})`); continue; }
 
       /*
        * A row that names no block, against a property that uses them.

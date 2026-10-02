@@ -3405,6 +3405,107 @@ check('and no password hash ever lands in the audit log',
   !db.prepare(`SELECT 1 FROM audit_log WHERE before_json LIKE '%password_hash%'`).get());
 
 // --------------------------------------------------------------------------
+heading('A unit list imported twice');
+// --------------------------------------------------------------------------
+/*
+ * The real failure: a list imported once correctly, then again with the name column picked
+ * as the unit number. Every row looked new, the register doubled, and jobs were raised
+ * against the copies before anybody noticed.
+ */
+r = await post('/api/apartments/import', admin, {
+  source: 'csv', units: [
+    { unitNo: '101', block: 'DUP', name: 'Lisbon' },
+    { unitNo: '102', block: 'DUP', name: 'Porto' },
+    { unitNo: '103', block: 'DUP', name: 'Faro' },
+    { unitNo: '104', block: 'DUP', name: 'Braga' },
+  ],
+});
+check('the list goes in once', r.statusCode === 201 && r.json().created === 4, r.body.slice(0, 140));
+
+r = await post('/api/apartments/import', admin, {
+  source: 'csv', units: [
+    { unitNo: 'Lisbon', block: 'DUP', name: 'Lisbon' },
+    { unitNo: 'Porto', block: 'DUP', name: 'Porto' },
+    { unitNo: 'Faro', block: 'DUP', name: 'Faro' },
+  ],
+});
+check('a list whose unit numbers are all its names is refused outright',
+  r.statusCode === 409 && r.json().error === 'names_as_numbers', r.body.slice(0, 160));
+
+r = await post('/api/apartments/import/read', admin, {
+  text: 'Block,Unit No,Name\nDUP,101,Lisbon\nDUP,102,Porto\n',
+  mapping: { unit_no: 'Name', name: 'Name' },
+});
+check('the preview says so when number and name are the same column',
+  r.statusCode === 200 && !!r.json().mappingProblem && r.json().wouldCreate === 0, r.body.slice(0, 200));
+
+r = await post('/api/apartments/import', admin, {
+  source: 'csv', units: [{ unitNo: 'Lisbon', block: 'DUP' }, { unitNo: '105', block: 'DUP', name: 'Evora' }],
+});
+check('a unit number that is an existing unit’s name is recognised as that unit',
+  r.statusCode === 201 && r.json().created === 1, r.body.slice(0, 160));
+
+// Make the mess the department actually had, the way it got made: straight into the table.
+const aptRows = () => db.prepare(`SELECT id, unit_no, name, location_id FROM apartments WHERE block = 'DUP'`)
+  .all() as { id: string; unit_no: string; name: string | null; location_id: string }[];
+const site = siteId;
+for (const name of ['Lisbon', 'Porto', 'Faro']) {
+  const at = new Date().toISOString();
+  const loc = `LOC-COPY-${name}`;
+  db.prepare(`INSERT INTO locations (id, property_id, parent_id, type, code, name, created_at, updated_at)
+              VALUES (?, ?, ?, 'apartment', ?, ?, ?, ?)`).run(loc, propertyId, site, loc, name, at, at);
+  db.prepare(`INSERT INTO apartments (id, property_id, location_id, unit_no, block, name, status, created_at, updated_at)
+              VALUES (?, ?, ?, ?, 'DUP', ?, 'vacant_ready', ?, ?)`)
+    .run(`APT-COPY-${name}`, propertyId, loc, name, name, at, at);
+}
+r = await post('/api/jobs', admin, {
+  title: 'Dripping tap', apartmentId: 'APT-COPY-Porto', priority: 'P3', trade: 'plumbing',
+});
+check('a job can land on a copy, as it did on site', r.statusCode === 201, r.body.slice(0, 140));
+const copyJob = r.json().job.id as string;
+
+r = await get('/api/apartments/duplicates', admin);
+const found = r.json().duplicates as { duplicate: { id: string }; target: { id: string; unitNo: string } | null; attached: number }[];
+check('the copies are found', found.length === 3, JSON.stringify(found.map((d) => d.duplicate.id)));
+check('each is paired with the unit it copies',
+  found.find((d) => d.duplicate.id === 'APT-COPY-Porto')?.target?.unitNo === '102');
+check('and the one with a job on it says so',
+  found.find((d) => d.duplicate.id === 'APT-COPY-Porto')?.attached === 1);
+r = await get('/api/apartments/duplicates', ifeoma);
+check('a technician cannot see the clean-up', r.statusCode === 403);
+
+r = await post('/api/records/apartment/delete-batch', admin, { ids: ['APT-COPY-Porto', 'APT-COPY-Faro'] });
+check('a batch delete removes what it can', r.statusCode === 200 && r.json().deleted === 1, r.body.slice(0, 200));
+check('and refuses the copy with a job on it, by name',
+  r.json().refused === 1 && /work orders/.test(
+    (r.json().results as { id: string; ok: boolean; message: string }[]).find((x) => !x.ok)?.message ?? ''),
+  r.body.slice(0, 300));
+check('a deleted unit takes its place with it',
+  !db.prepare(`SELECT 1 FROM locations WHERE id = 'LOC-COPY-Faro'`).get());
+
+const porto = aptRows().find((a) => a.unit_no === '102')!;
+r = await post('/api/apartments/merge', admin, {
+  pairs: [{ duplicateId: 'APT-COPY-Porto', targetId: porto.id }, { duplicateId: 'APT-COPY-Lisbon', targetId: 'nope' }],
+});
+check('copies are merged into the real units', r.statusCode === 200 && r.json().merged === 1, r.body.slice(0, 200));
+check('a pair that cannot be merged is reported, not fatal', r.json().failed === 1);
+check('the job moved onto the real unit',
+  (db.prepare('SELECT apartment_id FROM work_orders WHERE id = ?').get(copyJob) as { apartment_id: string })
+    .apartment_id === porto.id);
+check('and the copy and its place are gone',
+  !db.prepare(`SELECT 1 FROM apartments WHERE id = 'APT-COPY-Porto'`).get()
+  && !db.prepare(`SELECT 1 FROM locations WHERE id = 'LOC-COPY-Porto'`).get());
+r = await del(`/api/records/apartment/${porto.id}`, admin);
+check('the real unit, now carrying the job, cannot be deleted', r.statusCode === 409);
+
+r = await del('/api/records/apartment/APT-COPY-Lisbon', admin);
+check('a copy with nothing on it deletes on its own', r.statusCode === 200, r.body.slice(0, 160));
+check('leaving no duplicates behind',
+  ((await get('/api/apartments/duplicates', admin)).json().duplicates as unknown[]).length === 0);
+r = await post('/api/records/apartment/delete-batch', ifeoma, { ids: [porto.id] });
+check('a technician cannot batch delete', r.statusCode === 403);
+
+// --------------------------------------------------------------------------
 heading('Integrity');
 // --------------------------------------------------------------------------
 check('no foreign key is left dangling', (db.pragma('foreign_key_check') as unknown[]).length === 0);
