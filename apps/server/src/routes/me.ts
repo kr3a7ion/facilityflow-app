@@ -6,6 +6,14 @@ import * as bus from '../services/bus.js';
 import * as devices from '../services/devices.js';
 import { audit } from '../audit.js';
 import { nowIso } from '../lib/time.js';
+import { networkView } from '../services/network.js';
+import { readHostFile } from '../config.js';
+
+/** `localhost:4700`, `127.0.0.1`, `[::1]:5173` — any address that only means "this PC". */
+function isLoopback(hostHeader: string): boolean {
+  const name = hostHeader.replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
+  return name === 'localhost' || name === '::1' || name.startsWith('127.');
+}
 
 export async function meRoutes(app: FastifyInstance): Promise<void> {
   /**
@@ -23,7 +31,22 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
     // the QR code ends up pointing at an adapter nothing can see.
     const proto = (req.headers['x-forwarded-proto'] as string) ?? req.protocol;
     const host = req.headers.host ?? '';
-    const code = devices.createPairingCode(app.db, me.propertyId, me.userId, `${proto}://${host}`);
+    let baseUrl = `${proto}://${host}`;
+
+    /*
+     * Except when that address is this PC talking to itself.
+     *
+     * Somebody pairing from the host PC's own browser reached it as `localhost`, and a
+     * phone that dials `localhost` dials itself — the scan "does nothing" while the app
+     * waits on a connection that can never answer. Hand out the address the Host PC tab
+     * would, on the plain HTTP port every phone can reach.
+     */
+    if (isLoopback(host)) {
+      const view = await networkView(readHostFile(app.config.dataDir).advertise ?? null);
+      if (view.advertise) baseUrl = `http://${view.advertise}:${app.config.port}`;
+    }
+
+    const code = devices.createPairingCode(app.db, me.propertyId, me.userId, baseUrl);
     return code;
   });
 

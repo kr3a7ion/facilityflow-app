@@ -21,6 +21,11 @@ import type { Ctx } from '../routes/_helpers.js';
 
 export interface RingInput { userId: string; reason?: string }
 
+/** An instant in the past, in the same ISO form every timestamp column is stored in. */
+function secondsAgo(seconds: number): string {
+  return new Date(Date.now() - seconds * 1000).toISOString();
+}
+
 export function ring(db: Db, ctx: Ctx, input: RingInput): {
   id: string; reached: number; name: string; message: string;
 } {
@@ -44,10 +49,17 @@ export function ring(db: Db, ctx: Ctx, input: RingInput): {
    * technician's phone into something they switch off — which is the opposite of what
    * the feature is for.
    */
+  /*
+   * The cut-off is computed here as ISO text, never with SQLite's datetime('now').
+   *
+   * `at` is stored as `2026-10-02T09:00:00.000Z`; datetime() answers `2026-10-02 09:59:00`.
+   * Compared as text the 'T' sorts after the space, so every ring earlier the same day
+   * looked newer than a minute ago — after the first ring of the day the person could not
+   * be rung again until midnight UTC.
+   */
   const recent = db.prepare(
-    `SELECT COUNT(*) AS n FROM ring_log
-      WHERE rung_user = ? AND at > datetime('now', '-60 seconds')`
-  ).get(input.userId) as { n: number };
+    `SELECT COUNT(*) AS n FROM ring_log WHERE rung_user = ? AND at > ?`
+  ).get(input.userId, secondsAgo(60)) as { n: number };
   if (recent.n > 0) {
     throw new HttpError(429, 'too_soon',
       `${target.display_name} was rung less than a minute ago. Give it a moment before trying again.`);
@@ -105,9 +117,9 @@ export function myRings(db: Db, propertyId: string, userId: string): unknown[] {
     `SELECT r.id, r.reason, r.at, u.display_name AS rung_by_name
        FROM ring_log r JOIN users u ON u.id = r.rung_by
       WHERE r.rung_user = ? AND r.property_id = ? AND r.acknowledged_at IS NULL
-        AND r.at > datetime('now', '-30 minutes')
+        AND r.at > ?
       ORDER BY r.at DESC LIMIT 5`
-  ).all(userId, propertyId);
+  ).all(userId, propertyId, secondsAgo(30 * 60));
 }
 
 // ---------------------------------------------------------------------------

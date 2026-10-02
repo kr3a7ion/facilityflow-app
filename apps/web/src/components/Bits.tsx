@@ -333,3 +333,83 @@ export function RetireBtn({ kind, id, label, active = true, onDone, size = 'sm' 
     </>
   );
 }
+
+/**
+ * Delete a record for good — the button beside Retire.
+ *
+ * Opening the confirm first asks the host whether the record can go. Anything that points
+ * at it — a job, a roster day, an action in the audit log — means it cannot, and the
+ * dialog says what is in the way and offers Retire instead, rather than letting somebody
+ * press a button that was always going to be refused.
+ */
+export function DeleteBtn({ kind, id, label, onDone, size = 'sm' }: {
+  kind: string; id: string; label: string;
+  onDone: (message: string) => void; size?: 'sm';
+}) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [check, setCheck] = useState<{ ok: boolean; blockers: string[] } | null>(null);
+
+  async function open() {
+    setAsking(true); setErr(null); setCheck(null);
+    try {
+      setCheck(await api.get<{ ok: boolean; blockers: string[] }>(`/api/records/${kind}/${id}/deletable`));
+    } catch (e) {
+      setErr((e as ApiError).message);
+    }
+  }
+
+  async function go() {
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.del<{ message: string }>(`/api/records/${kind}/${id}`);
+      setAsking(false);
+      onDone(r.message);
+    } catch (e) {
+      setErr((e as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Btn size={size} tone="danger" onClick={() => void open()}>Delete</Btn>
+      {asking && (
+        <Modal title={`Delete ${label}?`} onClose={() => setAsking(false)}>
+          {!check && !err && <p className="sub">Checking what refers to it…</p>}
+          {check && !check.ok && (
+            <div className="note warn" style={{ marginBottom: 14 }}>
+              <b>{label} cannot be deleted.</b> Other records point at it:
+              <ul style={{ margin: '6px 0 6px 18px', padding: 0 }}>
+                {check.blockers.map((b) => <li key={b}>{b}</li>)}
+              </ul>
+              Retire it instead — it disappears from lists and its history stays readable.
+            </div>
+          )}
+          {check?.ok && (
+            <>
+              <p style={{ margin: '0 0 12px', lineHeight: 1.55 }}>
+                <b>{label}</b> will be removed permanently.
+              </p>
+              <div className="note crit" style={{ marginBottom: 14 }}>
+                This cannot be undone. Nothing refers to it yet, so nothing else is affected —
+                but if you might want it back, Retire is the safer choice.
+              </div>
+            </>
+          )}
+          {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err}</div>}
+          <div className="modal-foot">
+            <Btn onClick={() => setAsking(false)}>{check?.ok ? 'Cancel' : 'Close'}</Btn>
+            {check?.ok && (
+              <Btn tone="danger" disabled={busy} onClick={() => void go()}>
+                {busy ? 'Deleting…' : 'Delete it'}
+              </Btn>
+            )}
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}

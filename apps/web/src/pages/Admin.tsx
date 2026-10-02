@@ -9,7 +9,7 @@ import { titleCase, when } from '../lib/format';
 import { humanBytes } from '../lib/image';
 import { useMonth } from '../lib/month';
 import { Card, Chip, Tile, Loading, Empty, ErrorNote, Btn, DownloadLink,
-         Modal, Field, MonthBar, Flash, RetireBtn } from '../components/Bits';
+         Modal, Field, MonthBar, Flash, RetireBtn, DeleteBtn } from '../components/Bits';
 
 type Tab = 'start' | 'host' | 'users' | 'people' | 'roles' | 'shifts' | 'settings' | 'places' | 'supplies' | 'backups' | 'exports' | 'audit';
 
@@ -117,6 +117,8 @@ interface User {
 }
 interface Role {
   id: string; key: string; name: string; description: string;
+  /** 1 for the roles the system ships with — those can be edited but never deleted. */
+  is_system?: number;
   /** Read off the role's real grants: can this role be assigned work, and how far it sees. */
   does_jobs: number; job_scope: string | null;
   /** Likewise for money: 1 when the role holds cost.read, and the requisition scope. */
@@ -279,10 +281,16 @@ function Users() {
                       {/* The server refuses it anyway; offering it is just a trap. */}
                       {u.id === me?.user.id
                         ? <Chip>You</Chip>
-                        : <Btn size="sm" tone={u.is_active ? 'danger' : undefined}
-                               onClick={() => toggle.mutate(u)}>
-                            {u.is_active ? 'Disable' : 'Enable'}
-                          </Btn>}
+                        : <>
+                            <Btn size="sm" tone={u.is_active ? 'danger' : undefined}
+                                 onClick={() => toggle.mutate(u)}>
+                              {u.is_active ? 'Disable' : 'Enable'}
+                            </Btn>{' '}
+                            {/* Only goes through for an account nobody has used yet —
+                                anything with a history is disabled instead. */}
+                            <DeleteBtn kind="user" id={u.id} label={u.display_name}
+                                       onDone={(m) => void after(m)} />
+                          </>}
                     </td>
                   </tr>
                 ))}
@@ -298,7 +306,8 @@ function Users() {
         Named accounts only. The audit log is worthless the moment three people share a username —
         and disabling someone signs them out of every device immediately.
         Changing a role takes effect the next time that person loads a screen; nobody has to
-        be deleted and recreated to be promoted.
+        be deleted and recreated to be promoted. <b>Delete</b> is only for an account created by
+        mistake and never used — one with any history is disabled instead.
       </div>
 
       {creating && (
@@ -587,6 +596,8 @@ function Roles() {
   const qc = useQueryClient();
   const [open, setOpen] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [details, setDetails] = useState<Role | 'new' | null>(null);
+  const refreshRoles = () => qc.invalidateQueries({ queryKey: ['admin-roles'] });
 
   const roles = useQuery<{ roles: (Role & {
                                     permission_count: number; user_count: number })[] }>({
@@ -627,7 +638,11 @@ function Roles() {
   return (
     <>
       {msg && <div className="note" style={{ marginBottom: 14 }} role="status">{msg}</div>}
-      <Card title="Roles" flush right={<Chip>{roles.data?.roles.length ?? 0}</Chip>}>
+      <Card title="Roles" flush
+            right={<>
+              <Chip>{roles.data?.roles.length ?? 0}</Chip>
+              <Btn size="sm" tone="pri" icon="plus" onClick={() => setDetails('new')}>New role</Btn>
+            </>}>
         {roles.isLoading ? <Loading rows={4} /> : (
           <div className="tw">
             <table className="wide">
@@ -636,7 +651,10 @@ function Roles() {
               <tbody>
                 {(roles.data?.roles ?? []).map((r) => (
                   <tr key={r.id}>
-                    <td><span className="ttl">{r.name}</span><span className="sub">{r.description}</span></td>
+                    <td>
+                      <span className="ttl">{r.name}{r.is_system === 0 && <> <Chip>Custom</Chip></>}</span>
+                      <span className="sub">{r.description}</span>
+                    </td>
                     <td>{r.key === 'admin' ? <Chip>Everything</Chip>
                       : r.job_scope === 'own' ? <Chip>Their own jobs</Chip>
                         : r.job_scope === 'team' ? <Chip>Their team's jobs</Chip>
@@ -644,10 +662,20 @@ function Roles() {
                             : <span className="sub">No job access</span>}</td>
                     <td className="num">{r.user_count}</td>
                     <td className="num">{r.permission_count}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {r.key === 'admin'
                         ? <Chip>Always everything</Chip>
-                        : <Btn size="sm" onClick={() => { setDraft(null); setOpen(r.id); }}>Edit</Btn>}
+                        : <>
+                            <Btn size="sm" onClick={() => setDetails(r)}>Rename</Btn>{' '}
+                            <Btn size="sm" onClick={() => { setDraft(null); setOpen(r.id); }}>Permissions</Btn>
+                            {/* The roles the system ships with are kept: other screens and
+                                the manual describe them by name. Custom ones can go once
+                                nobody holds them. */}
+                            {r.is_system === 0 && <>{' '}
+                              <DeleteBtn kind="role" id={r.id} label={r.name}
+                                         onDone={async (m) => { setMsg(m); await refreshRoles(); }} />
+                            </>}
+                          </>}
                     </td>
                   </tr>
                 ))}
@@ -695,7 +723,70 @@ function Roles() {
           </Btn>
         </Modal>
       )}
+
+      {details && (
+        <RoleDialog role={details === 'new' ? null : details}
+                    roles={(roles.data?.roles ?? []).filter((r) => r.key !== 'admin')}
+                    onClose={() => setDetails(null)}
+                    onSaved={async (text, newId) => {
+                      setDetails(null); setMsg(text); await refreshRoles();
+                      // A new role is only useful once it can do something, so go straight
+                      // to its permissions rather than leaving the next click to be found.
+                      if (newId) { setDraft(null); setOpen(newId); }
+                    }} />
+      )}
     </>
+  );
+}
+
+/**
+ * Create a role, or rename one.
+ *
+ * Copying is offered first because it is nearly always what is wanted: a "security lead"
+ * is a team lead plus one permission, not sixty ticks from nothing. Narrow grants are
+ * copied as narrow — a copy of Technician still sees only its own jobs.
+ */
+function RoleDialog({ role, roles, onClose, onSaved }: {
+  role: Role | null; roles: Role[];
+  onClose: () => void; onSaved: (text: string, newId?: string) => void;
+}) {
+  const [name, setName] = useState(role?.name ?? '');
+  const [description, setDescription] = useState(role?.description ?? '');
+  const [copyFrom, setCopyFrom] = useState('');
+  const save = useMutation({
+    mutationFn: () => role
+      ? api.patch<{ id: string }>(`/api/admin/roles/${role.id}`, { name: name.trim(), description: description.trim() || null })
+      : api.post<{ id: string }>('/api/admin/roles', {
+          name: name.trim(), description: description.trim() || undefined, copyFrom: copyFrom || undefined,
+        }),
+    onSuccess: (r) => role
+      ? onSaved(`${name.trim()} saved.`)
+      : onSaved(`${name.trim()} created. Choose what it may do below.`, r.id),
+  });
+  const err = save.error as ApiError | null;
+  return (
+    <Modal title={role ? `Rename ${role.name}` : 'New role'} onClose={onClose}>
+      <Field label="Name" hint="What people will see when an account is given this role.">
+        <input className="inp" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <Field label="What it is for" hint="One sentence, shown under the role when an account is created.">
+        <input className="inp" value={description} onChange={(e) => setDescription(e.target.value)} />
+      </Field>
+      {!role && (
+        <Field label="Start from"
+               hint="Its permissions are copied, including any limited to their own or their team's work.">
+          <select className="inp" value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)}>
+            <option value="">Nothing — no permissions yet</option>
+            {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </Field>
+      )}
+      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
+      <Btn tone="pri" style={{ width: '100%' }} disabled={name.trim().length < 2 || save.isPending}
+           onClick={() => save.mutate()}>
+        {save.isPending ? 'Saving…' : role ? 'Save' : 'Create role'}
+      </Btn>
+    </Modal>
   );
 }
 
@@ -1347,6 +1438,7 @@ function SupplyDialog({ supply, onClose, onSaved }:
 
 interface Place {
   id: string; parent_id: string | null; type: string; code: string; name: string; sort_order: number;
+  is_active?: number;
 }
 
 const PLACE_TYPES = [
@@ -1366,15 +1458,26 @@ const PLACE_TYPES = [
 function Places() {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Place | null>(null);
+  const [showRetired, setShowRetired] = useState(false);
   const [placeMsg, setPlaceMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  // Invalidating the prefix refreshes every picker in the app as well as this list.
   const refreshPlaces = () => qc.invalidateQueries({ queryKey: ['locations'] });
 
+  // Retired places come too, so they can be brought back; they are only drawn on request.
   const q = useQuery<{ locations: Place[] }>({
-    queryKey: ['locations'], queryFn: () => api.get('/api/locations'),
+    queryKey: ['locations', 'all'], queryFn: () => api.get('/api/locations?all=1'),
   });
-  const all = q.data?.locations ?? [];
+  const everything = q.data?.locations ?? [];
+  const retiredCount = everything.filter((l) => l.is_active === 0).length;
+  const all = showRetired ? everything : everything.filter((l) => l.is_active !== 0);
+  const live = everything.filter((l) => l.is_active !== 0);
   const site = all.find((l) => l.type === 'site');
-  const byParent = (id: string | null) => all.filter((l) => l.parent_id === id);
+  // With retired places hidden, a live place under a retired parent is drawn at the top
+  // level rather than vanishing along with it.
+  const shown = new Set(all.map((l) => l.id));
+  const byParent = (id: string | null) =>
+    all.filter((l) => (id === null ? !l.parent_id || !shown.has(l.parent_id) : l.parent_id === id));
 
   const rows: { place: Place; depth: number }[] = [];
   const walk = (parent: string | null, depth: number): void => {
@@ -1386,7 +1489,15 @@ function Places() {
     <>
       <Flash msg={placeMsg} />
       <Card flush title="Places"
-            right={<Btn size="sm" icon="plus" onClick={() => setAdding(true)}>Add a place</Btn>}>
+            right={<>
+              {retiredCount > 0 && (
+                <Btn size="sm" tone={showRetired ? 'on' : undefined}
+                     onClick={() => setShowRetired((v) => !v)}>
+                  {showRetired ? 'Hide retired' : `Show retired (${retiredCount})`}
+                </Btn>
+              )}
+              <Btn size="sm" icon="plus" onClick={() => setAdding(true)}>Add a place</Btn>
+            </>}>
         {q.isLoading ? <Loading rows={4} />
           : q.isError ? <div style={{ padding: 15 }}><ErrorNote error={q.error} /></div>
           : rows.length === 0
@@ -1399,17 +1510,23 @@ function Places() {
                     {rows.map(({ place, depth }) => (
                       <tr key={place.id}>
                         <td style={{ paddingLeft: 15 + depth * 22 }}>
-                          <span className="ttl">{place.name}</span>
-                          {depth === 0 && <span className="sub">the property itself</span>}
+                          <span className="ttl">{place.name}
+                            {place.is_active === 0 && <> <Chip tone="warn">Retired</Chip></>}</span>
+                          {isSiteRoot(place) && <span className="sub">the property itself</span>}
                         </td>
                         <td>{titleCase(place.type)}</td>
                         <td className="mono">{place.code}</td>
-                        <td className="num">
-                          {/* The property itself is not retirable — everything hangs off it. */}
-                          {depth > 0 && (
+                        <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                          <Btn size="sm" onClick={() => setEditing(place)}>Edit</Btn>{' '}
+                          {/* The property itself is neither retirable nor deletable —
+                              everything hangs off it. */}
+                          {!isSiteRoot(place) && <>
                             <RetireBtn kind="location" id={place.id} label={place.name}
+                                       active={place.is_active !== 0}
+                                       onDone={async (m) => { setPlaceMsg({ text: m }); await refreshPlaces(); }} />{' '}
+                            <DeleteBtn kind="location" id={place.id} label={place.name}
                                        onDone={async (m) => { setPlaceMsg({ text: m }); await refreshPlaces(); }} />
-                          )}
+                          </>}
                         </td>
                       </tr>
                     ))}
@@ -1425,53 +1542,96 @@ function Places() {
       </Card>
 
       {adding && (
-        <PlaceDialog places={all} defaultParent={site?.id ?? null}
+        <PlaceDialog places={live} defaultParent={site?.id ?? null}
                      onClose={() => setAdding(false)}
                      onSaved={async () => {
                        setAdding(false);
-                       await qc.invalidateQueries({ queryKey: ['locations'] });
+                       await refreshPlaces();
+                     }} />
+      )}
+      {editing && (
+        <PlaceDialog places={everything} place={editing} defaultParent={editing.parent_id}
+                     onClose={() => setEditing(null)}
+                     onSaved={async () => {
+                       setPlaceMsg({ text: `${editing.name} saved.` });
+                       setEditing(null);
+                       await refreshPlaces();
                      }} />
       )}
     </>
   );
 }
 
-function PlaceDialog({ places, defaultParent, onClose, onSaved }:
-  { places: Place[]; defaultParent: string | null; onClose: () => void; onSaved: () => void }) {
+/** The site at the root of the tree: renamed, never moved, retired or deleted. */
+function isSiteRoot(p: Place): boolean {
+  return p.type === 'site' && !p.parent_id;
+}
+
+/** Everything below a place, so the "sits inside" list can leave out moves that would loop. */
+function descendantsOf(id: string, places: Place[]): Set<string> {
+  const out = new Set<string>([id]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const p of places) {
+      if (p.parent_id && out.has(p.parent_id) && !out.has(p.id)) { out.add(p.id); grew = true; }
+    }
+  }
+  return out;
+}
+
+function PlaceDialog({ places, place, defaultParent, onClose, onSaved }:
+  { places: Place[]; place?: Place; defaultParent: string | null; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
-    name: '', code: '', type: 'plant_room' as string, parentId: defaultParent ?? '',
+    name: place?.name ?? '', code: place?.code ?? '', type: place?.type ?? 'plant_room',
+    parentId: defaultParent ?? '',
   });
+  const isRoot = !!place && isSiteRoot(place);
 
   // Typing a code by hand is a job nobody wants and a duplicate waiting to happen.
   const suggested = f.name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20);
   const code = f.code.trim() || suggested;
+  // A place cannot sit inside itself or anything inside it; the server refuses it too.
+  const blocked = place ? descendantsOf(place.id, places) : new Set<string>();
+  const parents = places.filter((p) => !blocked.has(p.id));
+  // Kinds the add list does not offer (the site, an apartment) still show when editing one.
+  const types: readonly (readonly [string, string])[] =
+    place && !PLACE_TYPES.some(([v]) => v === place.type)
+      ? [[place.type, titleCase(place.type)], ...PLACE_TYPES]
+      : PLACE_TYPES;
 
   const save = useMutation({
-    mutationFn: () => api.post('/api/locations', {
-      name: f.name.trim(), code, type: f.type,
-      parentId: f.parentId || undefined,
-    }),
+    mutationFn: () => place
+      ? api.patch(`/api/locations/${place.id}`, {
+          name: f.name.trim(), code,
+          ...(isRoot ? {} : { type: f.type, parentId: f.parentId || null }),
+        })
+      : api.post('/api/locations', {
+          name: f.name.trim(), code, type: f.type,
+          parentId: f.parentId || undefined,
+        }),
     onSuccess: onSaved,
   });
   const err = save.error as ApiError | null;
 
   return (
-    <Modal title="Add a place" onClose={onClose}>
+    <Modal title={place ? `Edit ${place.name}` : 'Add a place'} onClose={onClose}>
       <Field label="Name" hint="What the team calls it out loud.">
         <input className="inp" autoFocus value={f.name}
                onChange={(e) => setF({ ...f, name: e.target.value })} />
       </Field>
       <div className="grid g2" style={{ gap: 10 }}>
         <Field label="Kind">
-          <select className="inp" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}>
-            {PLACE_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          <select className="inp" value={f.type} disabled={isRoot}
+                  onChange={(e) => setF({ ...f, type: e.target.value })}>
+            {types.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </Field>
         <Field label="Sits inside">
-          <select className="inp" value={f.parentId}
+          <select className="inp" value={f.parentId} disabled={isRoot}
                   onChange={(e) => setF({ ...f, parentId: e.target.value })}>
             <option value="">Nothing — top level</option>
-            {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {parents.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}{p.is_active === 0 ? ' (retired)' : ''}</option>))}
           </select>
         </Field>
       </div>
@@ -1483,7 +1643,7 @@ function PlaceDialog({ places, defaultParent, onClose, onSaved }:
       <Btn tone="pri" style={{ width: '100%' }}
            disabled={f.name.trim().length < 2 || !code || save.isPending}
            onClick={() => save.mutate()}>
-        {save.isPending ? 'Saving…' : 'Add place'}
+        {save.isPending ? 'Saving…' : place ? 'Save changes' : 'Add place'}
       </Btn>
     </Modal>
   );
@@ -1518,13 +1678,19 @@ function People() {
   const [editing, setEditing] = useState<Person | 'new' | null>(null);
   const [addingTeam, setAddingTeam] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  const [showLeft, setShowLeft] = useState(false);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
 
+  // People who have left come too, so they can be brought back; drawn only on request.
   const q = useQuery<{ staff: Person[]; teams: Team[] }>({
-    queryKey: ['staff'], queryFn: () => api.get('/api/staff'),
+    queryKey: ['staff', 'all'], queryFn: () => api.get('/api/staff?all=1'),
   });
-  const staff = q.data?.staff ?? [];
+  const everyone = q.data?.staff ?? [];
+  const staff = everyone.filter((p) => p.is_active !== 0);
+  const leftCount = everyone.length - staff.length;
+  const listed = showLeft ? everyone : staff;
   const teams = q.data?.teams ?? [];
+  // The prefix refreshes the Users tab's picker as well as this list.
   const refresh = async () => { await qc.invalidateQueries({ queryKey: ['staff'] }); };
 
   return (
@@ -1532,6 +1698,11 @@ function People() {
       <Flash msg={msg} />
       <Card flush title="People on the floor"
             right={<>
+              {leftCount > 0 && (
+                <Btn size="sm" tone={showLeft ? 'on' : undefined} onClick={() => setShowLeft((v) => !v)}>
+                  {showLeft ? 'Hide retired' : `Show retired (${leftCount})`}
+                </Btn>
+              )}
               <Btn size="sm" onClick={() => setAddingTeam(true)}>Add a team</Btn>
               <Btn size="sm" tone="pri" icon="plus" onClick={() => setEditing('new')}>Add a person</Btn>
             </>}>
@@ -1546,16 +1717,22 @@ function People() {
                   <thead><tr><th>Name</th><th>Trade</th><th>Team</th><th>Phone</th>
                     <th className="mono">No.</th><th /></tr></thead>
                   <tbody>
-                    {staff.map((p) => (
+                    {listed.map((p) => (
                       <tr key={p.id}>
-                        <td><span className="ttl">{p.first_name} {p.last_name}</span>
+                        <td><span className="ttl">{p.first_name} {p.last_name}
+                              {p.is_active === 0 && <> <Chip tone="warn">Retired</Chip></>}</span>
                             <span className="sub">{titleCase(p.employment_type ?? 'permanent')}</span></td>
                         <td>{p.trade ? titleCase(p.trade) : '—'}</td>
                         <td>{p.team_name ?? <span className="sub">no team</span>}</td>
                         <td className="mono">{p.phone ?? '—'}</td>
                         <td className="mono">{p.staff_no ?? '—'}</td>
-                        <td className="num">
-                          <button className="btn sm" onClick={() => setEditing(p)}>Edit</button>
+                        <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                          <button className="btn sm" onClick={() => setEditing(p)}>Edit</button>{' '}
+                          <RetireBtn kind="staff" id={p.id} label={`${p.first_name} ${p.last_name}`}
+                                     active={p.is_active !== 0}
+                                     onDone={async (m) => { setMsg({ text: m }); await refresh(); }} />{' '}
+                          <DeleteBtn kind="staff" id={p.id} label={`${p.first_name} ${p.last_name}`}
+                                     onDone={async (m) => { setMsg({ text: m }); await refresh(); }} />
                         </td>
                       </tr>
                     ))}
@@ -1567,6 +1744,8 @@ function People() {
           <b>A person here and an account under Users are two different things.</b> This list is
           who can be put on a shift and given a job. An account is who can sign in. Link the two
           when you create the account, and that person sees their own jobs when they log in.
+          {' '}<b>Retire</b> somebody who has left — their jobs and roster history stay readable.
+          <b> Delete</b> is only for a person added by mistake who has nothing recorded against them.
         </div>
       </Card>
 
@@ -1591,6 +1770,10 @@ function People() {
                       <Btn size="sm" onClick={() => setEditingTeam(t)}>Edit</Btn>
                       <span style={{ marginLeft: 6 }}>
                         <RetireBtn kind="team" id={t.id} label={t.name}
+                                   onDone={async (m) => { setMsg({ text: m }); await refresh(); }} />
+                      </span>
+                      <span style={{ marginLeft: 6 }}>
+                        <DeleteBtn kind="team" id={t.id} label={t.name}
                                    onDone={async (m) => { setMsg({ text: m }); await refresh(); }} />
                       </span>
                     </td>

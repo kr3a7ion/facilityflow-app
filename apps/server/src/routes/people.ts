@@ -9,11 +9,13 @@ import { localDate } from '../lib/time.js';
 import { ctxOf, send } from './_helpers.js';
 
 export async function peopleRoutes(app: FastifyInstance): Promise<void> {
+  // `?all=1` adds people who have left, for the Staff tab that can bring them back. Every
+  // other caller — pickers, the roster — leaves it off and only ever sees who is here.
   app.get('/api/staff', { preHandler: requirePermission('staff.read') }, async (req) => ({
     staff: app.db.prepare(
       `SELECT s.*, t.name AS team_name FROM staff s LEFT JOIN teams t ON t.id = s.team_id
-        WHERE s.property_id = ? AND s.is_active = 1 ORDER BY s.first_name`
-    ).all(req.principal!.propertyId),
+        WHERE s.property_id = ? AND (? OR s.is_active = 1) ORDER BY s.first_name`
+    ).all(req.principal!.propertyId, (req.query as { all?: string }).all === '1' ? 1 : 0),
     teams: app.db.prepare(
       `SELECT t.*,
               l.first_name || ' ' || l.last_name AS team_lead_name,
@@ -192,6 +194,16 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
           d.employmentType ?? existing['employment_type'] ?? 'permanent',
           d.isActive === undefined ? existing['is_active'] : (d.isActive ? 1 : 0),
           nowIso(), id);
+    audit(app.db, {
+      propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+      action: 'staff.updated', entityType: 'staff', entityId: id,
+      before: { name: `${existing['first_name']} ${existing['last_name']}`, teamId: existing['team_id'],
+                trade: existing['trade'], isActive: !!existing['is_active'] },
+      after: { name: `${d.firstName} ${d.lastName}`, teamId: keep(d.teamId, existing['team_id']),
+               trade: keep(d.trade, existing['trade']),
+               isActive: d.isActive === undefined ? !!existing['is_active'] : d.isActive },
+      ip: req.ip,
+    });
     return reply.code(200).send({ ok: true, id });
   });
 
