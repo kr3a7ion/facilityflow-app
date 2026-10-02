@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- FacilityFlow: a supply node, a busbar, two feeders. Also an F. -->
+  <rect width="32" height="32" rx="7" fill="#2563C9"/>
+  <g transform="translate(5.9 5.9) scale(0.63)" fill="none">
+    <circle cx="11" cy="6.4" r="3.1" fill="#FFFFFF"/>
+    <g stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round">
+      <path d="M11 8.6V25.4"/>
+      <path d="M11 12.9H24.6"/>
+      <path d="M11 19.6H19.8"/>
+    </g>
+  </g>
+</svg>

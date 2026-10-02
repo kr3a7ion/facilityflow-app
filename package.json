@@ -1,0 +1,23 @@
+{
+  "name": "facilityflow",
+  "private": true,
+  "version": "0.1.0",
+  "description": "FacilityFlow - offline LAN maintenance & facility management system",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @facilityflow/server",
+    "dev:web": "npm run dev -w @facilityflow/web",
+    "build": "npm run build -w @facilityflow/web && npm run build -w @facilityflow/server",
+    "start": "npm run start -w @facilityflow/server",
+    "migrate": "npm run migrate -w @facilityflow/server",
+    "seed": "npm run seed -w @facilityflow/server",
+    "backup": "npm run backup -w @facilityflow/server",
+    "smoke": "npm run smoke -w @facilityflow/server",
+    "typecheck": "npm run typecheck -w @facilityflow/server && npm run typecheck -w @facilityflow/web"
+  }
+}

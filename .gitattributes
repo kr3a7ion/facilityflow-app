@@ -1,0 +1,9 @@
+# Windows scripts must keep CRLF endings.
+#
+# cmd.exe does not reliably resolve `goto` and labels in a batch file saved with
+# Unix line endings, and this launcher is built entirely on them — so a checkout
+# that "helpfully" normalised these to LF would ship a menu where every choice
+# silently falls through. Learned the hard way.
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
