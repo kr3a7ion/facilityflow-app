@@ -604,6 +604,25 @@ deleted and recreated to be promoted, and deleting would orphan every job pointi
 You cannot change your own role — that is how an administrator locks themselves out of the
 only screen that could undo it.
 
+### Retire or delete
+
+Staff, Users, Roles and Places each have both.
+
+- **Retire** (or **Disable**, for an account) is the everyday answer. The record leaves every
+  list and picker, everything that refers to it keeps reading correctly, and **Show
+  retired** brings it back.
+- **Delete** removes the record for good, and is only for something created by mistake —
+  a person typed twice, a place under the wrong block, an account nobody ever signed in
+  to. If *anything* points at the record — a job, a roster day, an action in the audit log —
+  the system refuses, says what is in the way, and suggests retiring instead. The roles the
+  system ships with and the site itself can never be deleted.
+
+Every deletion is in the audit log, with what the record held.
+
+Custom roles are made under **Roles → New role**, usually by copying the role that is
+nearly right and ticking what is different. Places are renamed or moved with **Edit**; a
+place cannot be moved inside one of its own children.
+
 ### Roles
 
 Nine roles, each a set of permissions you can edit. Changing a role changes what a whole

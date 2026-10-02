@@ -11,12 +11,17 @@ const APT_STATUS = ['occupied', 'vacant_ready', 'vacant_dirty', 'under_maintenan
 
 export async function registryRoutes(app: FastifyInstance): Promise<void> {
   // ---- locations -------------------------------------------------------------
-  app.get('/api/locations', { preHandler: requirePermission('location.read') }, async (req) => ({
-    locations: app.db.prepare(
-      `SELECT id, parent_id, type, code, name, sort_order FROM locations
-        WHERE property_id = ? AND is_active = 1 ORDER BY sort_order, code`
-    ).all(req.principal!.propertyId),
-  }));
+  // `?all=1` includes retired places, for the Admin screen that brings them back. Every
+  // picker leaves it off and so never offers a place nobody uses any more.
+  app.get('/api/locations', { preHandler: requirePermission('location.read') }, async (req) => {
+    const all = (req.query as { all?: string }).all === '1';
+    return {
+      locations: app.db.prepare(
+        `SELECT id, parent_id, type, code, name, sort_order, is_active FROM locations
+          WHERE property_id = ? AND (? OR is_active = 1) ORDER BY sort_order, code`
+      ).all(req.principal!.propertyId, all ? 1 : 0),
+    };
+  });
 
   app.post('/api/locations', { preHandler: requirePermission('location.manage') }, async (req, reply) => {
     const body = z.object({
@@ -37,6 +42,80 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(409).send({ error: 'duplicate_code', message: `Code "${body.data.code}" is already used.` });
     }
     return reply.code(201).send({ ok: true, id });
+  });
+
+  /**
+   * Rename a place, recode it, or move it.
+   *
+   * Moving is where this can go wrong: a place set inside one of its own children makes a
+   * loop, and every screen that walks the tree walks it forever. The new parent's chain is
+   * followed up to the top first, and the move is refused if it passes through this place.
+   */
+  app.patch('/api/locations/:id', { preHandler: requirePermission('location.manage') }, async (req, reply) => {
+    const body = z.object({
+      parentId: z.string().nullable().optional(),
+      type: z.enum(['site', 'block', 'floor', 'apartment', 'common_area', 'plant_room', 'external']).optional(),
+      code: z.string().trim().min(1).max(40).optional(),
+      name: z.string().trim().min(1).max(120).optional(),
+      sortOrder: z.number().int().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+    const me = req.principal!;
+    const { id } = req.params as { id: string };
+    const place = app.db.prepare(
+      'SELECT id, parent_id, type, code, name, sort_order FROM locations WHERE id = ? AND property_id = ?'
+    ).get(id, me.propertyId) as
+      { id: string; parent_id: string | null; type: string; code: string; name: string; sort_order: number } | undefined;
+    if (!place) return reply.code(404).send({ error: 'not_found', message: 'That place does not exist.' });
+    const d = body.data;
+
+    const isRoot = place.type === 'site' && !place.parent_id;
+    if (isRoot && ((d.type && d.type !== 'site') || (d.parentId !== undefined && d.parentId !== null))) {
+      return reply.code(409).send({
+        error: 'site_fixed',
+        message: 'The site is the root of every place. It can be renamed, but not moved or given another kind.',
+      });
+    }
+
+    if (d.parentId) {
+      if (d.parentId === id) {
+        return reply.code(400).send({ error: 'own_parent', message: 'A place cannot sit inside itself.' });
+      }
+      let cursor: string | null = d.parentId;
+      for (let hops = 0; cursor && hops < 100; hops++) {
+        const up = app.db.prepare('SELECT id, parent_id FROM locations WHERE id = ? AND property_id = ?')
+          .get(cursor, me.propertyId) as { id: string; parent_id: string | null } | undefined;
+        if (!up) return reply.code(400).send({ error: 'unknown_parent', message: 'The place to move it into does not exist.' });
+        if (up.parent_id === id) {
+          return reply.code(400).send({
+            error: 'cycle', message: `${place.name} cannot move inside a place that is itself inside it.`,
+          });
+        }
+        cursor = up.parent_id;
+      }
+    }
+
+    const next = {
+      parent_id: d.parentId === undefined ? place.parent_id : d.parentId,
+      type: d.type ?? place.type,
+      code: d.code ?? place.code,
+      name: d.name ?? place.name,
+      sort_order: d.sortOrder ?? place.sort_order,
+    };
+    try {
+      app.db.prepare(
+        `UPDATE locations SET parent_id = ?, type = ?, code = ?, name = ?, sort_order = ?, updated_at = ?
+          WHERE id = ?`
+      ).run(next.parent_id, next.type, next.code, next.name, next.sort_order, nowIso(), id);
+    } catch {
+      return reply.code(409).send({ error: 'duplicate_code', message: `Code "${next.code}" is already used.` });
+    }
+    audit(app.db, {
+      propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+      action: 'location.updated', entityType: 'location', entityId: id,
+      before: place, after: next, ip: req.ip,
+    });
+    return { ok: true, id };
   });
 
   // ---- apartments ------------------------------------------------------------

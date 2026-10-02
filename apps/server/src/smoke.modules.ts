@@ -2716,6 +2716,23 @@ check('the person it was for answers it', r.statusCode === 200);
 check('and it stops asking',
   (await get('/api/me/rings', ifeoma)).json().rings.length === 0);
 
+/*
+ * Rings are stored as ISO text. The once-a-minute rule used to compare that against
+ * SQLite's datetime('now'), whose space sorts before the ISO 'T' — so any ring earlier the
+ * same day counted as "less than a minute ago" and the person could not be rung again
+ * until midnight UTC.
+ */
+db.prepare('UPDATE ring_log SET at = ? WHERE id = ?')
+  .run(new Date(Date.now() - 5 * 60_000).toISOString(), ringId);
+r = await post(`/api/users/${ifeomaId}/ring`, grace, { reason: 'Again' });
+check('a ring from five minutes ago does not block the next one',
+  r.statusCode === 201, r.body.slice(0, 160));
+const staleRing = r.json().id as string;
+db.prepare('UPDATE ring_log SET at = ? WHERE id = ?')
+  .run(new Date(Date.now() - 2 * 3600_000).toISOString(), staleRing);
+check('and a ring left unanswered for two hours stops asking',
+  !((await get('/api/me/rings', ifeoma)).json().rings as { id: string }[]).some((x) => x.id === staleRing));
+
 // ---- the emergency alert ---------------------------------------------------
 r = await post('/api/alerts/emergency', ifeoma, { category: 'fire', message: 'Test' });
 check('a technician cannot raise an emergency alert',
@@ -3249,6 +3266,143 @@ check('and it stops being the duty screen at once', r.json().duty === false);
 r = await post('/api/duty/release', graceOnSite, { deviceId: 'plantroom-tablet-01' });
 check('releasing one that is not a duty screen says so rather than pretending',
   r.statusCode === 404);
+
+// --------------------------------------------------------------------------
+heading('Editing and deleting what was set up');
+// --------------------------------------------------------------------------
+/*
+ * Retire is still how something leaves use. Delete is for the record that should never
+ * have existed, and it is refused — naming what is in the way — whenever anything points
+ * at the record.
+ */
+const patch = (url: string, headers: Hdr, payload: unknown) =>
+  app.inject({ method: 'PATCH', url, headers, payload: payload as object });
+const del = (url: string, headers: Hdr) => app.inject({ method: 'DELETE', url, headers });
+const adminId = (db.prepare(`SELECT id FROM users WHERE username = 'admin'`).get() as { id: string }).id;
+
+// ---- roles ------------------------------------------------------------------
+const techRoleId = (db.prepare(`SELECT id FROM roles WHERE key = 'technician'`).get() as { id: string }).id;
+r = await post('/api/admin/roles', admin,
+  { name: 'Security Lead', description: 'Gate and patrol', copyFrom: techRoleId });
+check('a role can be created as a copy of another', r.statusCode === 201, r.body.slice(0, 160));
+const secRole = r.json().id as string;
+check('its key is derived from the name', r.json().key === 'security_lead');
+const grantsOf = (id: string) => db.prepare(
+  'SELECT permission_code, scope FROM role_permissions WHERE role_id = ? ORDER BY permission_code').all(id);
+check('and it carries the same grants, scopes included',
+  JSON.stringify(grantsOf(secRole)) === JSON.stringify(grantsOf(techRoleId)));
+r = await post('/api/admin/roles', admin, { name: 'security lead' });
+check('a second role with the same name is refused', r.statusCode === 409);
+r = await post('/api/admin/roles', ifeoma, { name: 'Sneaky' });
+check('a technician cannot create roles', r.statusCode === 403);
+
+r = await patch(`/api/admin/roles/${secRole}`, admin, { name: 'Security Supervisor', description: 'Runs the gate' });
+check('a role can be renamed', r.statusCode === 200, r.body.slice(0, 140));
+check('and its key does not move',
+  (db.prepare('SELECT key FROM roles WHERE id = ?').get(secRole) as { key: string }).key === 'security_lead');
+const adminRoleId = (db.prepare(`SELECT id FROM roles WHERE key = 'admin'`).get() as { id: string }).id;
+r = await patch(`/api/admin/roles/${adminRoleId}`, admin, { name: 'Boss' });
+check('the administrator role cannot be renamed', r.statusCode === 409);
+r = await del(`/api/records/role/${techRoleId}`, admin);
+check('a role that ships with the system cannot be deleted',
+  r.statusCode === 409 && /ships with the system/.test(r.json().message), r.body.slice(0, 160));
+
+r = await post('/api/admin/users', admin,
+  { username: 'typo.guard', roleKey: 'security_lead', displayName: 'Typo Guard', password: PW });
+check('an account can be given the new role', r.statusCode === 201, r.body.slice(0, 140));
+const typoUser = r.json().id as string;
+r = await get(`/api/records/role/${secRole}/deletable`, admin);
+check('a role somebody holds is reported as not deletable before anyone tries',
+  r.json().ok === false && /users/.test((r.json().blockers as string[]).join()), r.body.slice(0, 160));
+r = await del(`/api/records/role/${secRole}`, admin);
+check('and deleting it is refused, with the reason',
+  r.statusCode === 409 && /Retire it instead/.test(r.json().message), r.body.slice(0, 160));
+
+// ---- users ------------------------------------------------------------------
+r = await del(`/api/records/user/${adminId}`, admin);
+check('nobody can delete their own account', r.statusCode === 409, r.body.slice(0, 140));
+r = await del(`/api/records/user/${ifeomaId}`, admin);
+check('an account with a history cannot be deleted',
+  r.statusCode === 409 && /audit log/.test(r.json().message), r.body.slice(0, 200));
+r = await del(`/api/records/user/${typoUser}`, ifeoma);
+check('a technician cannot delete accounts', r.statusCode === 403);
+r = await del(`/api/records/user/${typoUser}`, admin);
+check('an account created by mistake and never used is deleted', r.statusCode === 200, r.body.slice(0, 160));
+check('and is gone', !db.prepare('SELECT 1 FROM users WHERE id = ?').get(typoUser));
+
+r = await del(`/api/records/role/${secRole}`, admin);
+check('once nobody holds it, the custom role can be deleted', r.statusCode === 200, r.body.slice(0, 160));
+check('taking its grants with it', grantsOf(secRole).length === 0);
+
+// ---- staff ------------------------------------------------------------------
+r = await post('/api/staff', admin, { firstName: 'Dupli', lastName: 'Cate' });
+const dupStaff = r.json().id as string;
+r = await post(`/api/retire/staff/${dupStaff}`, admin, { active: false });
+check('a person can be retired', r.statusCode === 200, r.body.slice(0, 140));
+check('and drops out of the staff list',
+  !((await get('/api/staff', admin)).json().staff as { id: string }[]).some((p) => p.id === dupStaff));
+check('but the Staff tab can still find them',
+  ((await get('/api/staff?all=1', admin)).json().staff as { id: string; is_active: number }[])
+    .some((p) => p.id === dupStaff && p.is_active === 0));
+r = await post(`/api/retire/staff/${dupStaff}`, admin, { active: true });
+check('and bring them back', r.statusCode === 200);
+r = await del(`/api/records/staff/${dupStaff}`, admin);
+check('a person added twice by mistake is deleted', r.statusCode === 200, r.body.slice(0, 160));
+
+const ifeomaStaffId = (db.prepare(`SELECT staff_id FROM users WHERE username = 'ifeoma'`)
+  .get() as { staff_id: string }).staff_id;
+r = await del(`/api/records/staff/${ifeomaStaffId}`, admin);
+check('a person with a login and a history behind them is not deleted',
+  r.statusCode === 409 && /Retire it instead/.test(r.json().message), r.body.slice(0, 200));
+
+// ---- places -----------------------------------------------------------------
+r = await post('/api/locations', admin, { type: 'block', code: 'BLK-X', name: 'Block X', parentId: siteId });
+const blockX = r.json().id as string;
+r = await post('/api/locations', admin, { type: 'floor', code: 'BLK-X-1', name: 'Floor 1', parentId: siteId });
+const floorX = r.json().id as string;
+r = await patch(`/api/locations/${floorX}`, admin, { parentId: blockX, name: 'First floor' });
+check('a place can be renamed and moved', r.statusCode === 200, r.body.slice(0, 140));
+check('and it lands where it was put',
+  (db.prepare('SELECT parent_id FROM locations WHERE id = ?').get(floorX) as { parent_id: string })
+    .parent_id === blockX);
+r = await patch(`/api/locations/${blockX}`, admin, { parentId: floorX });
+check('a place cannot be moved inside its own child', r.statusCode === 400 && r.json().error === 'cycle');
+r = await patch(`/api/locations/${blockX}`, admin, { parentId: blockX });
+check('nor inside itself', r.statusCode === 400);
+r = await patch(`/api/locations/${blockX}`, admin, { code: 'PLANT-GEN' });
+check('a code already in use is refused', r.statusCode === 409);
+r = await patch(`/api/locations/${siteId}`, admin, { type: 'block' });
+check('the site keeps its kind', r.statusCode === 409);
+r = await patch(`/api/locations/${siteId}`, admin, { name: 'Harmony Court (main)' });
+check('but can be renamed', r.statusCode === 200);
+
+r = await del(`/api/records/location/${blockX}`, admin);
+check('a place with places inside it is not deleted', r.statusCode === 409, r.body.slice(0, 160));
+r = await del(`/api/records/location/${floorX}`, admin);
+check('an empty place is deleted', r.statusCode === 200, r.body.slice(0, 160));
+r = await del(`/api/records/location/${blockX}`, admin);
+check('and then so is the one that held it', r.statusCode === 200);
+r = await del(`/api/records/location/${siteId}`, admin);
+check('the site can never be deleted', r.statusCode === 409);
+r = await del(`/api/records/location/${plantId}`, admin);
+check('a place with jobs or assets is not deleted', r.statusCode === 409, r.body.slice(0, 160));
+
+r = await post('/api/locations', admin, { type: 'external', code: 'OLD-YARD', name: 'Old yard', parentId: siteId });
+r = await post(`/api/retire/location/${r.json().id}`, admin, { active: false });
+check('a retired place is hidden from pickers',
+  !((await get('/api/locations', admin)).json().locations as { code: string }[]).some((l) => l.code === 'OLD-YARD'));
+check('and listed for the Places tab with ?all=1',
+  ((await get('/api/locations?all=1', admin)).json().locations as { code: string; is_active: number }[])
+    .some((l) => l.code === 'OLD-YARD' && l.is_active === 0));
+
+r = await del(`/api/records/spaceship/${blockX}`, admin);
+check('an unknown kind is a 404, never a table name from the request', r.statusCode === 404);
+r = await get('/api/admin/audit?limit=300', admin);
+check('every deletion is audited',
+  ((r.json().entries as { action: string }[]) ?? []).filter((e) => e.action === 'record.deleted').length >= 4,
+  r.body.slice(0, 120));
+check('and no password hash ever lands in the audit log',
+  !db.prepare(`SELECT 1 FROM audit_log WHERE before_json LIKE '%password_hash%'`).get());
 
 // --------------------------------------------------------------------------
 heading('Integrity');

@@ -1,9 +1,11 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { requireSignedIn } from '../auth/guard.js';
 import { nowIso } from '../lib/time.js';
 import { audit } from '../audit.js';
 import type { Db } from '../db/connection.js';
+import { DELETABLE, blockersFor, deleteRecord } from '../services/deletion.js';
+import { send } from './_helpers.js';
 
 /**
  * Taking something out of use.
@@ -101,6 +103,26 @@ const RETIRABLE: Record<string, Retirable> = {
       return out;
     },
   },
+  staff: {
+    table: 'staff', needs: 'staff.manage', label: 'person',
+    nameColumn: `first_name || ' ' || last_name`,
+    blockers: (db, _p, id) => {
+      const out: string[] = [];
+      const jobs = count(db,
+        `SELECT COUNT(*) AS n FROM work_orders WHERE assigned_to_staff_id = ? AND ${OPEN_JOB}`, id);
+      if (jobs) out.push(`${jobs} open job${jobs === 1 ? ' is' : 's are'} assigned to them — reassign first`);
+      // A retired team lead silently switches off the first step of escalation for the
+      // whole team, which looks like nothing happening until a P1 goes unanswered.
+      const leads = count(db,
+        `SELECT COUNT(*) AS n FROM teams
+          WHERE is_active = 1 AND (team_lead_staff_id = ? OR supervisor_staff_id = ?)`, id, id);
+      if (leads) out.push(`named as lead or supervisor of ${leads} team${leads === 1 ? '' : 's'}`);
+      const logins = count(db,
+        'SELECT COUNT(*) AS n FROM users WHERE staff_id = ? AND is_active = 1', id);
+      if (logins) out.push(`their login is still enabled — disable it under Users first`);
+      return out;
+    },
+  },
   team: {
     table: 'teams', needs: 'staff.manage', label: 'team', nameColumn: 'name',
     blockers: (db, _p, id) => {
@@ -149,7 +171,63 @@ export async function retireRoutes(app: FastifyInstance): Promise<void> {
     kinds: Object.entries(RETIRABLE)
       .filter(([, r]) => req.principal!.permissions.has(r.needs))
       .map(([kind, r]) => ({ kind, label: r.label, needs: r.needs })),
+    deletable: Object.entries(DELETABLE)
+      .filter(([, r]) => req.principal!.permissions.has(r.needs))
+      .map(([kind, r]) => ({ kind, label: r.label, needs: r.needs })),
   }));
+
+  /*
+   * Deleting, beside retiring.
+   *
+   * Retire stays the everyday answer. Delete is for the record that should never have
+   * existed — and it is refused, with the reasons named, the moment anything points at
+   * the record. The rules live in services/deletion.ts.
+   */
+  const deletable = (kind: string, reply: FastifyReply, perms: Set<string>) => {
+    const spec = DELETABLE[kind];
+    if (!spec) {
+      void reply.code(404).send({
+        error: 'unknown_kind', message: `There is nothing of kind "${kind}" that can be deleted.`,
+      });
+      return null;
+    }
+    if (!perms.has(spec.needs)) {
+      void reply.code(403).send({
+        error: 'forbidden', required: spec.needs,
+        message: `Deleting a ${spec.label} needs the ${spec.needs} permission.`,
+      });
+      return null;
+    }
+    return spec;
+  };
+
+  /** Asked before the confirm is shown, so the dialog can say "this will be refused" up front. */
+  app.get('/api/records/:kind/:id/deletable', { preHandler: requireSignedIn() }, async (req, reply) => {
+    const { kind, id } = req.params as { kind: string; id: string };
+    const spec = deletable(kind, reply, req.principal!.permissions);
+    if (!spec) return reply;
+    const exists = app.db.prepare(`SELECT 1 FROM ${spec.table} WHERE id = ? AND property_id = ?`)
+      .get(id, req.principal!.propertyId);
+    if (!exists) return reply.code(404).send({ error: 'not_found', message: `That ${spec.label} does not exist.` });
+    const refusal = spec.refuse?.(app.db, id, req.principal!.userId);
+    const blockers = refusal ? [refusal] : blockersFor(app.db, spec, id);
+    return { ok: blockers.length === 0, blockers };
+  });
+
+  app.delete('/api/records/:kind/:id', { preHandler: requireSignedIn() }, async (req, reply) => {
+    const { kind, id } = req.params as { kind: string; id: string };
+    const me = req.principal!;
+    const spec = deletable(kind, reply, me.permissions);
+    if (!spec) return reply;
+    return send(reply, () => {
+      const { label, before } = deleteRecord(app.db, spec, me.propertyId, id, me.userId);
+      audit(app.db, {
+        propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+        action: 'record.deleted', entityType: kind, entityId: id, before, ip: req.ip,
+      });
+      return { ok: true, label, message: `${label} was deleted.` };
+    });
+  });
 
   app.post('/api/retire/:kind/:id', { preHandler: requireSignedIn() }, async (req, reply) => {
     const { kind, id } = req.params as { kind: string; id: string };

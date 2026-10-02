@@ -54,6 +54,100 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     return { roles };
   });
 
+  /**
+   * A new role — blank, or a copy of one that is nearly right.
+   *
+   * Copying is the common case: "a security lead is a team lead who can also raise
+   * emergencies" is one tick on top of an existing role, not sixty from nothing. Scopes
+   * are copied with the grants, so a copy of Technician still sees only its own jobs.
+   */
+  app.post('/api/admin/roles', { preHandler: requirePermission('admin.roles.manage') }, async (req, reply) => {
+    const body = z.object({
+      name: z.string().trim().min(2).max(60),
+      description: z.string().trim().max(300).optional(),
+      copyFrom: z.string().max(40).optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+    const me = req.principal!;
+    const d = body.data;
+
+    const nameTaken = app.db.prepare('SELECT 1 FROM roles WHERE property_id = ? AND lower(name) = lower(?)')
+      .get(me.propertyId, d.name);
+    if (nameTaken) return reply.code(409).send({ error: 'name_taken', message: `There is already a role called "${d.name}".` });
+
+    let source: { id: string; name: string } | undefined;
+    if (d.copyFrom) {
+      source = app.db.prepare('SELECT id, name FROM roles WHERE id = ? AND property_id = ?')
+        .get(d.copyFrom, me.propertyId) as { id: string; name: string } | undefined;
+      if (!source) return reply.code(400).send({ error: 'unknown_role', message: 'The role to copy from does not exist.' });
+    }
+
+    // The key is what code and the seed refer to; it is derived once and never changes,
+    // so renaming a role later cannot break anything that looks it up.
+    const base = d.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30) || 'role';
+    let key = base;
+    for (let n = 2; app.db.prepare('SELECT 1 FROM roles WHERE property_id = ? AND key = ?').get(me.propertyId, key); n++) {
+      key = `${base}_${n}`;
+    }
+
+    const id = ulid();
+    app.db.transaction(() => {
+      app.db.prepare(
+        `INSERT INTO roles (id, property_id, key, name, description, is_system, created_at)
+         VALUES (?, ?, ?, ?, ?, 0, ?)`
+      ).run(id, me.propertyId, key, d.name, d.description || null, nowIso());
+      if (source) {
+        app.db.prepare(
+          `INSERT INTO role_permissions (role_id, permission_code, scope)
+           SELECT ?, permission_code, scope FROM role_permissions WHERE role_id = ?`
+        ).run(id, source.id);
+      }
+    })();
+
+    audit(app.db, {
+      propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+      action: 'role.created', entityType: 'role', entityId: id,
+      after: { key, name: d.name, copiedFrom: source?.name ?? null }, ip: req.ip,
+    });
+    return reply.code(201).send({ ok: true, id, key });
+  });
+
+  /** Rename a role or rewrite its sentence. The key stays put. */
+  app.patch('/api/admin/roles/:id', { preHandler: requirePermission('admin.roles.manage') }, async (req, reply) => {
+    const body = z.object({
+      name: z.string().trim().min(2).max(60).optional(),
+      description: z.string().trim().max(300).nullable().optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+    const me = req.principal!;
+    const { id } = req.params as { id: string };
+    const role = app.db.prepare('SELECT key, name, description FROM roles WHERE id = ? AND property_id = ?')
+      .get(id, me.propertyId) as { key: string; name: string; description: string | null } | undefined;
+    if (!role) return reply.code(404).send({ error: 'not_found', message: 'That role does not exist.' });
+    if (role.key === 'admin') {
+      return reply.code(409).send({ error: 'admin_locked', message: 'The administrator role cannot be edited.' });
+    }
+    const d = body.data;
+    if (d.name && d.name.toLowerCase() !== role.name.toLowerCase()) {
+      const taken = app.db.prepare(
+        'SELECT 1 FROM roles WHERE property_id = ? AND lower(name) = lower(?) AND id <> ?'
+      ).get(me.propertyId, d.name, id);
+      if (taken) return reply.code(409).send({ error: 'name_taken', message: `There is already a role called "${d.name}".` });
+    }
+    const next = {
+      name: d.name ?? role.name,
+      description: d.description === undefined ? role.description : (d.description || null),
+    };
+    app.db.prepare('UPDATE roles SET name = ?, description = ? WHERE id = ?')
+      .run(next.name, next.description, id);
+    audit(app.db, {
+      propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+      action: 'role.updated', entityType: 'role', entityId: id,
+      before: { name: role.name, description: role.description }, after: next, ip: req.ip,
+    });
+    return { ok: true, id };
+  });
+
   app.get('/api/admin/permissions', { preHandler: requirePermission('admin.roles.manage') }, async () => {
     const permissions = app.db.prepare('SELECT code, module, description FROM permissions ORDER BY module, code').all();
     return { permissions };

@@ -45,7 +45,9 @@ export function PairPhone({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     // Generated in the browser. The host has no route to the internet, so a code from an
     // image service would be a permanently broken square.
-    QRCode.toString(code.payload, { type: 'svg', errorCorrectionLevel: 'M', margin: 0,
+    // A four-module quiet zone is what the QR standard asks for. With none, cheaper phone
+    // cameras find the square but cannot lock onto it, and the scan simply never fires.
+    QRCode.toString(code.payload, { type: 'svg', errorCorrectionLevel: 'M', margin: 4,
                                     color: { dark: '#000000', light: '#ffffff' } })
       .then((out) => { if (!cancelled) setSvg(out); })
       .catch(() => { if (!cancelled) setSvg(''); });
@@ -80,8 +82,8 @@ export function PairPhone({ onClose }: { onClose: () => void }) {
       ) : (
         <div style={{ textAlign: 'center' }}>
           {svg && (
-            <div style={{ width: 196, height: 196, margin: '0 auto 12px', background: '#fff',
-                          padding: 10, borderRadius: 10, border: '1px solid var(--line)' }}
+            <div style={{ width: 240, height: 240, margin: '0 auto 12px', background: '#fff',
+                          padding: 4, borderRadius: 10, border: '1px solid var(--line)' }}
                  dangerouslySetInnerHTML={{ __html: svg }} />
           )}
           <p style={{ fontFamily: 'var(--mono)', fontSize: '1.375rem', fontWeight: 600,
