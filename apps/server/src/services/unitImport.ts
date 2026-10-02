@@ -231,3 +231,41 @@ export function toUnits(
 export function unitKey(block: string | null | undefined, unitNo: string): string {
   return `${(block ?? '').trim().toLowerCase()}\u0000${unitNo.trim().toLowerCase()}`;
 }
+
+/**
+ * Existing units by (block, name), for the ones whose name is not also their number.
+ *
+ * Lets an import recognise `MAIN BUILDING · Seville` as unit 001 rather than a new flat —
+ * which is exactly what a list re-imported with the wrong column as the unit number looks
+ * like, and how a property ended up with every apartment twice.
+ */
+export function namesHere(
+  rows: { block: string | null; unit_no: string; name: string | null }[],
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    if (!r.name || r.name.trim().toLowerCase() === r.unit_no.trim().toLowerCase()) continue;
+    out.set(unitKey(r.block, r.name), `${r.block ? `${r.block} · ` : ''}${r.unit_no}`);
+  }
+  return out;
+}
+
+/**
+ * A mapping that would import names as unit numbers, said in words — or null.
+ *
+ * Either both fields point at the same column, or nearly every row's unit number is the
+ * same text as its name. A real unit list has numbers *and* names; when the two are the
+ * same everywhere, the wrong column was chosen.
+ */
+export function mappingProblem(
+  mapping: Partial<Record<Field, string>>, units: { unitNo: string; name?: string }[],
+): string | null {
+  const sentence = 'The unit number and the name are the same column, so every unit would be '
+    + 'imported with its name as its number — and a list already imported once would go in a '
+    + 'second time. Choose the column that holds the unit number (001, A-1204…).';
+  if (mapping.unit_no && mapping.unit_no === mapping.name) return sentence;
+  const named = units.filter((u) => u.name);
+  const same = named.filter((u) => u.name!.trim().toLowerCase() === u.unitNo.trim().toLowerCase());
+  if (named.length >= 3 && same.length >= named.length * 0.8) return sentence;
+  return null;
+}

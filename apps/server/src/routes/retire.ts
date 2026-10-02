@@ -214,6 +214,41 @@ export async function retireRoutes(app: FastifyInstance): Promise<void> {
     return { ok: blockers.length === 0, blockers };
   });
 
+  /**
+   * Delete many at once — an import that went in twice is a hundred rows, not one.
+   *
+   * Every record is judged on its own exactly as a single delete is, so one that something
+   * still points at is refused by name and the rest still go.
+   */
+  app.post('/api/records/:kind/delete-batch', { preHandler: requireSignedIn() }, async (req, reply) => {
+    const { kind } = req.params as { kind: string };
+    const me = req.principal!;
+    const spec = deletable(kind, reply, me.permissions);
+    if (!spec) return reply;
+    const body = z.object({ ids: z.array(z.string().max(40)).min(1).max(2000) }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+
+    const results = [...new Set(body.data.ids)].map((id) => {
+      try {
+        const { label, before } = deleteRecord(app.db, spec, me.propertyId, id, me.userId);
+        audit(app.db, {
+          propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+          action: 'record.deleted', entityType: kind, entityId: id, before, ip: req.ip,
+        });
+        return { id, ok: true, label, message: `${label} was deleted.` };
+      } catch (e) {
+        return { id, ok: false, message: (e as Error).message };
+      }
+    });
+    const deleted = results.filter((r) => r.ok).length;
+    const refused = results.length - deleted;
+    return {
+      deleted, refused, results,
+      message: `${deleted} ${spec.label}${deleted === 1 ? '' : 's'} deleted.`
+        + (refused ? ` ${refused} could not be — something still points at ${refused === 1 ? 'it' : 'them'}; retire ${refused === 1 ? 'it' : 'those'} instead.` : ''),
+    };
+  });
+
   app.delete('/api/records/:kind/:id', { preHandler: requireSignedIn() }, async (req, reply) => {
     const { kind, id } = req.params as { kind: string; id: string };
     const me = req.principal!;

@@ -23,7 +23,7 @@ interface Reference { table: string; column: string }
 
 /** Every (table, column) with a foreign key onto `target`. Read once per table. */
 const referenceCache = new Map<string, Reference[]>();
-function referencesOnto(db: Db, target: string): Reference[] {
+export function referencesOnto(db: Db, target: string): Reference[] {
   const cached = referenceCache.get(target);
   if (cached) return cached;
   const tables = db.prepare(
@@ -62,6 +62,21 @@ export interface DeleteSpec {
   extra?: (db: Db, id: string) => string[];
   /** Outright refusals that have nothing to do with references. */
   refuse?: (db: Db, id: string, actorUserId: string | null) => string | null;
+  /**
+   * A record that exists only as this one's other half, deleted with it. An apartment is
+   * also a place on the location tree; deleting the unit and leaving the place would
+   * leave a "Seville (MAIN BUILDING · 001)" in every picker pointing at nothing.
+   * Whatever points at the other half blocks the delete exactly as if it pointed here.
+   */
+  alsoDelete?: { column: string; table: string };
+}
+
+/** The id of the other half named by `alsoDelete`, if there is one. */
+function linkedId(db: Db, spec: DeleteSpec, id: string): string | null {
+  if (!spec.alsoDelete) return null;
+  const row = db.prepare(`SELECT ${spec.alsoDelete.column} AS v FROM ${spec.table} WHERE id = ?`)
+    .get(id) as { v: string | null } | undefined;
+  return row?.v ?? null;
 }
 
 /** What stands in the way of deleting this record. Empty means it can go. */
@@ -76,6 +91,17 @@ export function blockersFor(db: Db, spec: DeleteSpec, id: string): string[] {
     if (n > 0) out.push(`${n} ${words(ref.table)} record${n === 1 ? '' : 's'}`);
   }
   out.push(...(spec.extra?.(db, id) ?? []));
+
+  const linked = linkedId(db, spec, id);
+  if (linked && spec.alsoDelete) {
+    for (const ref of referencesOnto(db, spec.alsoDelete.table)) {
+      // The back-reference from this record to its other half is the one that goes too.
+      if (ref.table === spec.table && ref.column === spec.alsoDelete.column) continue;
+      const n = (db.prepare(`SELECT COUNT(*) AS n FROM "${ref.table}" WHERE "${ref.column}" = ?`)
+        .get(linked) as { n: number }).n;
+      if (n > 0) out.push(`${n} ${words(ref.table)} record${n === 1 ? '' : 's'} at its place`);
+    }
+  }
   return out;
 }
 
@@ -101,12 +127,17 @@ export function deleteRecord(
       `Retire it instead — it disappears from lists and its history stays readable.`);
   }
 
+  const linked = linkedId(db, spec, id);
   try {
     db.transaction(() => {
       for (const ref of spec.disposable ?? []) {
         db.prepare(`DELETE FROM "${ref.table}" WHERE "${ref.column}" = ?`).run(id);
       }
       db.prepare(`DELETE FROM ${spec.table} WHERE id = ? AND property_id = ?`).run(id, propertyId);
+      if (linked && spec.alsoDelete) {
+        db.prepare(`DELETE FROM ${spec.alsoDelete.table} WHERE id = ? AND property_id = ?`)
+          .run(linked, propertyId);
+      }
     })();
   } catch (e) {
     // The checks above should make this unreachable. If a reference slipped past them the
@@ -130,6 +161,11 @@ function count(db: Db, sql: string, ...args: unknown[]): number {
 }
 
 export const DELETABLE: Record<string, DeleteSpec> = {
+  apartment: {
+    table: 'apartments', needs: 'apartment.manage', label: 'apartment',
+    nameSql: `COALESCE(block || ' · ', '') || unit_no || COALESCE(' (' || name || ')', '')`,
+    alsoDelete: { column: 'location_id', table: 'locations' },
+  },
   user: {
     table: 'users', needs: 'admin.users.manage', label: 'account', nameSql: 'display_name',
     disposable: [
