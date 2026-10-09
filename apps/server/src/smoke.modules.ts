@@ -87,14 +87,32 @@ async function get(url: string, headers: Hdr) {
   return app.inject({ method: 'GET', url, headers });
 }
 const PW = 'facilityflow-testing';
+/* One source for the property's timezone: the fixture below sets it on the property,
+   and day() reads it back. Two copies of this is exactly how they drift apart. */
+const PROPERTY_TZ = 'Africa/Lagos';
 const iso = (offsetDays: number, base = Date.now()) => new Date(base + offsetDays * 86_400_000).toISOString();
-const day = (offsetDays: number) => iso(offsetDays).slice(0, 10);
+/*
+ * A calendar day in the PROPERTY's timezone, not in UTC.
+ *
+ * The roster is keyed on the property's local date, and the product is right to do
+ * that: a Lagos maintenance department's "today" is Lagos's today, not Greenwich's.
+ * This fixture used to slice the date off a UTC timestamp, which agrees with the
+ * product for 23 hours a day and disagrees for the hour between 23:00 UTC and
+ * midnight, when Lagos has already rolled over. In that hour it marked people present
+ * on yesterday, every assignment was refused as not_on_shift, and the whole job
+ * lifecycle below it failed — a suite that passes depending on what time you run it
+ * is worse than one that fails.
+ */
+const day = (offsetDays: number, base = Date.now()) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: PROPERTY_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(base + offsetDays * 86_400_000));
 
 // --------------------------------------------------------------------------
 heading('Setup and accounts');
 // --------------------------------------------------------------------------
 let r = await post('/api/setup', { cookie: '' } as Hdr, {
-  property: { name: 'Harmony Court Serviced Residences', shortName: 'Harmony Court', timezone: 'Africa/Lagos' },
+  property: { name: 'Harmony Court Serviced Residences', shortName: 'Harmony Court', timezone: PROPERTY_TZ },
   admin: { displayName: 'System Administrator', username: 'admin', password: PW },
 });
 check('property is configured', r.statusCode === 201, r.body.slice(0, 120));
