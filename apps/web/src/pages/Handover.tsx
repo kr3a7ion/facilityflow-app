@@ -77,12 +77,12 @@ export function Handover() {
         </div>
       </div>
 
-      {msg && <div className="note" style={{ marginBottom: 14 }} role="status">{msg}</div>}
+      {msg && <div className="note mb-6" role="status">{msg}</div>}
 
       <div className="grid g21">
-        <div style={{ display: 'grid', gap: 14 }}>
+        <div className="grid gap-6">
           <Card title="Plant state at handover" right={<Chip tone="acc">Filled by the system</Chip>}>
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.8438rem', color: 'var(--text-2)' }}>
+            <ul className="m-0 t-ui c-2 pl-7">
               <li>
                 Utility <b style={{ color: d.plantState.utilityOffSince ? 'var(--crit)' : 'var(--ok)' }}>
                   {d.plantState.utilityOffSince ? 'off' : 'on'}</b>
@@ -99,7 +99,7 @@ export function Handover() {
                 <li key={t.name}>
                   {t.name} {litres(t.current_level_l)} of {litres(t.capacity_l)}
                   {t.current_level_l != null && t.current_level_l < t.min_level_l && (
-                    <b style={{ color: 'var(--crit)' }}> — below minimum</b>
+                    <b className="c-crit"> — below minimum</b>
                   )}
                 </li>
               ))}
@@ -109,10 +109,10 @@ export function Handover() {
           <Card title="Jobs carried into the next shift"
                 right={<Chip>{d.carriedJobs.length} open</Chip>}>
             {d.carriedJobs.length === 0 ? <Empty title="Nothing carried over" /> : (
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.8438rem', color: 'var(--text-2)' }}>
+              <ul className="m-0 t-ui c-2 pl-7">
                 {d.carriedJobs.map((j) => (
-                  <li key={j.ref} style={{ marginBottom: 5 }}>
-                    <b style={{ color: 'var(--text)' }}>{j.ref}</b> {j.priority} · {j.title}
+                  <li className="mb-2" key={j.ref}>
+                    <b className="c-1">{j.ref}</b> {j.priority} · {j.title}
                     {' — '}{titleCase(j.status)}{j.hold_reason ? ` (${titleCase(j.hold_reason)})` : ''}
                   </li>
                 ))}
@@ -152,7 +152,7 @@ export function Handover() {
                         <span className="ttl">{when(h.at)}</span>
                         <span className="sub">{h.from_name ?? '—'} → {h.to_name ?? 'next shift'}</span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="tar">
                         {h.status === 'acknowledged'
                           ? <Chip tone="ok" lamp>Acknowledged</Chip>
                           : can('handover.acknowledge')

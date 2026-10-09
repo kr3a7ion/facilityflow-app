@@ -73,15 +73,14 @@ export function Admin() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 18,
-                    alignItems: 'flex-start' }}>
+      <div className="row gap-7 mb-7 top">
         {GROUPS.map((g) => {
           const mine = allowed.filter((t) => (g.keys as readonly string[]).includes(t.key));
           if (mine.length === 0) return null;
           return (
             <div key={g.label}>
-              <p className="eyebrow" style={{ marginBottom: 6 }}>{g.label}</p>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <p className="eyebrow mb-3">{g.label}</p>
+              <div className="row gap-3">
                 {mine.map((t) => (
                   <button key={t.key} className={`btn sm ${tab === t.key ? 'on' : ''}`}
                           onClick={() => setTab(t.key)}>{t.label}</button>
@@ -215,17 +214,17 @@ function Users() {
 
   return (
     <>
-      {msg && <div className={`note ${msg.bad ? 'crit' : ''}`} style={{ marginBottom: 14 }} role="status">{msg.text}</div>}
+      {msg && <div className={`note ${msg.bad ? 'crit' : ''} mb-6`} role="status">{msg.text}</div>}
 
       {unlinked.length > 0 && (
-        <div className="note warn" style={{ marginBottom: 14 }}>
+        <div className="note warn mb-6">
           <b>{unlinked.length === 1 ? 'One account cannot see its own work' : `${unlinked.length} accounts cannot see their own work`}</b>
-          <p style={{ margin: '5px 0 0' }}>
+          <p className="mt-2 mb-0">
             A job is assigned to a <i>person</i>, not to a login. These accounts are allowed to
             work jobs but are not linked to anybody on the staff list, so they sign in to an
             empty board and assume the system is broken.
           </p>
-          <p style={{ margin: '8px 0 0', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <p className="mt-4 mb-0 row gap-3">
             {unlinked.map((u) => (
               <Btn key={u.id} size="sm" onClick={() => setEditing(u)}>Link {u.display_name}</Btn>
             ))}
@@ -247,11 +246,11 @@ function Users() {
                     {/* The role's own name and its own sentence. "Hod" told nobody anything. */}
                     <td style={{ maxWidth: 300 }}>
                       <span className="ttl">{u.role_name}</span>
-                      <span className="sub" style={{ whiteSpace: 'normal' }}>{u.role_description}</span>
+                      <span className="sub wrap">{u.role_description}</span>
                     </td>
                     <td>
                       {u.staff_name
-                        ? <span className="ttl" style={{ fontWeight: 400 }}>{u.staff_name}</span>
+                        ? <span className="ttl fw-4">{u.staff_name}</span>
                         : broken(u)
                           ? <Chip tone="warn" lamp>Nobody — empty job board</Chip>
                           : <span className="sub">Office account</span>}
@@ -264,7 +263,7 @@ function Users() {
                           : u.must_change_password ? <Chip tone="warn">Must change password</Chip>
                             : <Chip tone="ok" lamp>Active</Chip>}
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className="tar nw">
                       <Btn size="sm" onClick={() => setEditing(u)}>Change</Btn>{' '}
                       <Btn size="sm" onClick={() => setResetting(u)}>Reset password</Btn>{' '}
                       {/* Ringing somebody from the account list, where you are already
@@ -300,9 +299,9 @@ function Users() {
         )}
       </Card>
 
-      <div style={{ marginTop: 14 }}><AlertReach /></div>
+      <div className="mt-6"><AlertReach /></div>
 
-      <div className="note" style={{ marginTop: 14 }}>
+      <div className="note mt-6">
         Named accounts only. The audit log is worthless the moment three people share a username —
         and disabling someone signs them out of every device immediately.
         Changing a role takes effect the next time that person loads a screen; nobody has to
@@ -365,7 +364,7 @@ function AlertReach() {
             {open ? 'Hide' : 'Check'}
           </Btn>}>
       {!open ? (
-        <div className="note" style={{ margin: 13 }}>
+        <div className="note m-5">
           Alert sounds are set on each device, so this is the only way to see whether a phone
           will actually make a noise when a job lands on it. Technicians and team leads
           cannot turn theirs off — everybody else can.
@@ -373,7 +372,7 @@ function AlertReach() {
       ) : q.isLoading ? <Loading rows={4} /> : (
         <>
           {problems.length > 0 && (
-            <div className="note warn" style={{ margin: 13 }}>
+            <div className="note warn m-5">
               <b>{problems.length} {problems.length === 1 ? 'account' : 'accounts'} may not hear you.</b>
               {' '}Ring them rather than assuming the chime did its job.
             </div>
@@ -411,7 +410,7 @@ function AlertReach() {
             </table>
           </div>
           {people.some((p) => p.state === 'phone_offline') && (
-            <div className="note crit" style={{ margin: 13 }}>
+            <div className="note crit m-5">
               <b>"Phone app not running" is the one to chase.</b> That person paired a phone,
               so it should be ringing with the screen off — and it has stopped holding its
               connection. Almost always the handset's own battery manager killing it:
@@ -419,7 +418,7 @@ function AlertReach() {
               battery settings, and it is in the manual.
             </div>
           )}
-          <div className="note" style={{ margin: 13 }}>
+          <div className="note m-5">
             <b>"Screen not touched yet"</b> is not somebody ignoring you. A browser refuses to
             play any sound until the page has been tapped at least once since it loaded, so a
             phone in a pocket since this morning is silent whatever its setting says. The bell
@@ -453,7 +452,7 @@ function NewUser({ roles, people, onClose, onDone }:
       <div className="fld"><label>Full name</label>
         <input className="inp" autoFocus value={f.displayName}
                onChange={(e) => setF({ ...f, displayName: e.target.value })} /></div>
-      <div className="grid g2" style={{ gap: 12 }}>
+      <div className="grid g2 gap-5">
         <div className="fld"><label>Username</label>
           <input className="inp" autoCapitalize="none" value={f.username}
                  onChange={(e) => setF({ ...f, username: e.target.value })} /></div>
@@ -463,7 +462,7 @@ function NewUser({ roles, people, onClose, onDone }:
           </select></div>
       </div>
       <RoleHint role={chosen} />
-      <div className="fld" style={{ marginTop: 12 }}><label>Which person is this</label>
+      <div className="fld mt-5"><label>Which person is this</label>
         <select className="inp" value={f.staffId}
                 onChange={(e) => {
                   const id = e.target.value;
@@ -477,7 +476,7 @@ function NewUser({ roles, people, onClose, onDone }:
           {people.map((p) =>
             <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
         </select>
-        <p className="sub" style={{ marginTop: 5, whiteSpace: 'normal' }}>
+        <p className="sub mt-2 wrap">
           {people.length === 0
             ? 'Nobody on the staff list yet — add people under the Staff tab first, and a technician can then see their own jobs.'
             : needsPerson
@@ -487,11 +486,11 @@ function NewUser({ roles, people, onClose, onDone }:
       <div className="fld"><label>Temporary password</label>
         <input className="inp" value={f.password}
                onChange={(e) => setF({ ...f, password: e.target.value })} />
-        <p className="sub" style={{ marginTop: 5, whiteSpace: 'normal' }}>
+        <p className="sub mt-2 wrap">
           At least 10 characters. They will be made to change it when they first sign in.
         </p></div>
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }} disabled={!ready || create.isPending}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri" disabled={!ready || create.isPending}
            onClick={() => create.mutate()}>{create.isPending ? 'Creating…' : 'Create user'}</Btn>
     </Modal>
   );
@@ -536,7 +535,7 @@ function EditUser({ user, roles, people, isSelf, onClose, onDone }:
           {roles.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}
         </select>
         {isSelf && (
-          <p className="sub" style={{ marginTop: 5, whiteSpace: 'normal' }}>
+          <p className="sub mt-2 wrap">
             You cannot change your own role — that is how an administrator locks themselves
             out of the only screen that could undo it. Ask the other administrator.
           </p>
@@ -544,12 +543,12 @@ function EditUser({ user, roles, people, isSelf, onClose, onDone }:
       </div>
       <RoleHint role={chosen} />
 
-      <div className="fld" style={{ marginTop: 12 }}><label>Which person is this</label>
+      <div className="fld mt-5"><label>Which person is this</label>
         <select className="inp" value={staffId} onChange={(e) => setStaffId(e.target.value)}>
           <option value="">Not linked to anyone on the floor</option>
           {people.map((p) => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
         </select>
-        <p className="sub" style={{ marginTop: 5, whiteSpace: 'normal' }}>
+        <p className="sub mt-2 wrap">
           {needsPerson && !staffId
             ? 'This role works jobs, and a job is assigned to a person. Without this link they sign in to an empty board.'
             : 'Jobs already assigned to the old person stay with that person — this only changes what this login sees.'}
@@ -557,12 +556,12 @@ function EditUser({ user, roles, people, isSelf, onClose, onDone }:
       </div>
 
       {needsPerson && !staffId && (
-        <div className="note warn" style={{ marginBottom: 12 }}>
+        <div className="note warn mb-5">
           Saving this leaves an account that can be given work but will never be shown any.
         </div>
       )}
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }} disabled={!changed || save.isPending}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri" disabled={!changed || save.isPending}
            onClick={() => save.mutate()}>{save.isPending ? 'Saving…' : 'Save changes'}</Btn>
     </Modal>
   );
@@ -580,12 +579,12 @@ function ResetPassword({ user, onClose, onDone }:
     <Modal title={`Reset password — ${user.display_name}`} onClose={onClose}>
       <div className="fld"><label>New temporary password</label>
         <input className="inp" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} /></div>
-      <div className="note warn" style={{ marginBottom: 12 }}>
+      <div className="note warn mb-5">
         This signs {user.display_name} out of every device and makes them choose a new password
         at their next sign-in.
       </div>
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }} disabled={password.length < 10 || reset.isPending}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri" disabled={password.length < 10 || reset.isPending}
            onClick={() => reset.mutate()}>{reset.isPending ? 'Resetting…' : 'Reset password'}</Btn>
     </Modal>
   );
@@ -637,7 +636,7 @@ function Roles() {
 
   return (
     <>
-      {msg && <div className="note" style={{ marginBottom: 14 }} role="status">{msg}</div>}
+      {msg && <div className="note mb-6" role="status">{msg}</div>}
       <Card title="Roles" flush
             right={<>
               <Chip>{roles.data?.roles.length ?? 0}</Chip>
@@ -662,7 +661,7 @@ function Roles() {
                             : <span className="sub">No job access</span>}</td>
                     <td className="num">{r.user_count}</td>
                     <td className="num">{r.permission_count}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className="tar nw">
                       {r.key === 'admin'
                         ? <Chip>Always everything</Chip>
                         : <>
@@ -688,36 +687,35 @@ function Roles() {
       {open && (
         <Modal title={`Permissions — ${granted.data?.role.name ?? ''}`}
                onClose={() => { setOpen(null); setDraft(null); }}>
-          <div className="note" style={{ marginBottom: 12 }}>
+          <div className="note mb-5">
             Ticking a box grants the permission; it never widens one this role already
             holds narrowly. A grant marked <b>own</b> or <b>team</b> keeps that reach.
           </div>
-          <div style={{ maxHeight: '52vh', overflowY: 'auto', marginBottom: 14 }}>
+          <div className="mb-6 scrollbox">
             {[...byModule.entries()].map(([module, perms]) => (
-              <div key={module} style={{ marginBottom: 14 }}>
-                <div className="t-lab" style={{ marginBottom: 6 }}>{module}</div>
+              <div className="mb-6" key={module}>
+                <div className="t-lab mb-3">{module}</div>
                 {perms.map((p) => (
-                  <label key={p.code} style={{ display: 'flex', gap: 9, alignItems: 'flex-start',
-                                               padding: '5px 0', fontSize: '0.8125rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={codes.has(p.code)} style={{ marginTop: 3 }}
+                  <label className="row gap-4 top py-2 px-0 t-ui clickable" key={p.code}>
+                    <input className="mt-1" type="checkbox" checked={codes.has(p.code)}
                            onChange={(e) => {
                              const next = new Set(codes);
                              if (e.target.checked) next.add(p.code); else next.delete(p.code);
                              setDraft(next);
                            }} />
                     <span>
-                      <span style={{ fontFamily: 'var(--mono)', fontSize: '0.7188rem' }}>{p.code}</span>
+                      <span className="f-mono t-sm">{p.code}</span>
                       {codes.has(p.code) && scopes.get(p.code) && scopes.get(p.code) !== 'all' && (
                         <> <Chip>{scopes.get(p.code)}</Chip></>
                       )}
-                      <span style={{ display: 'block', color: 'var(--text-3)', fontSize: '0.75rem' }}>{p.description}</span>
+                      <span className="block c-3 t-sm">{p.description}</span>
                     </span>
                   </label>
                 ))}
               </div>
             ))}
           </div>
-          <Btn tone="pri" style={{ width: '100%' }} disabled={save.isPending}
+          <Btn full tone="pri" disabled={save.isPending}
                onClick={() => save.mutate()}>
             {save.isPending ? 'Saving…' : `Save ${codes.size} permission${codes.size === 1 ? '' : 's'}`}
           </Btn>
@@ -781,8 +779,8 @@ function RoleDialog({ role, roles, onClose, onSaved }: {
           </select>
         </Field>
       )}
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }} disabled={name.trim().length < 2 || save.isPending}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri" disabled={name.trim().length < 2 || save.isPending}
            onClick={() => save.mutate()}>
         {save.isPending ? 'Saving…' : role ? 'Save' : 'Create role'}
       </Btn>
@@ -813,7 +811,7 @@ function Shifts() {
 
   return (
     <>
-      {msg && <div className={`note ${msg.bad ? 'crit' : ''}`} style={{ marginBottom: 14 }} role="status">{msg.text}</div>}
+      {msg && <div className={`note ${msg.bad ? 'crit' : ''} mb-6`} role="status">{msg.text}</div>}
       <div className="grid g21">
         <Card title="Shift patterns" flush>
           {patterns.isLoading ? <Loading rows={3} />
@@ -825,7 +823,7 @@ function Shifts() {
                     <tr key={p.id}>
                       <td><span className="ttl">{p.name}</span>
                           <span className="sub">{p.start_time}–{p.end_time}</span></td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="tar">
                         {p.crosses_midnight ? <Chip tone="acc">Crosses midnight</Chip> : <Chip>Same day</Chip>}
                       </td>
                     </tr>
@@ -839,7 +837,7 @@ function Shifts() {
           <div className="fld"><label>Name</label>
             <input className="inp" value={f.name} placeholder="Morning"
                    onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-          <div className="grid g2" style={{ gap: 12 }}>
+          <div className="grid g2 gap-5">
             <div className="fld"><label>Starts</label>
               <input className="inp" type="time" value={f.startTime}
                      onChange={(e) => setF({ ...f, startTime: e.target.value })} /></div>
@@ -847,9 +845,9 @@ function Shifts() {
               <input className="inp" type="time" value={f.endTime}
                      onChange={(e) => setF({ ...f, endTime: e.target.value })} /></div>
           </div>
-          <Btn tone="pri" style={{ width: '100%' }} disabled={f.name.length < 2 || add.isPending}
+          <Btn full tone="pri" disabled={f.name.length < 2 || add.isPending}
                onClick={() => add.mutate()}>{add.isPending ? 'Adding…' : 'Add pattern'}</Btn>
-          <p className="sub" style={{ marginTop: 10, whiteSpace: 'normal' }}>
+          <p className="sub mt-5 wrap">
             Any number of patterns, any times. An end time earlier than the start is detected as
             crossing midnight — nothing about morning, afternoon or night is built in.
           </p>
@@ -894,7 +892,7 @@ function Settings() {
 
   return (
     <>
-      {msg && <div className={`note ${msg.bad ? 'crit' : ''}`} style={{ marginBottom: 14 }} role="status">{msg.text}</div>}
+      {msg && <div className={`note ${msg.bad ? 'crit' : ''} mb-6`} role="status">{msg.text}</div>}
 
       <Card title="Response and resolve targets" flush
             right={<Btn size="sm" tone="pri" disabled={!draft || put.isPending}
@@ -908,7 +906,7 @@ function Settings() {
                 <tr key={row.priority}>
                   <td className="mono">{row.priority}</td>
                   <td>
-                    <input className="inp" style={{ minHeight: 32, padding: '4px 8px' }} value={row.label}
+                    <input className="inp py-2 px-4 compact" value={row.label}
                            onChange={(e) => {
                              const next = sla.map((r, j) => j === i ? { ...r, label: e.target.value } : r);
                              setDraft(next);
@@ -916,7 +914,7 @@ function Settings() {
                   </td>
                   {(['respondMinutes', 'resolveMinutes'] as const).map((field) => (
                     <td className="num" key={field}>
-                      <input className="inp" style={{ minHeight: 32, padding: '4px 8px', textAlign: 'right' }}
+                      <input className="inp py-2 px-4 tar compact"
                              inputMode="numeric" value={row[field]}
                              onChange={(e) => {
                                const n = Number(e.target.value);
@@ -933,7 +931,7 @@ function Settings() {
         </div>
       </Card>
 
-      <div className="note" style={{ margin: '14px 0' }}>
+      <div className="note mt-6 mb-6">
         A job's deadline is computed once when it is raised and stored on the job. Changing these
         targets shapes future work — <b>it never rewrites a deadline somebody was already judged against.</b>
       </div>
@@ -942,14 +940,14 @@ function Settings() {
             right={<Btn size="sm" tone="pri" disabled={!tolerance || put.isPending}
                         onClick={() => put.mutate({ key: 'fuel_variance_tolerance_pct', value: Number(tolerance) })}>
                      Save</Btn>}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div className="fld" style={{ marginBottom: 0, width: 140 }}>
+        <div className="row gap-5 bottom">
+          <div className="fld mb-0 w-sm">
             <label>Percent</label>
             <input className="inp" inputMode="decimal"
                    value={tolerance || String(settings.data?.settings.fuel_variance_tolerance_pct ?? 2)}
                    onChange={(e) => setTolerance(e.target.value)} />
           </div>
-          <p className="sub" style={{ whiteSpace: 'normal', maxWidth: '48ch', marginBottom: 6 }}>
+          <p className="sub wrap mb-3 measure">
             Measured against throughput, not the tank balance. Below about 2% you will be chasing
             measurement noise from the dip stick rather than losses.
           </p>
@@ -991,13 +989,13 @@ function Backups() {
 
   return (
     <>
-      {msg && <div className={`note ${msg.bad ? 'crit' : ''}`} style={{ marginBottom: 14 }} role="status">{msg.text}</div>}
+      {msg && <div className={`note ${msg.bad ? 'crit' : ''} mb-6`} role="status">{msg.text}</div>}
 
       {backups.data?.pending && (
-        <div className="note crit" style={{ marginBottom: 14 }}>
+        <div className="note crit mb-6">
           <b>A restore is staged and waiting.</b> The next time this server restarts it will
           come up on that snapshot instead of the current database. Nothing has changed yet.
-          <div style={{ marginTop: 10 }}>
+          <div className="mt-5">
             <Btn size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
               Cancel the restore
             </Btn>
@@ -1021,10 +1019,10 @@ function Backups() {
                         <td><span className="ttl">{when(b.at)}</span>
                             <span className="sub mono">{b.file}</span></td>
                         <td className="num">{humanBytes(b.bytes)}</td>
-                        <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                        <td className="num nw">
                           <DownloadLink href={`/api/admin/backups/${encodeURIComponent(b.file)}`}
                                         aria-label={`Download ${b.file}`}>Download</DownloadLink>
-                          <Btn size="sm" tone="danger" style={{ marginLeft: 6 }}
+                          <Btn className="ml-3" size="sm" tone="danger"
                                onClick={() => setRestoring(b)}>Restore</Btn>
                         </td>
                       </tr>
@@ -1035,7 +1033,7 @@ function Backups() {
             )}
       </Card>
 
-      <div className="note warn" style={{ marginTop: 14 }}>
+      <div className="note warn mt-6">
         Keeping the last {backups.data?.keep ?? 14} in <code>{backups.data?.directory ?? 'the data folder'}</code>.
         Every snapshot is reopened and integrity-checked as it is written.
         <b> Download one and keep it somewhere other than this PC.</b> A snapshot on the same
@@ -1076,9 +1074,9 @@ function RestoreDialog({ backup, onClose, onDone }: {
 
   return (
     <Modal title="Restore this snapshot" onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
 
-      <dl className="kv" style={{ marginBottom: 16 }}>
+      <dl className="kv mb-6">
         <dt>Snapshot</dt><dd className="mono">{backup.file}</dd>
         <dt>Taken</dt><dd>{when(backup.at)}</dd>
         <dt>Size</dt><dd>{humanBytes(backup.bytes)}</dd>
@@ -1090,7 +1088,7 @@ function RestoreDialog({ backup, onClose, onDone }: {
         is reversible — but only if somebody notices.
       </div>
 
-      <div className="note" style={{ marginTop: 12 }}>
+      <div className="note mt-5">
         The snapshot is integrity-checked before it is staged, and applied on the next
         restart rather than swapped underneath the running server. Nothing changes until
         you restart.
@@ -1129,7 +1127,7 @@ function AuditLog() {
       <MonthBar month={month.month} label={month.label} isCurrent={month.isCurrent}
                 onStep={month.step} onSet={month.set} onReset={month.reset} />
       {entries.data?.truncated && (
-        <div className="note warn" style={{ marginBottom: 14 }}>
+        <div className="note warn mb-6">
           More than {entries.data.limit} entries this month — this is the most recent
           {' '}{entries.data.limit}. Export the month for the whole trail.
         </div>
@@ -1154,7 +1152,7 @@ function AuditLog() {
           </div>
         )}
       </Card>
-      <div className="note" style={{ marginTop: 14 }}>
+      <div className="note mt-6">
         The audit table refuses <code>UPDATE</code> and <code>DELETE</code> at the database level, not
         by convention. Nobody — including an administrator — can edit this list.
       </div>
@@ -1185,14 +1183,13 @@ function Exports() {
   return (
     <Card flush title="Download a CSV"
           right={<>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.7812rem' }}>
+            <label className="row gap-3 t-ui">
               <input type="checkbox" checked={scoped} onChange={(e) => setScoped(e.target.checked)} />
               One month only
             </label>
             {scoped && (
-              <input type="month" className="inp" value={month.month}
-                     max={new Date().toISOString().slice(0, 7)} aria-label="Which month"
-                     style={{ width: 145, minHeight: 30, padding: '4px 8px', fontSize: '0.75rem' }}
+              <input type="month" className="inp py-2 px-4 t-sm compact" value={month.month}
+                     max={new Date().toISOString().slice(0, 7)} aria-label="Which month" 
                      onChange={(e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) month.set(e.target.value); }} />
             )}
           </>}>
@@ -1220,7 +1217,7 @@ function Exports() {
                         Download
                       </DownloadLink>
                       {scoped && !e.dated && (
-                        <span className="sub" style={{ fontSize: '0.6875rem' }}>register — always current</span>
+                        <span className="sub t-sm">register — always current</span>
                       )}
                     </td>
                   </tr>
@@ -1229,7 +1226,7 @@ function Exports() {
             </table>
           </div>
         )}
-      <div className="note" style={{ margin: 15 }}>
+      <div className="note m-6">
         <b>Money leaves as naira, not kobo</b>, so a column sums straight away. Files open in
         Excel with the right characters — the ₦ sign and Nigerian names survive intact — and a
         cell beginning with <span className="mono">=</span> is escaped so opening an export can
@@ -1277,7 +1274,7 @@ function Supplies() {
       <Card flush title="Supplies you clamp"
             right={<Btn size="sm" icon="plus" onClick={() => setEditing('new')}>Add a supply</Btn>}>
         {q.isLoading ? <Loading rows={4} />
-          : q.isError ? <div style={{ padding: 15 }}><ErrorNote error={q.error} /></div>
+          : q.isError ? <div className="p-6"><ErrorNote error={q.error} /></div>
           : rows.length === 0
             ? <Empty title="Nothing set up yet"
                      hint="Add the utility incomer first, then each generator's output breaker." />
@@ -1303,9 +1300,9 @@ function Supplies() {
                             {s.is_incomer ? 'in the total' : 'diagnostic only'}
                           </Chip>
                         </td>
-                        <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                        <td className="num nw">
                           <button className="btn sm" onClick={() => setEditing(s)}>Edit</button>
-                          <span style={{ marginLeft: 6 }}>
+                          <span className="ml-3">
                             <RetireBtn kind="power-source" id={s.id} label={s.name}
                                        active={!!s.is_active}
                                        onDone={async (m) => { setMsg({ text: m }); await refresh(); }} />
@@ -1317,7 +1314,7 @@ function Supplies() {
                 </table>
               </div>
             )}
-        <div className="note" style={{ margin: 15 }}>
+        <div className="note m-6">
           <b>Only an incomer counts toward the building total.</b> A feeder — a block riser, the
           laundry board, a chiller supply — sits below an incomer that is already counted, so
           adding it would count the same amps twice. Mark those as feeders and they stay useful
@@ -1325,7 +1322,7 @@ function Supplies() {
         </div>
       </Card>
 
-      <div style={{ marginTop: 14 }}><Tanks /></div>
+      <div className="mt-6"><Tanks /></div>
 
       {editing && (
         <SupplyDialog
@@ -1373,7 +1370,7 @@ function SupplyDialog({ supply, onClose, onSaved }:
         <input className="inp" autoFocus value={f.name}
                onChange={(e) => setF({ ...f, name: e.target.value })} />
       </Field>
-      <div className="grid g2" style={{ gap: 10 }}>
+      <div className="grid g2 gap-5">
         <Field label="Kind">
           <select className="inp" value={f.kind}
                   onChange={(e) => setF({ ...f, kind: e.target.value as Supply['kind'] })}>
@@ -1390,7 +1387,7 @@ function SupplyDialog({ supply, onClose, onSaved }:
           </select>
         </Field>
       </div>
-      <div className="grid g3" style={{ gap: 10 }}>
+      <div className="grid g3 gap-5">
         <Field label="Volts" hint={f.phases === 3 ? 'Line to line' : 'Line to neutral'}>
           <input className="inp" inputMode="decimal" value={f.nominalVolts}
                  onChange={(e) => setF({ ...f, nominalVolts: Number(e.target.value) || 0 })} />
@@ -1411,21 +1408,21 @@ function SupplyDialog({ supply, onClose, onSaved }:
       {f.kind !== 'feeder' && (
         <Field label="Counts toward the building total"
                hint="Leave this on unless this supply sits below another one you also clamp.">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label className="row gap-4">
             <input type="checkbox" checked={f.isIncomer}
                    onChange={(e) => setF({ ...f, isIncomer: e.target.checked })} />
-            <span style={{ fontSize: '0.8125rem' }}>Yes, this is an incomer</span>
+            <span className="t-ui">Yes, this is an incomer</span>
           </label>
         </Field>
       )}
       {f.kind === 'feeder' && (
-        <div className="note" style={{ marginBottom: 12 }}>
+        <div className="note mb-5">
           A feeder never counts toward the building total — it is already inside whatever
           incomer supplies it.
         </div>
       )}
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri"
            disabled={f.name.trim().length < 2 || !f.nominalVolts || !f.ctRatio || save.isPending}
            onClick={() => save.mutate()}>
         {save.isPending ? 'Saving…' : supply ? 'Save changes' : 'Add supply'}
@@ -1499,7 +1496,7 @@ function Places() {
               <Btn size="sm" icon="plus" onClick={() => setAdding(true)}>Add a place</Btn>
             </>}>
         {q.isLoading ? <Loading rows={4} />
-          : q.isError ? <div style={{ padding: 15 }}><ErrorNote error={q.error} /></div>
+          : q.isError ? <div className="p-6"><ErrorNote error={q.error} /></div>
           : rows.length === 0
             ? <Empty title="No places yet" hint="The site should have been created at setup. Add one to continue." />
             : (
@@ -1516,7 +1513,7 @@ function Places() {
                         </td>
                         <td>{titleCase(place.type)}</td>
                         <td className="mono">{place.code}</td>
-                        <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                        <td className="num nw">
                           <Btn size="sm" onClick={() => setEditing(place)}>Edit</Btn>{' '}
                           {/* The property itself is neither retirable nor deletable —
                               everything hangs off it. */}
@@ -1534,7 +1531,7 @@ function Places() {
                 </table>
               </div>
             )}
-        <div className="note" style={{ margin: 15 }}>
+        <div className="note m-6">
           A job has to hang off <b>something</b> — an asset, an apartment or a place. Plant
           rooms earn their place here: "generator house" on a job is the difference between a
           history you can read in a year and a list of jobs that happened somewhere.
@@ -1619,7 +1616,7 @@ function PlaceDialog({ places, place, defaultParent, onClose, onSaved }:
         <input className="inp" autoFocus value={f.name}
                onChange={(e) => setF({ ...f, name: e.target.value })} />
       </Field>
-      <div className="grid g2" style={{ gap: 10 }}>
+      <div className="grid g2 gap-5">
         <Field label="Kind">
           <select className="inp" value={f.type} disabled={isRoot}
                   onChange={(e) => setF({ ...f, type: e.target.value })}>
@@ -1639,8 +1636,8 @@ function PlaceDialog({ places, place, defaultParent, onClose, onSaved }:
         <input className="inp" value={f.code} placeholder={suggested}
                onChange={(e) => setF({ ...f, code: e.target.value })} />
       </Field>
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri"
            disabled={f.name.trim().length < 2 || !code || save.isPending}
            onClick={() => save.mutate()}>
         {save.isPending ? 'Saving…' : place ? 'Save changes' : 'Add place'}
@@ -1707,7 +1704,7 @@ function People() {
               <Btn size="sm" tone="pri" icon="plus" onClick={() => setEditing('new')}>Add a person</Btn>
             </>}>
         {q.isLoading ? <Loading rows={4} />
-          : q.isError ? <div style={{ padding: 15 }}><ErrorNote error={q.error} /></div>
+          : q.isError ? <div className="p-6"><ErrorNote error={q.error} /></div>
           : staff.length === 0
             ? <Empty title="Nobody on the list yet"
                      hint="A job can only be assigned to somebody who is rostered, and only people on this list can be rostered. Start here." />
@@ -1726,7 +1723,7 @@ function People() {
                         <td>{p.team_name ?? <span className="sub">no team</span>}</td>
                         <td className="mono">{p.phone ?? '—'}</td>
                         <td className="mono">{p.staff_no ?? '—'}</td>
-                        <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                        <td className="num nw">
                           <button className="btn sm" onClick={() => setEditing(p)}>Edit</button>{' '}
                           <RetireBtn kind="staff" id={p.id} label={`${p.first_name} ${p.last_name}`}
                                      active={p.is_active !== 0}
@@ -1740,7 +1737,7 @@ function People() {
                 </table>
               </div>
             )}
-        <div className="note" style={{ margin: 15 }}>
+        <div className="note m-6">
           <b>A person here and an account under Users are two different things.</b> This list is
           who can be put on a shift and given a job. An account is who can sign in. Link the two
           when you create the account, and that person sees their own jobs when they log in.
@@ -1750,7 +1747,7 @@ function People() {
       </Card>
 
       {teams.length > 0 && (
-        <div style={{ marginTop: 14 }}><Card title="Teams" flush>
+        <div className="mt-6"><Card title="Teams" flush>
           <div className="tw">
             <table className="wide">
               <thead><tr><th>Team</th><th>Default trade</th><th>Team lead</th>
@@ -1766,13 +1763,13 @@ function People() {
                     <td>{t.team_lead_name
                       ?? <Chip tone="warn">Nobody — escalations skip this team</Chip>}</td>
                     <td className="num">{staff.filter((p) => p.team_id === t.id).length}</td>
-                    <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                    <td className="num nw">
                       <Btn size="sm" onClick={() => setEditingTeam(t)}>Edit</Btn>
-                      <span style={{ marginLeft: 6 }}>
+                      <span className="ml-3">
                         <RetireBtn kind="team" id={t.id} label={t.name}
                                    onDone={async (m) => { setMsg({ text: m }); await refresh(); }} />
                       </span>
-                      <span style={{ marginLeft: 6 }}>
+                      <span className="ml-3">
                         <DeleteBtn kind="team" id={t.id} label={t.name}
                                    onDone={async (m) => { setMsg({ text: m }); await refresh(); }} />
                       </span>
@@ -1829,7 +1826,7 @@ function PersonDialog({ person, teams, onClose, onSaved }:
 
   return (
     <Modal title={person ? `${person.first_name} ${person.last_name}` : 'Add a person'} onClose={onClose}>
-      <div className="grid g2" style={{ gap: 10 }}>
+      <div className="grid g2 gap-5">
         <Field label="First name">
           <input className="inp" autoFocus value={f.firstName}
                  onChange={(e) => setF({ ...f, firstName: e.target.value })} />
@@ -1839,7 +1836,7 @@ function PersonDialog({ person, teams, onClose, onSaved }:
                  onChange={(e) => setF({ ...f, lastName: e.target.value })} />
         </Field>
       </div>
-      <div className="grid g2" style={{ gap: 10 }}>
+      <div className="grid g2 gap-5">
         <Field label="Trade" hint="Used to route jobs to the right hands.">
           <select className="inp" value={f.trade} onChange={(e) => setF({ ...f, trade: e.target.value })}>
             <option value="">Not set</option>
@@ -1853,7 +1850,7 @@ function PersonDialog({ person, teams, onClose, onSaved }:
           </select>
         </Field>
       </div>
-      <div className="grid g3" style={{ gap: 10 }}>
+      <div className="grid g3 gap-5">
         <Field label="Phone">
           <input className="inp" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
         </Field>
@@ -1871,15 +1868,15 @@ function PersonDialog({ person, teams, onClose, onSaved }:
       {person && (
         <Field label="Still working here"
                hint="Turning this off keeps their history and takes them off the roster.">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label className="row gap-4">
             <input type="checkbox" checked={f.isActive}
                    onChange={(e) => setF({ ...f, isActive: e.target.checked })} />
-            <span style={{ fontSize: '0.8125rem' }}>On the team</span>
+            <span className="t-ui">On the team</span>
           </label>
         </Field>
       )}
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri"
            disabled={f.firstName.trim().length < 1 || f.lastName.trim().length < 1 || save.isPending}
            onClick={() => save.mutate()}>
         {save.isPending ? 'Saving…' : person ? 'Save changes' : 'Add person'}
@@ -1910,8 +1907,8 @@ function TeamDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
           {TRADES.map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}
         </select>
       </Field>
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }} disabled={f.name.trim().length < 2 || save.isPending}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri" disabled={f.name.trim().length < 2 || save.isPending}
            onClick={() => save.mutate()}>
         {save.isPending ? 'Saving…' : 'Add team'}
       </Btn>
@@ -1985,14 +1982,14 @@ function EditTeamDialog({ team, staff, onClose, onSaved }: {
         </select>
       </Field>
       {!f.teamLeadStaffId && (
-        <div className="note warn" style={{ marginBottom: 12 }}>
+        <div className="note warn mb-5">
           With nobody named, a job on this team that passes its response deadline escalates
           straight past the floor, and nobody is told when the team finishes work that still
           needs verifying.
         </div>
       )}
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri"
            disabled={f.name.trim().length < 2 || save.isPending}
            onClick={() => save.mutate()}>
         {save.isPending ? 'Saving…' : 'Save team'}
@@ -2032,7 +2029,7 @@ function Tanks() {
       <Card flush title="Diesel tanks"
             right={<Btn size="sm" icon="plus" onClick={() => setAdding(true)}>Add a tank</Btn>}>
         {q.isLoading ? <Loading rows={3} />
-          : q.isError ? <div style={{ padding: 15 }}><ErrorNote error={q.error} /></div>
+          : q.isError ? <div className="p-6"><ErrorNote error={q.error} /></div>
           : tanks.length === 0
             ? <Empty title="No tanks yet"
                      hint="Dips, deliveries and reconciliation all hang off a tank. Add the bulk tank first." />
@@ -2067,7 +2064,7 @@ function Tanks() {
                 </table>
               </div>
             )}
-        <div className="note" style={{ margin: 15 }}>
+        <div className="note m-6">
           <b>A horizontal cylinder is not linear.</b> Without a calibration chart — a list of
           millimetre-to-litre readings for that tank's shape — dips have to be entered in litres,
           and treating millimetres as proportional carries a standing 5–8% error, which is larger
@@ -2122,7 +2119,7 @@ function TankDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
         <input className="inp" autoFocus value={f.name}
                onChange={(e) => setF({ ...f, name: e.target.value })} />
       </Field>
-      <div className="grid g3" style={{ gap: 10 }}>
+      <div className="grid g3 gap-5">
         <Field label="Kind">
           <select className="inp" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
             <option value="bulk">Bulk</option>
@@ -2146,16 +2143,16 @@ function TankDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
                   onChange={(e) => setF({ ...f, chart: e.target.value })} />
       </Field>
       {parsedChart.error && (
-        <div className="note warn" style={{ marginBottom: 12 }}>{parsedChart.error}</div>
+        <div className="note warn mb-5">{parsedChart.error}</div>
       )}
       {parsedChart.points && (
-        <div className="note" style={{ marginBottom: 12 }}>
+        <div className="note mb-5">
           {parsedChart.points.length} points read, from {parsedChart.points[0]![0]} mm
           to {parsedChart.points[parsedChart.points.length - 1]![0]} mm.
         </div>
       )}
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }} disabled={!ready || save.isPending}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri" disabled={!ready || save.isPending}
            onClick={() => save.mutate()}>
         {save.isPending ? 'Saving…' : 'Add tank'}
       </Btn>
@@ -2250,25 +2247,25 @@ function OwnCertificate() {
   const address = host.data?.advertise ?? t.addresses[0];
 
   return (
-    <div style={{ marginTop: 14 }}>
+    <div className="mt-6">
       <Flash msg={msg} />
       <Card title="This property's own certificate"
             right={<Chip tone={t.enabled ? 'ok' : ''} lamp>{t.enabled ? 'On' : 'Off'}</Chip>}>
-        <p style={{ margin: '0 0 12px', fontSize: '0.8438rem', lineHeight: 1.6, color: 'var(--text-2)' }}>
+        <p className="mt-0 mb-5 t-ui lh-loose c-2">
           Plain HTTP always keeps working. Turning this on serves <b>HTTPS as well</b>, using
           a certificate this property signs for itself — which is what lets a browser do
           background notifications without the phone app.
         </p>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <label className="row gap-5 mb-5">
           <input type="checkbox" checked={t.enabled} disabled={save.isPending}
                  onChange={(e) => save.mutate(e.target.checked)} />
-          <span style={{ fontSize: '0.875rem' }}><b>Also serve HTTPS</b></span>
+          <span className="t-body"><b>Also serve HTTPS</b></span>
         </label>
 
         {t.enabled && t.generated && (
           <>
-            <div className="grid g3" style={{ marginBottom: 12 }}>
+            <div className="grid g3 mb-5">
               <Tile label="HTTPS address"
                     value={address ? `${address}:${t.httpsPort}` : `port ${t.httpsPort}`}
                     sub="for devices with the root installed" />
@@ -2280,7 +2277,7 @@ function OwnCertificate() {
             </div>
 
             {(t.uncovered?.length ?? 0) > 0 && (
-              <div className="note warn" style={{ marginBottom: 12 }}>
+              <div className="note warn mb-5">
                 <b>This PC answers on {t.uncovered!.join(', ')}, which the certificate does
                 not cover.</b> Devices opening that address get a warning. Restart the host
                 and a new certificate covering it is made automatically — the root does not
@@ -2288,9 +2285,9 @@ function OwnCertificate() {
               </div>
             )}
 
-            <dl className="kv" style={{ marginBottom: 12 }}>
+            <dl className="kv mb-5">
               <dt>Root fingerprint</dt>
-              <dd className="mono" style={{ fontSize: '0.6875rem', wordBreak: 'break-all' }}>
+              <dd className="mono t-sm break-all">
                 {t.fingerprint}
               </dd>
             </dl>
@@ -2356,35 +2353,35 @@ function RemoteDoor() {
   const r = q.data;
 
   return (
-    <div style={{ marginTop: 14 }}>
+    <div className="mt-6">
       <Flash msg={msg} />
       <Card title="Checking in from outside"
             right={<Chip tone={r.enabled ? 'warn' : 'ok'} lamp>
               {r.enabled ? 'Open' : 'Closed'}
             </Chip>}>
-        <p style={{ margin: '0 0 12px', fontSize: '0.8438rem', lineHeight: 1.6, color: 'var(--text-2)' }}>
+        <p className="mt-0 mb-5 t-ui lh-loose c-2">
           With this open, the people below can sign in from anywhere through the tunnel
           running on this PC. The department keeps working on the property network either
           way — this changes nothing on site.
         </p>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <label className="row gap-5 mb-5">
           <input type="checkbox" checked={r.enabled} disabled={save.isPending}
                  onChange={(e) => save.mutate({ enabled: e.target.checked })} />
-          <span style={{ fontSize: '0.875rem' }}>
+          <span className="t-body">
             <b>Allow signing in from outside the property</b>
           </span>
         </label>
 
         {r.changedBy && (
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', margin: '0 0 12px' }}>
+          <p className="t-sm c-3 mt-0 mb-5">
             Last changed by {r.changedBy}{r.changedAt ? ` · ${when(r.changedAt)}` : ''}.
           </p>
         )}
 
         {r.enabled && (
           <>
-            <div className="grid g3" style={{ marginBottom: 12 }}>
+            <div className="grid g3 mb-5">
               <Tile label="Signed in from outside" value={r.liveRemote}
                     tone={r.liveRemote ? 'warn' : undefined}
                     sub={r.liveRemote ? 'right now' : 'nobody at the moment'} />
@@ -2402,7 +2399,7 @@ function RemoteDoor() {
                      onBlur={() => host !== null && save.mutate({ publicHost: host })} />
             </Field>
 
-            <div className="tw" style={{ marginTop: 12 }}>
+            <div className="tw mt-5">
               <table className="wide">
                 <thead><tr><th>Who can sign in from outside</th><th>Role</th><th>From there they can</th></tr></thead>
                 <tbody>
@@ -2422,7 +2419,7 @@ function RemoteDoor() {
             </div>
 
             {r.blocked.length > 0 && (
-              <div className="note warn" style={{ marginTop: 12 }}>
+              <div className="note warn mt-5">
                 <b>Still on a default password, so blocked from outside:</b>{' '}
                 {r.blocked.map((b) => b.display_name).join(', ')}. They can sign in on the
                 property network and change it; until they do, the tunnel will refuse them.
@@ -2433,7 +2430,7 @@ function RemoteDoor() {
           </>
         )}
 
-        <div className="note" style={{ marginTop: 14 }}>
+        <div className="note mt-6">
           <b>This switch does not create the tunnel.</b> It decides whether the system
           accepts anything that arrives through one. Install <b>cloudflared</b> on this PC
           as a service, point it at <b>http://127.0.0.1:{'{'}port{'}'}</b>, and put
@@ -2461,7 +2458,7 @@ function Host() {
 
   return (
     <>
-      <div className="grid g4" style={{ marginBottom: 14 }}>
+      <div className="grid g4 mb-6">
         <Tile label="Listening on" value={h.port}
               sub={h.boundTo ? `only on ${h.boundTo}` : 'every network on this PC'} />
         <Tile label="Running for" value={uptimeWords(h.uptimeSeconds)}
@@ -2477,16 +2474,16 @@ function Host() {
       </div>
 
       {h.pendingPort != null && (
-        <div className="note warn" style={{ marginBottom: 14 }}>
+        <div className="note warn mb-6">
           <b>Port {h.pendingPort} is saved but not in force.</b> This host is still answering on
           {' '}{h.port} and will move when it next restarts. Open the firewall for {h.pendingPort}
           {' '}first, or the wifi loses it.
         </div>
       )}
 
-      <div style={{ marginBottom: 14 }}><NetworkCard h={h} /></div>
+      <div className="mb-6"><NetworkCard h={h} /></div>
 
-      <div className="grid g2" style={{ marginBottom: 14 }}>
+      <div className="grid g2 mb-6">
         <JoinCard url={advertised} port={h.port}
                   nic={h.network.nics.find((n) => n.address === h.advertise) ?? null} />
 
@@ -2496,7 +2493,7 @@ function Host() {
                 {h.bootService.state === 'registered' ? 'starts at boot'
                   : h.bootService.state === 'missing' ? 'window only' : 'cannot tell'}
               </Chip>}>
-          <ul className="iso" style={{ marginTop: 0 }}>
+          <ul className="iso mt-0">
             <li>
               <span>Starts when the PC boots</span>
               <span className="sp">
@@ -2520,7 +2517,7 @@ function Host() {
           </ul>
 
           {h.bootService.state === 'missing' && (
-            <div className="note warn" style={{ marginTop: 12 }}>
+            <div className="note warn mt-5">
               <b>This server is only running because a window is open.</b> Close it, or log out,
               or let the PC restart overnight, and the department loses the system until somebody
               starts it again. Run the launcher on the host PC and choose
@@ -2528,10 +2525,10 @@ function Host() {
             </div>
           )}
           {h.bootService.state === 'unknown' && (
-            <div className="note" style={{ marginTop: 12 }}>{h.bootService.why}</div>
+            <div className="note mt-5">{h.bootService.why}</div>
           )}
           {h.firewall.state === 'missing' && h.bootService.state !== 'missing' && (
-            <div className="note warn" style={{ marginTop: 12 }}>
+            <div className="note warn mt-5">
               No firewall rule for port {h.port}. The system works on this PC but phones on the
               wifi cannot reach it.
             </div>
@@ -2543,7 +2540,7 @@ function Host() {
         <PortCard current={h.port} pending={h.pendingPort} />
 
         <Card title="Doing this on the host PC">
-          <p className="sub" style={{ margin: '0 0 12px' }}>
+          <p className="sub mt-0 mb-5">
             Starting, stopping and installing the boot service all happen on the host PC itself —
             this page is served by the server it would be acting on. Double-click
             {' '}<b>FacilityFlow.cmd</b> in the app folder for a menu, or copy a command.
@@ -2555,7 +2552,7 @@ function Host() {
       <OwnCertificate />
       <RemoteDoor />
 
-      <div className="note" style={{ marginTop: 14 }}>
+      <div className="note mt-6">
         <b>{h.dataDir}</b> is the whole business record — database, photos and backups.
         {' '}{h.attachmentCount.toLocaleString()} file{h.attachmentCount === 1 ? '' : 's'} attached
         so far. Copy that folder and you have copied everything.
@@ -2598,7 +2595,7 @@ function NetworkCard({ h }: { h: HostStatus }) {
   return (
     <Card title="Which network the department reaches this PC on"
           right={h.network.ssid ? <Chip>Wifi: {h.network.ssid}</Chip> : undefined}>
-      {msg && <div className={`note ${msg.bad ? 'crit' : ''}`} style={{ marginBottom: 12 }}
+      {msg && <div className={`note ${msg.bad ? 'crit' : ''} mb-5`}
                    role="status">{msg.text}</div>}
 
       {h.network.nics.length === 0 ? (
@@ -2638,12 +2635,12 @@ function NetworkCard({ h }: { h: HostStatus }) {
           )}
 
           {rest.length > 0 && (
-            <details style={{ marginTop: 12 }}>
-              <summary className="sub" style={{ cursor: 'pointer' }}>
+            <details className="mt-5">
+              <summary className="sub clickable">
                 {rest.length} more {rest.length === 1 ? 'address' : 'addresses'} on this PC that
                 cannot be used
               </summary>
-              <div className="niclist" style={{ marginTop: 8, opacity: .72 }}>
+              <div className="niclist mt-4 dim">
                 {rest.map((n) => (
                   <div key={n.address + n.name} className="nic dead">
                     <span className="nname">{n.name} <Chip>{kindWord(n)}</Chip></span>
@@ -2655,29 +2652,29 @@ function NetworkCard({ h }: { h: HostStatus }) {
             </details>
           )}
 
-          <div className="note" style={{ marginTop: 14 }}>
+          <div className="note mt-6">
             This is the address on the QR code and the one to write on the notice board. The host
             answers on <b>{h.boundTo ? `${h.boundTo} only` : 'every network above'}</b> whichever
             you pick — choosing here changes what people are told, not what the server listens on.
           </div>
 
-          <button className="btn sm" style={{ marginTop: 12 }}
+          <button className="btn sm mt-5"
                   onClick={() => setAdvanced((v) => !v)} aria-expanded={advanced}>
             {advanced ? 'Hide' : 'Show'} advanced: answer on one network only
           </button>
 
           {advanced && (
-            <div className="note warn" style={{ marginTop: 12 }}>
+            <div className="note warn mt-5">
               <b>Only if this PC can be reached from a network the department should not be on</b>
               {' '}— a guest wifi, for instance. Narrowing it here means the system refuses every
               other network from the next restart.
-              <p style={{ margin: '8px 0 0' }}>
+              <p className="mt-4 mb-0">
                 The risk is the address itself. Most are handed out by the router and can change
                 overnight; if that happens the host cannot answer on the old one. It will fall back
                 to every network and say so when it starts, rather than dying — but until somebody
                 notices, the narrowing is not doing its job. A reserved or static address first.
               </p>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+              <div className="row gap-4 mt-5">
                 {usable.map((n) => (
                   <Btn key={n.address} size="sm"
                        tone={h.boundTo === n.address ? 'pri' : undefined}
@@ -2723,31 +2720,29 @@ function JoinCard({ url, port, nic }: { url: string | null; port: number; nic: N
         <Empty title="No address to hand out"
                hint="This PC has no cable or wifi connection the department could reach it on. Connect it to the office network and this fills in." />
       ) : (
-        <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div className="row gap-7 top">
           {svg && (
-            <div style={{ width: 132, height: 132, flex: 'none', background: '#fff',
-                          padding: 8, borderRadius: 8, border: '1px solid var(--line)' }}
+            <div className="p-4" style={{ width: 132, height: 132, flex: 'none', background: '#fff', borderRadius: 8, border: '1px solid var(--line)' }}
                  dangerouslySetInnerHTML={{ __html: svg }} />
           )}
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontFamily: 'var(--mono)', fontSize: '0.9375rem', fontWeight: 500,
-                          wordBreak: 'break-all', marginBottom: 6 }}>
+          <div className="fill">
+            <div className="f-mono t-body fw-5 mb-3 break-all">
               {primary}
             </div>
             {nic && (
-              <p className="sub" style={{ margin: '0 0 8px' }}>
+              <p className="sub mt-0 mb-4">
                 over {nic.name}{nic.ssid ? ` on ${nic.ssid}` : ''}
                 {nic.kind === 'wifi' ? ' — phones must be on this same wifi' : ''}
               </p>
             )}
-            <p className="sub" style={{ margin: '10px 0 0' }}>
+            <p className="sub mt-5 mb-0">
               Anyone on the office wifi opens this and signs in. On a phone, <b>Add to home
               screen</b> and it behaves like an app.
             </p>
           </div>
         </div>
       )}
-      <div className="note warn" style={{ marginTop: 14 }}>
+      <div className="note warn mt-6">
         <b>Ask IT to reserve this address before printing it on anything.</b> If this PC is on
         DHCP the address will change, and every bookmark and every QR sticker on the plant breaks
         at the same moment.
@@ -2781,13 +2776,13 @@ function PortCard({ current, pending }: { current: number; pending: number | nul
         <input className="inp" inputMode="numeric" value={value}
                onChange={(e) => setValue(e.target.value.replace(/[^0-9]/g, ''))} />
       </Field>
-      {msg && <div className={`note ${msg.bad ? 'crit' : 'good'}`} style={{ marginBottom: 12 }}
+      {msg && <div className={`note ${msg.bad ? 'crit' : 'good'} mb-5`}
                    role="status">{msg.text}</div>}
-      <Btn tone="pri" style={{ width: '100%' }} disabled={!ready || save.isPending}
+      <Btn full tone="pri" disabled={!ready || save.isPending}
            onClick={() => save.mutate()}>
         {save.isPending ? 'Saving…' : 'Save for next start'}
       </Btn>
-      <div className="note" style={{ marginTop: 12 }}>
+      <div className="note mt-5">
         Change this only if something else on the PC already uses {current}. Every bookmark,
         home-screen shortcut and printed QR code carries the port in it, so moving it means
         reprinting the stickers.
@@ -2815,12 +2810,12 @@ function CmdList({ windows }: { windows: boolean }) {
     );
   }
   return (
-    <ul className="iso" style={{ marginTop: 0 }}>
+    <ul className="iso mt-0">
       {HOST_CMDS.map((c) => (
         <li key={c.cmd} style={{ flexWrap: 'wrap' }}>
-          <span style={{ minWidth: 0 }}>
-            <span style={{ display: 'block', fontSize: '0.7812rem' }}>{c.what}</span>
-            <span className="tagno" style={{ wordBreak: 'break-all' }}>{c.cmd}</span>
+          <span className="fill">
+            <span className="block t-ui">{c.what}</span>
+            <span className="tagno break-all">{c.cmd}</span>
           </span>
           <span className="sp">
             <button className="btn sm" onClick={() => {

@@ -86,18 +86,17 @@ export function Photos({ entityType, entityId, canUpload, title = 'Photos' }:
           </div>
         )}
 
-      <input ref={inputRef} type="file" accept="image/*,application/pdf" capture="environment"
-             style={{ display: 'none' }}
+      <input className="hidden" ref={inputRef} type="file" accept="image/*,application/pdf" capture="environment"
              onChange={(e) => {
                const f = e.target.files?.[0];
                if (f) upload.mutate(f);
                e.target.value = '';
              }} />
 
-      {status && <p className="sub" style={{ marginTop: 10 }}>{status}</p>}
-      {error && <div className="note crit" style={{ marginTop: 10 }} role="alert">{error}</div>}
+      {status && <p className="sub mt-5">{status}</p>}
+      {error && <div className="note crit mt-5" role="alert">{error}</div>}
       {canUpload && !status && !error && (
-        <p className="sub" style={{ marginTop: 10, whiteSpace: 'normal' }}>
+        <p className="sub mt-5 wrap">
           Photos are resized to {1600}px before upload, so they move quickly on the office wifi.
         </p>
       )}

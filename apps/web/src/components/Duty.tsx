@@ -156,7 +156,7 @@ export function DutySetup({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title="The duty screen" onClose={onClose} wide>
-      <div className="note" style={{ marginBottom: 14 }}>
+      <div className="note mb-6">
         <b>One screen that rings for the whole department.</b> Not instead of anybody's
         phone — underneath it. An iPhone cannot run the alert app at all, some Android
         handsets freeze it, and phones get left in vans. The duty screen is the thing that
@@ -164,18 +164,18 @@ export function DutySetup({ onClose }: { onClose: () => void }) {
       </div>
 
       {mine.data?.duty ? (
-        <div className="note" style={{ marginBottom: 14, borderLeftColor: 'var(--ok)' }}>
+        <div className="note ok mb-6">
           <b>This screen is the duty screen{mine.data.label ? ` — ${mine.data.label}` : ''}.</b>{' '}
           Leave it signed in, plugged in, and set to never sleep. It cannot be muted while
           it is, which is the point of it.
-          <div style={{ marginTop: 10 }}>
+          <div className="mt-5">
             <Btn size="sm" onClick={() => release.mutate(id)}>Stop being the duty screen</Btn>
           </div>
         </div>
       ) : (
         <Field label="What to call this screen"
                hint="Where it is, so somebody knows which one stopped reporting. e.g. Plant room tablet.">
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="row gap-4">
             <input className="inp" autoFocus value={label} maxLength={60}
                    placeholder="Plant room tablet"
                    onChange={(e) => setLabel(e.target.value)} />
@@ -187,12 +187,12 @@ export function DutySetup({ onClose }: { onClose: () => void }) {
         </Field>
       )}
 
-      {msg && <div className="note" style={{ marginBottom: 12 }}>{msg}</div>}
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
+      {msg && <div className="note mb-5">{msg}</div>}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
 
       {(all.data?.devices.length ?? 0) > 0 && (
         <>
-          <p className="eyebrow" style={{ marginBottom: 8 }}>Duty screens on this property</p>
+          <p className="eyebrow mb-4">Duty screens on this property</p>
           <div className="tw">
             <table className="wide">
               <thead><tr><th>Screen</th><th>Signed in as</th><th>Last heard from</th><th /></tr></thead>

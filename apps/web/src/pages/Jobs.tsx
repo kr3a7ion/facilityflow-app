@@ -148,20 +148,20 @@ export function Jobs() {
                   : month.isCurrent ? 'plus anything still open' : undefined} />
 
       {jobs.data?.truncated && (
-        <div className="note warn" style={{ marginBottom: 14 }}>
+        <div className="note warn mb-6">
           Showing the first {jobs.data.limit} jobs for this month — there are more. Narrow the
           month or use a filter.
         </div>
       )}
 
       {q && (
-        <div className="note" style={{ marginBottom: 14 }}>
+        <div className="note mb-6">
           Showing matches for <b>{q}</b>.{' '}
           <button className="btn sm" onClick={() => setParams({})}>Clear</button>
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div className="row gap-4 mb-6">
         {FILTERS.filter((f) => !f.need || can(f.need)).map((f) => (
           <button key={f.key} className={`btn sm ${filter === f.key ? 'on' : ''}`}
                   onClick={() => setFilter(f.key)}>
@@ -172,7 +172,7 @@ export function Jobs() {
 
       <Card flush>
         {jobs.isLoading ? <Loading rows={6} />
-          : jobs.isError ? <div style={{ padding: 15 }}><ErrorNote error={jobs.error} /></div>
+          : jobs.isError ? <div className="p-6"><ErrorNote error={jobs.error} /></div>
           : rows.length === 0 ? (
             <Empty title={filter !== 'open' || q ? 'Nothing here'
                             : jobs.data?.scope !== 'own' ? 'No open jobs'
@@ -188,14 +188,13 @@ export function Jobs() {
                          : 'Report a fault and it appears here with a reference you can quote when somebody asks.'} />
           )
           : view === 'grid' ? (
-            <div className="jgrid" style={{ padding: 13 }}>
+            <div className="jgrid p-5">
               {rows.map((j) => (
                 <Link key={j.id} to={`/jobs/${j.id}`}
-                      className={`jcard ${j.priority.toLowerCase()}`}
-                      style={{ textDecoration: 'none', color: 'inherit' }}>
+                      className={`jcard ${j.priority.toLowerCase()} plain-link`}>
                   <div className="jtop">
                     <span className="jref">{j.ref}</span>
-                    <span className="spacer" style={{ flex: 1 }} />
+                    <span className="spacer fill" />
                     <Chip tone={j.priority === 'P1' ? 'crit' : j.priority === 'P2' ? 'warn' : ''}>
                       {j.priority}
                     </Chip>
@@ -209,7 +208,7 @@ export function Jobs() {
                     <Chip tone={slaTone(j.sla.state)} lamp={j.sla.state !== 'paused'}>
                       {slaLabel(j.sla)}
                     </Chip>
-                    <span className="spacer" style={{ flex: 1 }} />
+                    <span className="spacer fill" />
                     <span className="jmeta">{j.assignee ?? 'Unassigned'}</span>
                   </div>
                 </Link>
@@ -228,7 +227,7 @@ export function Jobs() {
                   {rows.map((j) => (
                     <tr key={j.id}>
                       <td className={`pri-cell ${j.priority}`}>
-                        <Link to={`/jobs/${j.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                        <Link className="plain-link" to={`/jobs/${j.id}`}>
                           <span className="ttl">{j.title}</span>
                           <span className="sub">
                             {j.ref} · {j.unit_no ?? j.asset_tag ?? 'site'} · {j.priority}
@@ -314,7 +313,7 @@ function NewJob() {
         <div className="fld"><label>What is wrong</label>
           <input className="inp" autoFocus value={f.title}
                  onChange={(e) => setF({ ...f, title: e.target.value })} /></div>
-        <div className="grid g2" style={{ gap: 12 }}>
+        <div className="grid g2 gap-5">
           <div className="fld"><label>Priority</label>
             <select className="inp" value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })}>
               <option value="P1">P1 · emergency</option>
@@ -339,8 +338,8 @@ function NewJob() {
         <div className="fld"><label>Detail</label>
           <textarea className="inp" rows={3} value={f.description}
                     onChange={(e) => setF({ ...f, description: e.target.value })} /></div>
-        {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-        <Btn tone="pri" style={{ width: '100%' }} disabled={f.title.length < 3 || create.isPending}
+        {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+        <Btn full tone="pri" disabled={f.title.length < 3 || create.isPending}
              onClick={() => create.mutate()}>
           {create.isPending ? 'Raising…' : 'Raise job'}
         </Btn>

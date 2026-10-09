@@ -94,7 +94,7 @@ export function JobCard() {
 
   return (
     <main className="view">
-      <Link className="btn sm" to="/jobs" style={{ marginBottom: 14 }}>
+      <Link className="btn sm mb-6" to="/jobs">
         <Icon name="back" /> All jobs
       </Link>
 
@@ -103,10 +103,10 @@ export function JobCard() {
           <p className="eyebrow">
             {job.ref} · {titleCase(job.source)} · raised {compact(job.reported_at)}
           </p>
-          <h1 style={{ fontFamily: 'var(--ui)', fontSize: '1.625rem', textTransform: 'none', letterSpacing: 0 }}>
+          <h1 className="f-ui t-title">
             {job.title}
           </h1>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 }}>
+          <div className="row gap-3 mt-5">
             <Chip tone={slaTone(sla.state)} lamp={sla.state !== 'paused'}>
               {job.priority} · {slaLabel(sla)}
             </Chip>
@@ -130,33 +130,33 @@ export function JobCard() {
       </div>
 
       {banner && (
-        <div className={`note ${banner.bad ? 'crit' : ''}`} style={{ marginBottom: 14 }} role="status">
+        <div className={`note ${banner.bad ? 'crit' : ''} mb-6`} role="status">
           {banner.text}
         </div>
       )}
 
       <div className="grid g21">
-        <div style={{ display: 'grid', gap: 14 }}>
+        <div className="grid gap-6">
           <Card title="Detail">
             <dl className="kv">
               <dt>Reported</dt><dd>{when(job.reported_at)}</dd>
               <dt>Response</dt>
               <dd>{job.responded_at ? when(job.responded_at)
-                : <span style={{ color: 'var(--crit)' }}>not accepted yet</span>}</dd>
+                : <span className="c-crit">not accepted yet</span>}</dd>
               <dt>Started</dt><dd>{when(job.started_at)}</dd>
               <dt>Due</dt>
               <dd style={sla.state === 'breached' ? { color: 'var(--crit)' } : undefined}>
                 {when(sla.effectiveDueAt)}
                 {sla.heldMinutes > 0 && (
-                  <span className="sub" style={{ display: 'inline', marginLeft: 8 }}>
+                  <span className="sub ml-4 inline">
                     (extended by {sla.heldMinutes} min on hold)
                   </span>
                 )}
               </dd>
               {job.description && (<><dt>Description</dt>
-                <dd style={{ fontWeight: 400, whiteSpace: 'pre-wrap' }}>{job.description}</dd></>)}
+                <dd className="fw-4 pre-wrap">{job.description}</dd></>)}
               {job.resolution_notes && (<><dt>Resolution</dt>
-                <dd style={{ fontWeight: 400, whiteSpace: 'pre-wrap' }}>{job.resolution_notes}</dd></>)}
+                <dd className="fw-4 pre-wrap">{job.resolution_notes}</dd></>)}
               {job.failure_cause && (<><dt>Cause</dt><dd>{titleCase(job.failure_cause)}</dd></>)}
             </dl>
           </Card>
@@ -195,8 +195,8 @@ export function JobCard() {
                         {cost && <td className="num">{naira(cost.labourKobo)}</td>}</tr>
                     )}
                     {cost && (
-                      <tr><td style={{ fontWeight: 600 }}>Job cost</td><td />
-                        <td className="num" style={{ fontWeight: 600, color: 'var(--text)' }}>
+                      <tr><td className="fw-6">Job cost</td><td />
+                        <td className="num fw-6 c-1">
                           {naira(cost.totalKobo)}</td></tr>
                     )}
                   </tbody>
@@ -262,7 +262,7 @@ function CompleteCard({ act, busy }: { act: Act; busy: boolean }) {
              body: { resolutionNotes: notes, failureCause: cause || undefined } })}>
         Mark complete
       </Btn>
-      <p className="sub" style={{ marginTop: 10 }}>Someone else has to verify it — never you.</p>
+      <p className="sub mt-5">Someone else has to verify it — never you.</p>
     </Card>
   );
 }
@@ -271,7 +271,7 @@ function HoldButton({ act }: { act: Act }) {
   const [open, setOpen] = useState(false);
   if (!open) return <Btn onClick={() => setOpen(true)}>Put on hold</Btn>;
   return (
-    <select className="inp" style={{ width: 200 }} autoFocus defaultValue=""
+    <select className="inp w-md" autoFocus defaultValue=""
             onChange={(e) => { if (e.target.value) { act.mutate({ path: 'hold', body: { reason: e.target.value } }); setOpen(false); } }}>
       <option value="" disabled>Why is it held?</option>
       <option value="awaiting_parts">Awaiting parts</option>
@@ -286,8 +286,8 @@ function ReopenButton({ act }: { act: Act }) {
   const [reason, setReason] = useState<string | null>(null);
   if (reason === null) return <Btn tone="danger" onClick={() => setReason('')}>Reopen</Btn>;
   return (
-    <span style={{ display: 'flex', gap: 6 }}>
-      <input className="inp" style={{ width: 220 }} autoFocus placeholder="Why is it being reopened?"
+    <span className="row gap-3">
+      <input className="inp w-lg" autoFocus placeholder="Why is it being reopened?"
              value={reason} onChange={(e) => setReason(e.target.value)} />
       <Btn tone="danger" disabled={reason.trim().length < 3}
            onClick={() => act.mutate({ path: 'reopen', body: { reason } })}>Confirm</Btn>
@@ -319,7 +319,7 @@ function AssignButton({ jobId }: { jobId: string }) {
 
   const staff = available.data?.staff ?? [];
   return (
-    <span style={{ display: 'grid', gap: 6, minWidth: 260 }}>
+    <span className="grid gap-3" style={{ minWidth: 260 }}>
       <select className="inp" autoFocus defaultValue=""
               onChange={(e) => e.target.value && assign.mutate(e.target.value)}>
         <option value="" disabled>
@@ -333,9 +333,9 @@ function AssignButton({ jobId }: { jobId: string }) {
       </select>
       {/* Only people marked present today appear — that is the entire reason shifts exist here. */}
       {staff.length === 0 && available.data?.note && (
-        <span className="sub" style={{ whiteSpace: 'normal' }}>{available.data.note}</span>
+        <span className="sub wrap">{available.data.note}</span>
       )}
-      {error && <span className="sub" style={{ color: 'var(--crit)', whiteSpace: 'normal' }}>{error}</span>}
+      {error && <span className="sub c-crit wrap">{error}</span>}
     </span>
   );
 }
@@ -397,7 +397,7 @@ function ChecklistCard({ jobId, sheet, canRecord, onSaved }: {
           right={<Chip tone={recorded === sheet.total ? 'ok' : recorded ? 'warn' : ''} lamp>
                    {recorded} of {sheet.total}
                  </Chip>}>
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-5" role="alert">{err}</div>}
 
       <ol className="sheet">
         {merged.map(({ item, result, value, note }) => (
@@ -443,7 +443,7 @@ function ChecklistCard({ jobId, sheet, canRecord, onSaved }: {
       </ol>
 
       {failed.length > 0 && (
-        <div className="note warn" style={{ marginTop: 12 }}>
+        <div className="note warn mt-5">
           <b>{failed.length} step{failed.length === 1 ? '' : 's'} failed.</b> A failed step is a
           fault you have found, not a note — raise a follow-up job for it rather than leaving it
           in this sheet.
@@ -451,14 +451,14 @@ function ChecklistCard({ jobId, sheet, canRecord, onSaved }: {
       )}
 
       {criticalOutstanding.length > 0 && (
-        <div className="note" style={{ marginTop: 12 }}>
+        <div className="note mt-5">
           {criticalOutstanding.length} critical step{criticalOutstanding.length === 1 ? '' : 's'} still
           to record. The job cannot be marked complete until {criticalOutstanding.length === 1 ? 'it is' : 'they are'} done.
         </div>
       )}
 
       {canRecord && (
-        <Btn tone="pri" icon="check" style={{ marginTop: 14 }}
+        <Btn className="mt-6" tone="pri" icon="check"
              disabled={pending.length === 0 || save.isPending} onClick={() => save.mutate()}>
           {save.isPending ? 'Saving…'
             : pending.length ? `Save ${pending.length} step${pending.length === 1 ? '' : 's'}`

@@ -126,13 +126,13 @@ export function Money() {
       <Flash msg={msg} />
 
       {!reads && (
-        <div className="note" style={{ marginBottom: 14 }}>
+        <div className="note mb-6">
           Your role records spend but does not read the departmental budget. You can add
           vendors and contracts here, and record a purchase from the button above.
         </div>
       )}
 
-      {reads && <div className="grid g4" style={{ marginBottom: 16 }}>
+      {reads && <div className="grid g4 mb-6">
         <Tile label={`Budget · ${MONTHS[month - 1]}`} value={naira(totalBudget, { compact: true })}
               sub={`${lines.length} cost centre${lines.length === 1 ? '' : 's'}`} />
         <Tile label="Spent so far" value={naira(totalActual, { compact: true })}
@@ -147,9 +147,9 @@ export function Money() {
       </div>}
 
       {over.length > 0 && (
-        <div className="note crit" style={{ marginBottom: 14 }}>
+        <div className="note crit mb-6">
           <b>{over.length} cost centre{over.length === 1 ? ' is' : 's are'} over budget this month</b>
-          <div style={{ marginTop: 6 }}>
+          <div className="mt-3">
             {over.map((l) => `${l.code} ${l.name} — ${naira(l.actual_kobo)} against ${naira(l.budget_kobo)}`).join(' · ')}
           </div>
         </div>
@@ -169,11 +169,11 @@ export function Money() {
               right={<>
                 <Chip>{MONTHS[month - 1]} {year}</Chip>
                 {can('finance.budget.edit') && (
-                  <Btn size="sm" icon="plus" style={{ marginLeft: 8 }}
+                  <Btn className="ml-4" size="sm" icon="plus"
                        onClick={() => setModal('budget')}>Set a budget</Btn>)}
               </>}>
           {budget.isLoading ? <Loading rows={5} />
-            : budget.isError ? <div style={{ padding: 15 }}><ErrorNote error={budget.error} /></div>
+            : budget.isError ? <div className="p-6"><ErrorNote error={budget.error} /></div>
             : lines.length === 0
               ? <Empty title="No cost centres yet"
                        hint="Create a few — Electrical, Plumbing, HVAC, Generator — then set a monthly figure against each." />
@@ -210,7 +210,7 @@ export function Money() {
           <Card flush title="Expenses"
                 right={<Chip tone={pending.length ? 'warn' : ''}>{pending.length} pending</Chip>}>
             {expenses.isLoading ? <Loading rows={4} />
-              : expenses.isError ? <div style={{ padding: 15 }}><ErrorNote error={expenses.error} /></div>
+              : expenses.isError ? <div className="p-6"><ErrorNote error={expenses.error} /></div>
               : (expenses.data?.expenses.length ?? 0) === 0
                 ? <Empty title="No expenses raised" />
                 : (
@@ -237,13 +237,13 @@ export function Money() {
                                             : e.status === 'rejected' ? 'crit' : 'warn'} lamp>
                                   {titleCase(e.status)}</Chip>
                               </td>
-                              <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                              <td className="num nw">
                                 <Btn size="sm" icon="cam" aria-label={`Receipt for ${e.description}`}
                                      onClick={() => setReceipt(e)} />
                                 {e.status === 'pending' && can('finance.expense.approve') && (
                                   mine
                                     ? <Chip>yours</Chip>
-                                    : <Btn size="sm" style={{ marginLeft: 6 }} disabled={approve.isPending}
+                                    : <Btn className="ml-3" size="sm" disabled={approve.isPending}
                                            onClick={() => approve.mutate(e.id)}>Approve</Btn>
                                 )}
                               </td>
@@ -258,7 +258,7 @@ export function Money() {
 
           <Card flush title="Purchases">
             {purchases.isLoading ? <Loading rows={4} />
-              : purchases.isError ? <div style={{ padding: 15 }}><ErrorNote error={purchases.error} /></div>
+              : purchases.isError ? <div className="p-6"><ErrorNote error={purchases.error} /></div>
               : (purchases.data?.purchases.length ?? 0) === 0
                 ? <Empty title="Nothing purchased yet"
                          hint="Recording a purchase against a job number is what makes a job cost true." />
@@ -293,9 +293,9 @@ export function Money() {
       {tab === 'vendors' && (
         <>
           {(vendors.data?.expiringSoon.length ?? 0) > 0 && (
-            <div className="note warn" style={{ marginBottom: 14 }}>
+            <div className="note warn mb-6">
               <b>Contracts ending within 60 days</b>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              <ul className="mt-3 mb-0 pl-7">
                 {vendors.data!.expiringSoon.map((c) => (
                   <li key={c.id}>{c.title} — {c.vendor}, ends {c.end_date}</li>))}
               </ul>
@@ -364,7 +364,7 @@ export function Money() {
 
       {receipt && (
         <Modal title={`Receipt · ${receipt.description}`} onClose={() => setReceipt(null)}>
-          <dl className="kv" style={{ marginBottom: 14 }}>
+          <dl className="kv mb-6">
             <dt>Amount</dt><dd>{naira(receipt.amount_kobo)}</dd>
             <dt>Spent</dt><dd>{when(receipt.spent_at)}</dd>
             <dt>Raised by</dt><dd>{receipt.raised_by_name ?? '—'}</dd>
@@ -414,7 +414,7 @@ function ExpenseForm({ centres, onClose, onDone }: {
 
   return (
     <Modal title="Raise an expense" onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
       <Field label="What was it for">
         <input className="inp" value={description} autoFocus placeholder="e.g. Emergency plumber call-out, block C"
                onChange={(e) => setDescription(e.target.value)} />
@@ -485,7 +485,7 @@ function PurchaseForm({ centres, vendors, onClose, onDone }: {
 
   return (
     <Modal title="Record a purchase" onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
       <Field label="What was bought">
         <input className="inp" value={description} autoFocus placeholder="e.g. 2 × 1.5 hp pump seals"
                onChange={(e) => setDescription(e.target.value)} />
@@ -549,7 +549,7 @@ function VendorForm({ onClose, onDone }: { onClose: () => void; onDone: (msg: st
 
   return (
     <Modal title="Add a vendor" onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
       <div className="grid g2">
         <Field label="Company name">
           <input className="inp" value={f.name} autoFocus onChange={(e) => set('name')(e.target.value)} />
@@ -608,7 +608,7 @@ function ContractForm({ vendors, onClose, onDone }: {
 
   return (
     <Modal title="Add a contract" onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
       <Field label="Title">
         <input className="inp" value={f.title} autoFocus placeholder="e.g. Lift AMC — two passenger cars"
                onChange={(e) => set('title')(e.target.value)} />
@@ -691,7 +691,7 @@ function BudgetForm({ centres, year, month, onClose, onDone }: {
 
   return (
     <Modal title={`Budget · ${MONTHS[month - 1]} ${year}`} onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
       <Tabs<'budget' | 'centre'> value={mode} onChange={setMode} items={[
         { key: 'budget', label: 'Set a figure' },
         { key: 'centre', label: 'New cost centre' },

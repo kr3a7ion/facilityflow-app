@@ -94,7 +94,7 @@ export function Power() {
         )}
       </div>
 
-      {msg && <div className={`note ${msg.bad ? 'warn' : ''}`} style={{ marginBottom: 14 }} role="status">
+      {msg && <div className={`note ${msg.bad ? 'warn' : ''} mb-6`} role="status">
         {msg.text}</div>}
 
       {/* Load first: during an outage it is the only thing on this screen anybody needs. */}
@@ -107,7 +107,7 @@ export function Power() {
                 onStep={month.step} onSet={month.set} onReset={month.reset}
                 note="deliveries and readings below" />
 
-      <div className="grid g21" style={{ marginBottom: 14 }}>
+      <div className="grid g21 mb-6">
         <Card title="Fuel burn per running hour"
               right={lastRuns.length > 0 && lastRuns.at(-1)?.deviation_pct != null
                 ? <Chip tone={(lastRuns.at(-1)!.deviation_pct ?? 0) > 10 ? 'warn' : 'ok'} lamp>
@@ -120,7 +120,7 @@ export function Power() {
               ? <Empty title="Not enough generator runs yet"
                        hint="Log a couple of runs and the burn trend appears here." />
               : <BurnChart runs={lastRuns} />}
-          <div className="note" style={{ marginTop: 14 }}>
+          <div className="note mt-6">
             Three consecutive runs above the deviation threshold raise a PPM job automatically —
             <b> injectors, air filter or fuel filter</b> — before the set fails during an outage.
           </div>
@@ -129,7 +129,7 @@ export function Power() {
         <Card title="Tank reconciliation"
               right={(tanks.data?.tanks.length ?? 0) === 0 ? undefined : (
                 // An empty dropdown is a control that looks broken rather than unused.
-                <select className="inp" style={{ width: 130, minHeight: 30, padding: '4px 8px', fontSize: '0.75rem' }}
+                <select className="inp compact w-sm"
                         value={selected} onChange={(e) => setTankId(e.target.value)}
                         aria-label="Which tank">
                   {(tanks.data?.tanks ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -143,32 +143,31 @@ export function Power() {
               ? <div className="note warn">{(rec.error as ApiError).message}</div>
               : rec.data && (
                 <>
-                  <div style={{ fontFamily: 'var(--cond)', fontSize: '2.75rem', fontWeight: 700, lineHeight: 1,
-                                fontVariantNumeric: 'tabular-nums' }}>
+                  <div className="f-cond t-readout fw-7 lh-1 tnum">
                     {rec.data.varianceL > 0 ? '+' : ''}{rec.data.varianceL}
-                    <span style={{ fontSize: '1.125rem', color: 'var(--text-3)' }}> L</span>
+                    <span className="t-lede c-3"> L</span>
                   </div>
-                  <div style={{ margin: '8px 0 16px' }}>
+                  <div className="mt-4 mb-6">
                     <Chip tone={rec.data.status === 'ok' ? 'ok' : 'warn'} lamp>
                       {rec.data.status === 'ok' ? 'Within tolerance' : 'Flagged'} · {rec.data.variancePct}%
                     </Chip>
                   </div>
-                  <table style={{ fontFamily: 'var(--mono)', fontSize: '0.75rem' }}>
+                  <table className="f-mono t-sm">
                     <tbody>
-                      <tr><td style={{ paddingLeft: 0 }}>Opening dip</td>
+                      <tr><td className="pl-0">Opening dip</td>
                           <td className="num">{litres(rec.data.openingL)}</td></tr>
-                      <tr><td style={{ paddingLeft: 0 }}>+ Deliveries received</td>
+                      <tr><td className="pl-0">+ Deliveries received</td>
                           <td className="num">{litres(rec.data.deliveriesL)}</td></tr>
-                      <tr><td style={{ paddingLeft: 0 }}>− Issued to gensets</td>
+                      <tr><td className="pl-0">− Issued to gensets</td>
                           <td className="num">{litres(rec.data.issuesL)}</td></tr>
-                      <tr><td style={{ paddingLeft: 0, fontWeight: 600, color: 'var(--text)' }}>= Expected closing</td>
-                          <td className="num" style={{ fontWeight: 600, color: 'var(--text)' }}>
+                      <tr><td className="fw-6 c-1 pl-0">= Expected closing</td>
+                          <td className="num fw-6 c-1">
                             {litres(rec.data.computedClosingL)}</td></tr>
-                      <tr><td style={{ paddingLeft: 0 }}>Dipped closing</td>
+                      <tr><td className="pl-0">Dipped closing</td>
                           <td className="num">{litres(rec.data.dippedClosingL)}</td></tr>
                     </tbody>
                   </table>
-                  <div className="note warn" style={{ marginTop: 14 }}>
+                  <div className="note warn mt-6">
                     Tolerance is {rec.data.tolerancePct}%, measured against throughput rather than the
                     balance. Beyond it the period is flagged and somebody explains it in writing.
                   </div>
@@ -177,7 +176,7 @@ export function Power() {
         </Card>
       </div>
 
-      <div className="grid g2" style={{ marginBottom: 14 }}>
+      <div className="grid g2 mb-6">
         <Card title="Tanks" right={<Chip>{tanks.data?.tanks.length ?? 0}</Chip>}>
           {(tanks.data?.tanks.length ?? 0) === 0 ? (
             <Empty title="No tanks yet"
@@ -193,7 +192,7 @@ export function Power() {
                          capacity={t.capacity_l} minLevel={t.min_level_l || undefined} />
                 ))}
               </div>
-              <div className="legend" style={{ marginTop: 14 }}>
+              <div className="legend mt-6">
                 {(tanks.data?.tanks ?? []).map((t) => (
                   <span key={t.id}>
                     {t.name}: last dipped {t.last_dip_at ? when(t.last_dip_at) : 'never'}
@@ -207,13 +206,13 @@ export function Power() {
 
 {money && (
                 <Card title="Cost of generated power" right={<Chip>Last 30 days</Chip>}>
-          <div className="grid g2" style={{ gap: 12 }}>
+          <div className="grid g2 gap-5">
             <Tile label="Cost per kWh" value={naira(cost.data?.costPerKwhKobo)}
                   sub={cost.data?.kwh ? `${Math.round(cost.data.kwh).toLocaleString()} kWh generated` : 'no runs logged'} />
             <Tile label="Diesel burned" value={cost.data ? Math.round(cost.data.fuelUsedL).toLocaleString() : '—'}
                   unit="L" sub={naira(cost.data?.fuelCostKobo, { compact: true })} />
           </div>
-          <div className="note" style={{ marginTop: 16 }}>
+          <div className="note mt-6">
             Cost per kWh against the grid tariff is the number to take upstairs. It is the whole
             business case for solar, a smaller standby set, or a load-shedding policy — and right now
             <b> nobody in the department can produce it on demand.</b>
@@ -298,8 +297,8 @@ function BurnChart({ runs }: { runs: Run[] }) {
   const ticks = [min + (max - min) * 0.15, (min + max) / 2, max - (max - min) * 0.15];
 
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
+    <div className="tw">
+      <svg className="w-full block" viewBox={`0 0 ${W} ${H}`} style={{ height: 'auto', overflow: 'visible' }}
            role="img" aria-label={`Fuel burn over the last ${pts.length} runs, latest ${values.at(-1)} litres per hour.`}>
         <g stroke="var(--line)" strokeWidth="1">
           {ticks.map((t, i) => <path key={i} d={`M${L} ${y(t).toFixed(1)}H${W - R}`} />)}
@@ -360,10 +359,10 @@ function DipButton({ tanks, onSubmit, pending }:
             {tanks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select></div>
         <div className="fld"><label>Reading</label>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="row gap-4">
             <input className="inp" inputMode="decimal" value={value} autoFocus
                    onChange={(e) => setValue(e.target.value)} placeholder={mode === 'mm' ? 'millimetres' : 'litres'} />
-            <select className="inp" style={{ width: 120 }} value={mode}
+            <select className="inp w-sm" value={mode}
                     onChange={(e) => setMode(e.target.value as 'litres' | 'mm')}>
               <option value="litres">Litres</option>
               <option value="mm" disabled={!hasChart}>Millimetres</option>
@@ -371,12 +370,12 @@ function DipButton({ tanks, onSubmit, pending }:
           </div>
         </div>
         {!hasChart && (
-          <div className="note warn" style={{ marginBottom: 12 }}>
+          <div className="note warn mb-5">
             This tank has no calibration chart, so a millimetre dip cannot be converted.
             A horizontal cylinder is not linear — add the chart in Admin, or read in litres.
           </div>
         )}
-        <Btn tone="pri" style={{ width: '100%' }} disabled={!value || pending}
+        <Btn full tone="pri" disabled={!value || pending}
              onClick={() => {
                const n = Number(value);
                if (!Number.isFinite(n)) return;
@@ -448,7 +447,7 @@ function LoadPanel({ onLog, canLog }: { onLog: () => void; canLog: boolean }) {
   const usable = d.gensets.filter((g) => g.verdict !== 'unavailable');
 
   return (
-    <div className="grid g21" style={{ marginBottom: 14 }}>
+    <div className="grid g21 mb-6">
       <Card title="Building load right now"
             right={<>
               {d.totalKva != null && <Chip tone={d.utility === 'off' ? 'warn' : 'ok'} lamp>
@@ -478,11 +477,11 @@ function LoadPanel({ onLog, canLog }: { onLog: () => void; canLog: boolean }) {
           <>
             <div className="bigload">
               {Math.round(d.totalKw).toLocaleString()}<u>kW</u>
-              <span style={{ fontSize: '1.1875rem', color: 'var(--text-3)', marginLeft: 14 }}>
+              <span className="t-lede c-3 ml-6">
                 {Math.round(d.totalKva!).toLocaleString()} kVA
               </span>
             </div>
-            <p className="sub" style={{ margin: '8px 0 0' }}>
+            <p className="sub mt-4 mb-0">
               From {counted.length === 1 ? counted[0]!.name.toLowerCase()
                 : `${counted.length} incomers`}, clamped{' '}
               {counted[0]?.ageMinutes != null ? `${duration(counted[0].ageMinutes)} ago` : 'recently'}.
@@ -493,9 +492,9 @@ function LoadPanel({ onLog, canLog }: { onLog: () => void; canLog: boolean }) {
         {d.sources.filter((s) => s.phaseAmps.length > 0).map((s) => (
           // A stale supply is dimmed rather than hidden: it is still the last thing anyone
           // measured, and hiding it would look like the reading was never taken.
-          <div key={s.id} style={{ marginTop: 18, opacity: s.counted ? 1 : 0.62 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <b style={{ fontSize: '0.8125rem' }}>{s.name}</b>
+          <div className="mt-7" key={s.id} style={{ opacity: s.counted ? 1 : 0.62 }}>
+            <div className="row gap-4">
+              <b className="t-ui">{s.name}</b>
               {s.imbalancePct != null && (
                 <Chip tone={s.imbalanceFlag === 'act' ? 'crit' : s.imbalanceFlag === 'watch' ? 'warn' : 'ok'}
                       lamp>
@@ -507,11 +506,11 @@ function LoadPanel({ onLog, canLog }: { onLog: () => void; canLog: boolean }) {
                   {Math.round(s.breakerPct)}% of breaker
                 </Chip>
               )}
-              <span className="spacer" style={{ flex: 1 }} />
+              <span className="spacer fill" />
               <span className="sub">{s.kw != null ? `${s.kw} kW` : '—'}</span>
             </div>
             <PhaseBars amps={s.phaseAmps} breaker={s.breakerAmps} />
-            <p className="sub" style={{ margin: 0, fontSize: '0.7188rem' }}>
+            <p className="sub m-0 t-sm">
               {s.stale && s.ageMinutes != null
                 ? `last read ${duration(s.ageMinutes)} ago — too old to call current`
                 : s.why}
@@ -520,7 +519,7 @@ function LoadPanel({ onLog, canLog }: { onLog: () => void; canLog: boolean }) {
         ))}
 
         {d.worstImbalance && (
-          <div className="note warn" style={{ marginTop: 16 }}>
+          <div className="note warn mt-6">
             <b>{d.worstImbalance.name} is {d.worstImbalance.pct}% out of balance.</b> The heaviest
             phase trips first, the neutral carries the difference, and a three-phase motor on that
             board runs hot on one winding. Moving single-phase circuits between phases costs an
@@ -533,7 +532,7 @@ function LoadPanel({ onLog, canLog }: { onLog: () => void; canLog: boolean }) {
             right={d.recommended
               ? <Chip tone="ok" lamp>{d.gensets.find((g) => g.assetId === d.recommended)?.tag}</Chip>
               : <Chip tone="warn" lamp>No clear answer</Chip>}>
-        <div className="note" style={{ marginBottom: 14 }}>{d.advice}</div>
+        <div className="note mb-6">{d.advice}</div>
 
         {usable.length === 0 && d.gensets.length === 0
           ? <Empty title="No generators with a rating on file"
@@ -547,7 +546,7 @@ function LoadPanel({ onLog, canLog }: { onLog: () => void; canLog: boolean }) {
                 <li key={g.assetId} className={g.assetId === d.recommended ? 'pick' : ''}>
                   <span className="sname">
                     <b>{g.tag}</b>
-                    <span className="sub" style={{ fontWeight: 400 }}>{g.kvaRating} kVA</span>
+                    <span className="sub fw-4">{g.kvaRating} kVA</span>
                   </span>
                   <span className="smeta">
                     {g.assetId === d.recommended && <Chip tone="ok">start this one</Chip>}
@@ -569,7 +568,7 @@ function LoadPanel({ onLog, canLog }: { onLog: () => void; canLog: boolean }) {
             </ul>
           )}
 
-        <div className="note" style={{ marginTop: 14 }}>
+        <div className="note mt-6">
           A set is happiest between <b>30% and 80%</b> of its rating. Below that it runs cold —
           unburnt fuel glazes the bores and wet-stacks the exhaust, and the de-coke costs more
           than every litre it ever saved. Above 80% there is nothing left for a lift or a chiller
@@ -658,9 +657,9 @@ function ClampDialog({ onClose }: { onClose: () => void }) {
     <Modal title="Log a clamp reading" onClose={onClose}>
       {result ? (
         <>
-          <div className="bigload" style={{ marginBottom: 10 }}>
+          <div className="bigload mb-5">
             {Math.round(result.kw).toLocaleString()}<u>kW</u>
-            <span style={{ fontSize: '1.0625rem', color: 'var(--text-3)', marginLeft: 12 }}>
+            <span className="t-lede c-3 ml-5">
               {Math.round(result.kva).toLocaleString()} kVA
             </span>
           </div>
@@ -669,10 +668,10 @@ function ClampDialog({ onClose }: { onClose: () => void }) {
               {result.imbalancePct}% out of balance
             </Chip>
           )}
-          <div className="note" style={{ marginTop: 14 }}>
+          <div className="note mt-6">
             Recorded. The load figure and the set recommendation are updated.
           </div>
-          <Btn tone="pri" style={{ width: '100%', marginTop: 12 }} onClick={onClose}>Done</Btn>
+          <Btn full className="mt-5" tone="pri" onClick={onClose}>Done</Btn>
         </>
       ) : (
         <>
@@ -687,7 +686,7 @@ function ClampDialog({ onClose }: { onClose: () => void }) {
             </select>
           </Field>
 
-          <div className="grid g3" style={{ gap: 10 }}>
+          <div className="grid g3 gap-5">
             <Field label="L1 amps">
               <input className="inp" inputMode="decimal" autoFocus value={f.l1}
                      onChange={(e) => setF({ ...f, l1: e.target.value })} />
@@ -702,7 +701,7 @@ function ClampDialog({ onClose }: { onClose: () => void }) {
             </Field>
           </div>
 
-          <div className="grid g3" style={{ gap: 10 }}>
+          <div className="grid g3 gap-5">
             <Field label="Neutral" hint="Optional">
               <input className="inp" inputMode="decimal" value={f.neutral}
                      onChange={(e) => setF({ ...f, neutral: e.target.value })} />
@@ -724,13 +723,13 @@ function ClampDialog({ onClose }: { onClose: () => void }) {
           </Field>
 
           {chosen && chosen.ct_ratio !== 1 && (
-            <div className="note" style={{ marginBottom: 12 }}>
+            <div className="note mb-5">
               This supply is read through a CT with a ratio of {chosen.ct_ratio}. Type what the
               clamp shows — the ratio is applied here.
             </div>
           )}
-          {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-          <Btn tone="pri" style={{ width: '100%' }} disabled={!ready || save.isPending}
+          {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+          <Btn full tone="pri" disabled={!ready || save.isPending}
                onClick={() => save.mutate()}>
             {save.isPending ? 'Working it out…' : 'Record reading'}
           </Btn>
@@ -829,7 +828,7 @@ function GensetLog({ canLog }: { canLog: boolean }) {
             </div>
           )}
 
-        <div className="note" style={{ marginTop: 14 }}>
+        <div className="note mt-6">
           Take the readings while the set is running and in front of you. A gauge you cannot
           safely reach is left blank — <b>the system would rather have four honest numbers than
           six invented ones.</b>
@@ -864,10 +863,10 @@ function GensetLog({ canLog }: { canLog: boolean }) {
                             <td className={bad('oilPressureBar')}>{e.oil_pressure_bar ?? '—'}</td>
                             <td className={bad('batteryVolts')}>{e.battery_volts ?? '—'}</td>
                             <td className={bad('frequencyHz')}>{e.frequency_hz ?? '—'}</td>
-                            <td style={{ maxWidth: 260, whiteSpace: 'normal' }}>
+                            <td className="wrap" style={{ maxWidth: 260 }}>
                               {e.remarks}
                               {f.length > 0 && (
-                                <span className="sub" style={{ color: 'var(--crit)', whiteSpace: 'normal' }}>
+                                <span className="sub c-crit wrap">
                                   {f.map((x) => x.says).join(' ')}
                                 </span>
                               )}
@@ -937,43 +936,42 @@ function LogDialog({ set, onClose }: { set: SetToday; onClose: () => void }) {
     return (
       <Modal title={`${set.tag} logged`} onClose={onClose}>
         {result.length === 0 ? (
-          <div className="note" style={{ marginBottom: 12 }}>
+          <div className="note mb-5">
             <b>Everything in range.</b> Nothing here needs anybody tonight.
           </div>
         ) : (
           <>
             {act.map((x, i) => (
-              <div key={i} className="note crit" style={{ marginBottom: 10 }} role="alert">
+              <div key={i} className="note crit mb-5" role="alert">
                 <b>Act on this</b>
-                <div style={{ marginTop: 4 }}>{x.says}</div>
+                <div className="mt-2">{x.says}</div>
               </div>
             ))}
             {watch.map((x, i) => (
-              <div key={i} className="note warn" style={{ marginBottom: 10 }}>{x.says}</div>
+              <div key={i} className="note warn mb-5">{x.says}</div>
             ))}
             {act.length > 0 && (
-              <p className="sub" style={{ whiteSpace: 'normal' }}>
+              <p className="sub wrap">
                 The supervisor has been notified. The reading is in the book either way.
               </p>
             )}
           </>
         )}
-        <Btn tone="pri" style={{ width: '100%', marginTop: 8 }} onClick={onClose}>Done</Btn>
+        <Btn full className="mt-4" tone="pri" onClick={onClose}>Done</Btn>
       </Modal>
     );
   }
 
   return (
     <Modal title={`Log readings — ${set.tag}`} onClose={onClose}>
-      <div className="vtoggle" role="group" aria-label="Was the set running"
-           style={{ marginBottom: 14, width: '100%' }}>
-        <button className={state === 'running' ? 'on' : ''} onClick={() => setState('running')}
-                aria-pressed={state === 'running'} style={{ flex: 1 }}>Running</button>
-        <button className={state === 'stopped' ? 'on' : ''} onClick={() => setState('stopped')}
-                aria-pressed={state === 'stopped'} style={{ flex: 1 }}>Stopped</button>
+      <div className="vtoggle mb-6 w-full" role="group" aria-label="Was the set running">
+        <button className={`grow ${state === 'running' ? 'on' : ''}`} onClick={() => setState('running')}
+                aria-pressed={state === 'running'}>Running</button>
+        <button className={`grow ${state === 'stopped' ? 'on' : ''}`} onClick={() => setState('stopped')}
+                aria-pressed={state === 'stopped'}>Stopped</button>
       </div>
       {state === 'stopped' && (
-        <div className="note" style={{ marginBottom: 12 }}>
+        <div className="note mb-5">
           Worth doing daily even when the set has not run. A flat battery, a leak or an empty
           day tank is found on this round — before the outage, not during it.
         </div>
@@ -983,7 +981,7 @@ function LogDialog({ set, onClose }: { set: SetToday; onClose: () => void }) {
         <input className="inp" inputMode="decimal" autoFocus value={f.hours ?? ''} onChange={set_('hours')} />
       </Field>
 
-      <div className="grid g2" style={{ gap: 10 }}>
+      <div className="grid g2 gap-5">
         <Field label="Day tank litres"><input className="inp" inputMode="decimal"
                value={f.tankL ?? ''} onChange={set_('tankL')} /></Field>
         <Field label="or % full" hint="Whichever the gauge shows.">
@@ -992,7 +990,7 @@ function LogDialog({ set, onClose }: { set: SetToday; onClose: () => void }) {
 
       {state === 'running' && (
         <>
-          <div className="grid g3" style={{ gap: 10 }}>
+          <div className="grid g3 gap-5">
             <Field label="Coolant °C"><input className="inp" inputMode="decimal"
                    value={f.temp ?? ''} onChange={set_('temp')} /></Field>
             <Field label="Oil bar"><input className="inp" inputMode="decimal"
@@ -1001,7 +999,7 @@ function LogDialog({ set, onClose }: { set: SetToday; onClose: () => void }) {
                    value={f.batt ?? ''} onChange={set_('batt')} /></Field>
           </div>
 
-          <div className="grid g3" style={{ gap: 10 }}>
+          <div className="grid g3 gap-5">
             <Field label="Volts L1"><input className="inp" inputMode="decimal"
                    value={f.v1 ?? ''} onChange={set_('v1')} /></Field>
             <Field label="L2"><input className="inp" inputMode="decimal"
@@ -1010,7 +1008,7 @@ function LogDialog({ set, onClose }: { set: SetToday; onClose: () => void }) {
                    value={f.v3 ?? ''} onChange={set_('v3')} /></Field>
           </div>
 
-          <div className="grid g3" style={{ gap: 10 }}>
+          <div className="grid g3 gap-5">
             <Field label="Amps L1"><input className="inp" inputMode="decimal"
                    value={f.a1 ?? ''} onChange={set_('a1')} /></Field>
             <Field label="L2"><input className="inp" inputMode="decimal"
@@ -1019,7 +1017,7 @@ function LogDialog({ set, onClose }: { set: SetToday; onClose: () => void }) {
                    value={f.a3 ?? ''} onChange={set_('a3')} /></Field>
           </div>
 
-          <div className="grid g2" style={{ gap: 10 }}>
+          <div className="grid g2 gap-5">
             <Field label="Frequency Hz"><input className="inp" inputMode="decimal"
                    value={f.hz ?? ''} onChange={set_('hz')} /></Field>
             <Field label="Load kW"><input className="inp" inputMode="decimal"
@@ -1033,8 +1031,8 @@ function LogDialog({ set, onClose }: { set: SetToday; onClose: () => void }) {
         <textarea className="inp" rows={2} value={f.remarks ?? ''} onChange={set_('remarks')} />
       </Field>
 
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }} disabled={save.isPending}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri" disabled={save.isPending}
            onClick={() => save.mutate()}>{save.isPending ? 'Saving…' : 'Save to the book'}</Btn>
     </Modal>
   );

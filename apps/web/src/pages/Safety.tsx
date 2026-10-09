@@ -117,7 +117,7 @@ export function Safety() {
 
       <Flash msg={msg} />
 
-      <div className="grid g4" style={{ marginBottom: 16 }}>
+      <div className="grid g4 mb-6">
         <Tile label="Live permits" value={live.length} tone={live.length ? 'acc' : undefined}
               sub="Issued and inside their window" />
         <Tile label="Waiting to be issued" value={waiting.length}
@@ -135,10 +135,10 @@ export function Safety() {
 
       {tab === 'permits' ? (
         <Card flush title="Permit register">
-          {!can('permit.request') ? <div style={{ padding: 15 }}>
+          {!can('permit.request') ? <div className="p-6">
               <Empty title="Your role does not handle permits" /></div>
             : permits.isLoading ? <Loading rows={5} />
-            : permits.isError ? <div style={{ padding: 15 }}><ErrorNote error={permits.error} /></div>
+            : permits.isError ? <div className="p-6"><ErrorNote error={permits.error} /></div>
             : rows.length === 0
               ? <Empty title="No permits raised yet"
                        hint="Hot work, an electrical isolation, a job at height — each one starts here." />
@@ -200,26 +200,26 @@ function PermitDetail({ permit, onClose, meId, canIssue, onAct, pending }: {
   return (
     <Modal title={`${p.ref} · ${PERMIT_TYPES[p.type] ?? titleCase(p.type)}`} onClose={onClose}
            actions={<PrintBtn label="Print permit" />}>
-      <dl className="kv" style={{ marginBottom: 16 }}>
+      <dl className="kv mb-6">
         <dt>Status</dt><dd><Chip tone={permitTone(p)} lamp>{titleCase(p.status)}</Chip></dd>
         <dt>Valid</dt><dd>{when(p.valid_from)} → {when(p.valid_to)}</dd>
         <dt>Requested</dt><dd>{p.requested_by_name ?? '—'}</dd>
-        <dt>Issued</dt><dd>{p.issued_by_name ?? <span style={{ color: 'var(--text-3)' }}>not yet issued</span>}</dd>
+        <dt>Issued</dt><dd>{p.issued_by_name ?? <span className="c-3">not yet issued</span>}</dd>
         {p.wo_ref && <><dt>Job</dt><dd className="mono">{p.wo_ref}</dd></>}
       </dl>
 
       {precautions.length > 0 && (
         <>
-          <p className="eyebrow" style={{ marginBottom: 6 }}>Precautions</p>
-          <ul style={{ margin: '0 0 16px', paddingLeft: 18, fontSize: '0.8125rem', color: 'var(--text-2)' }}>
-            {precautions.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}
+          <p className="eyebrow mb-3">Precautions</p>
+          <ul className="mt-0 mb-6 t-ui c-2 pl-7">
+            {precautions.map((c, i) => <li className="mb-2" key={i}>{c}</li>)}
           </ul>
         </>
       )}
 
-      <p className="eyebrow" style={{ marginBottom: 0 }}>Isolation points</p>
+      <p className="eyebrow mb-0">Isolation points</p>
       {p.isolationPoints.length === 0
-        ? <div className="note" style={{ marginTop: 8 }}>No isolations recorded on this permit.</div>
+        ? <div className="note mt-4">No isolations recorded on this permit.</div>
         : (
           <ul className="iso">
             {p.isolationPoints.map((i) => {
@@ -252,12 +252,12 @@ function PermitDetail({ permit, onClose, meId, canIssue, onAct, pending }: {
           </ul>
         )}
 
-      <div style={{ marginTop: 16 }}>
+      <div className="mt-6">
         <Photos entityType="permit" entityId={p.id} canUpload title="Photos of the isolation and the area" />
       </div>
 
       {canIssue && p.status === 'issued' && stillLocked > 0 && (
-        <div className="note warn" style={{ marginTop: 14 }}>
+        <div className="note warn mt-6">
           {stillLocked} point{stillLocked === 1 ? ' is' : 's are'} still locked out. Restore
           {stillLocked === 1 ? ' it' : ' them'} before the permit can be closed.
         </div>
@@ -289,7 +289,7 @@ function PermitDetail({ permit, onClose, meId, canIssue, onAct, pending }: {
         </div>
       )}
       {p.status === 'requested' && !canIssue && (
-        <div className="note" style={{ marginTop: 14 }}>
+        <div className="note mt-6">
           This permit is waiting on a supervisor or the duty engineer to issue it. Work must not
           start until it shows as issued.
         </div>
@@ -320,18 +320,18 @@ function IncidentList({ q, canRead, canReport }: {
               right={<Chip tone={i.severity === 'critical' || i.severity === 'major' ? 'crit'
                                  : i.severity === 'moderate' ? 'warn' : ''} lamp>
                        {titleCase(i.severity)}</Chip>}>
-          <p style={{ margin: 0, fontSize: '0.8438rem', lineHeight: 1.6 }}>{i.description}</p>
+          <p className="m-0 t-ui lh-loose">{i.description}</p>
           {i.immediate_action && (
-            <div className="note" style={{ marginTop: 12 }}>
-              <b>Action taken</b><div style={{ marginTop: 4 }}>{i.immediate_action}</div>
+            <div className="note mt-5">
+              <b>Action taken</b><div className="mt-2">{i.immediate_action}</div>
             </div>
           )}
-          <dl className="kv" style={{ marginTop: 14 }}>
+          <dl className="kv mt-6">
             <dt>Occurred</dt><dd>{when(i.occurred_at)}</dd>
             <dt>Where</dt><dd>{i.location_name ?? '—'}</dd>
             <dt>Reported by</dt><dd>{i.reported_by_name ?? '—'}</dd>
           </dl>
-          <Btn size="sm" icon="cam" style={{ marginTop: 12 }} onClick={() => setShots(i)}>Photos</Btn>
+          <Btn className="mt-5" size="sm" icon="cam" onClick={() => setShots(i)}>Photos</Btn>
         </Card>
       ))}
       {shots && (
@@ -397,7 +397,7 @@ function NewPermit({ onClose, onDone }: { onClose: () => void; onDone: (msg: str
 
   return (
     <Modal title="Request a permit to work" onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
 
       <div className="grid g2">
         <Field label="Permit type">
@@ -432,21 +432,21 @@ function NewPermit({ onClose, onDone }: { onClose: () => void; onDone: (msg: str
                  onChange={(e) => setValidTo(e.target.value)} />
         </Field>
       </div>
-      {badDates && <div className="note warn" style={{ marginBottom: 14 }}>
+      {badDates && <div className="note warn mb-6">
         The permit has to end after it starts.</div>}
 
-      <p className="eyebrow" style={{ marginBottom: 8 }}>Precautions in place</p>
-      <div style={{ display: 'grid', gap: 7, marginBottom: 16 }}>
+      <p className="eyebrow mb-4">Precautions in place</p>
+      <div className="grid gap-3 mb-6">
         {list.map((c) => (
-          <label key={c} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: '0.8125rem' }}>
-            <input type="checkbox" checked={checked.includes(c)} style={{ marginTop: 2 }}
+          <label className="row gap-4 top t-ui" key={c}>
+            <input className="mt-1" type="checkbox" checked={checked.includes(c)}
                    onChange={(e) => setChecked((s) => (e.target.checked ? [...s, c] : s.filter((x) => x !== c)))} />
             <span>{c}</span>
           </label>
         ))}
       </div>
 
-      <p className="eyebrow" style={{ marginBottom: 8 }}>Isolation points</p>
+      <p className="eyebrow mb-4">Isolation points</p>
       {points.map((p, i) => (
         <div className="grid g4" key={i}>
           <Field label={`Point ${i + 1}`}>
@@ -467,7 +467,7 @@ function NewPermit({ onClose, onDone }: { onClose: () => void; onDone: (msg: str
           </Field>
           {/* An isolation point typed in error had to be lived with until the permit was
               abandoned — on the one form where being exact is the whole point. */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
+          <div className="row bottom" style={{ paddingBottom: 2 }}>
             <Btn size="sm" aria-label={`Remove isolation point ${i + 1}`}
                  onClick={() => setPoints((s) => s.filter((_, n) => n !== i))}>Remove</Btn>
           </div>
@@ -521,8 +521,8 @@ function NewIncident({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
 
   return (
     <Modal title="Report an incident" onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
-      <div className="note" style={{ marginBottom: 16 }}>
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
+      <div className="note mb-6">
         Report near misses too. They are the cheapest warning the department will ever get.
       </div>
 

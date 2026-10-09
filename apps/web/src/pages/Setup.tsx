@@ -32,18 +32,18 @@ export function Setup() {
     <div className="center">
       <form className="panel-form" style={{ maxWidth: 460 }}
             onSubmit={(e) => { e.preventDefault(); run.mutate(); }}>
-        <div className="brand" style={{ padding: 0, border: 0, marginBottom: 8 }}>
+        <div className="brand p-0 mb-4 no-border">
           <LogoTile size={34} />
           <span><b>FacilityFlow</b><small>First run</small></span>
         </div>
-        <p style={{ color: 'var(--text-2)', fontSize: '0.8125rem', marginTop: 0, marginBottom: 20 }}>
+        <p className="c-2 t-ui mt-0 mb-7">
           Name the property and create the first administrator. Everything else — shifts, trades,
           cost centres, SLA targets — is reference data you edit afterwards.
         </p>
 
         <div className="fld"><label htmlFor="pn">Property name</label>
           <input id="pn" className="inp" value={f.name} onChange={set('name')} autoFocus /></div>
-        <div className="grid g2" style={{ gap: 12 }}>
+        <div className="grid g2 gap-5">
           <div className="fld"><label htmlFor="sn">Short name</label>
             <input id="sn" className="inp" placeholder="shown in the header"
                    value={f.shortName} onChange={set('shortName')} /></div>
@@ -51,21 +51,21 @@ export function Setup() {
             <input id="ct" className="inp" value={f.city} onChange={set('city')} /></div>
         </div>
 
-        <div style={{ height: 1, background: 'var(--line)', margin: '6px 0 16px' }} />
+        <hr className="rule mt-3 mb-6" />
 
         <div className="fld"><label htmlFor="dn">Administrator name</label>
           <input id="dn" className="inp" value={f.displayName} onChange={set('displayName')} /></div>
-        <div className="grid g2" style={{ gap: 12 }}>
+        <div className="grid g2 gap-5">
           <div className="fld"><label htmlFor="un">Username</label>
             <input id="un" className="inp" autoCapitalize="none" value={f.username} onChange={set('username')} /></div>
           <div className="fld"><label htmlFor="pw">Password</label>
             <input id="pw" className="inp" type="password" value={f.password} onChange={set('password')} /></div>
         </div>
-        <p style={{ marginTop: -4, fontSize: '0.75rem', color: 'var(--text-3)' }}>At least 10 characters.</p>
+        <p className="t-sm c-3" style={{ marginTop: -4 }}>At least 10 characters.</p>
 
-        {err && <div className="note crit" style={{ margin: '12px 0' }} role="alert">{err.message}</div>}
+        {err && <div className="note crit mt-5 mb-5" role="alert">{err.message}</div>}
 
-        <button className="btn pri" style={{ width: '100%', marginTop: 8 }} type="submit"
+        <button className="btn pri full mt-4" type="submit"
                 disabled={!ready || run.isPending}>
           {run.isPending ? 'Configuring…' : 'Create property and administrator'}
         </button>

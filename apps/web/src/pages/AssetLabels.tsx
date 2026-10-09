@@ -104,10 +104,10 @@ export function AssetLabels({ onClose }: { onClose: () => void }) {
               : list.isError ? <ErrorNote error={list.error} />
               : (
                 <>
-                  <p className="eyebrow" style={{ marginBottom: 8 }}>
+                  <p className="eyebrow mb-4">
                     Which assets · {chosen.length} of {assets.length}
                   </p>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                  <div className="row gap-3 mb-5">
                     <button className="btn sm"
                             onClick={() => setPicked(new Set(assets.map((a) => a.id)))}>All</button>
                     <button className="btn sm" onClick={() => setPicked(new Set())}>None</button>
@@ -125,12 +125,12 @@ export function AssetLabels({ onClose }: { onClose: () => void }) {
                 </>
               )}
 
-            <div className="note" style={{ marginBottom: 14 }}>
+            <div className="note mb-6">
               <b>Print on plain A4 and stick them on with clear tape</b>, or use adhesive label
               stock. Scanning a code opens that asset's job history straight away — no searching,
               no typing a tag with oily hands.
               {cleanBase.includes('localhost') && (
-                <div style={{ marginTop: 6, color: 'var(--warn)' }}>
+                <div className="mt-3 c-warn">
                   That address says <b>localhost</b>, which only works on this PC. Change it to the
                   host's network address before printing, or every sticker will fail on a phone.
                 </div>

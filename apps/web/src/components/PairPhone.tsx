@@ -59,7 +59,7 @@ export function PairPhone({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title="Ring my phone" onClose={onClose}>
-      <div className="note" style={{ marginBottom: 14 }}>
+      <div className="note mb-6">
         With the app installed, your phone rings when a job is assigned to you — with the
         screen off and the app closed. Without it, this website can only alert you while it
         is open on the screen.
@@ -74,32 +74,30 @@ export function PairPhone({ onClose }: { onClose: () => void }) {
             <li>Allow notifications, and turn <b>off</b> battery optimisation for it when
                 the app asks — otherwise the phone will stop it running after a few hours.</li>
           </ol>
-          <Btn tone="pri" style={{ width: '100%' }} disabled={make.isPending}
+          <Btn full tone="pri" disabled={make.isPending}
                onClick={() => make.mutate()}>
             {make.isPending ? 'Preparing…' : 'Show my pairing code'}
           </Btn>
         </>
       ) : (
-        <div style={{ textAlign: 'center' }}>
+        <div className="tac">
           {svg && (
-            <div style={{ width: 240, height: 240, margin: '0 auto 12px', background: '#fff',
-                          padding: 4, borderRadius: 10, border: '1px solid var(--line)' }}
+            <div className="p-2" style={{ width: 240, height: 240, margin: '0 auto 12px', background: '#fff', borderRadius: 10, border: '1px solid var(--line)' }}
                  dangerouslySetInnerHTML={{ __html: svg }} />
           )}
-          <p style={{ fontFamily: 'var(--mono)', fontSize: '1.375rem', fontWeight: 600,
-                      letterSpacing: '.12em', margin: '0 0 4px' }}>{code.code}</p>
-          <p className="sub" style={{ margin: '0 0 14px' }}>
+          <p className="f-mono t-title fw-6 mt-0 mb-2 caps">{code.code}</p>
+          <p className="sub mt-0 mb-6">
             Scan it, or type it into the app. It stops working in ten minutes and can only
             be used once.
           </p>
-          <Btn style={{ width: '100%' }} onClick={() => make.mutate()}>Get a fresh code</Btn>
+          <Btn full onClick={() => make.mutate()}>Get a fresh code</Btn>
         </div>
       )}
 
-      {err && <div className="note crit" style={{ marginTop: 12 }} role="alert">{err.message}</div>}
+      {err && <div className="note crit mt-5" role="alert">{err.message}</div>}
 
-      <div style={{ marginTop: 18 }}>
-        <p className="eyebrow" style={{ marginBottom: 8 }}>Phones paired to you</p>
+      <div className="mt-7">
+        <p className="eyebrow mb-4">Phones paired to you</p>
         {list.isLoading ? <Loading rows={2} />
           : devices.length === 0
             ? <Empty title="None yet"

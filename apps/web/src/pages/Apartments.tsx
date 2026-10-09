@@ -89,24 +89,23 @@ export function Apartments() {
       {/* The usual way a register gets doubled: the list imported again with the name
           column as the unit number. Said once, at the top, with the fix one button away. */}
       {duplicates.length > 0 && (
-        <div className="note warn" style={{ marginBottom: 14 }}>
+        <div className="note warn mb-6">
           <b>{duplicates.length} unit{duplicates.length === 1 ? ' looks' : 's look'} like {duplicates.length === 1 ? 'a copy' : 'copies'} of another.</b>
           {' '}Their unit number is another unit's name in the same block — for example
           {' '}<span className="mono">{duplicates[0]!.duplicate.unitNo}</span> beside
           {' '}<span className="mono">{duplicates[0]!.candidates[0]?.unitNo}</span> ({duplicates[0]!.candidates[0]?.name}).
           That happens when a list is imported a second time with the name column picked as the number.
-          <p style={{ margin: '8px 0 0' }}>
+          <p className="mt-4 mb-0">
             <Btn size="sm" tone="pri" onClick={() => setModal('merge')}>Review and merge</Btn>
           </p>
         </div>
       )}
 
       {picking && (
-        <div className="note" style={{ marginBottom: 14, display: 'flex', gap: 8, flexWrap: 'wrap',
-                                       alignItems: 'center', position: 'sticky', top: 8, zIndex: 2 }}>
+        <div className="note mb-6 row gap-4" style={{ position: 'sticky', top: 8, zIndex: 2 }}>
           <b>{picked.size} selected</b>
           <span className="sub">Tap units to select them, or use “Select all” on a block.</span>
-          <span style={{ flex: 1 }} />
+          <span className="fill" />
           <Btn size="sm" disabled={picked.size === 0} onClick={() => setPicked(new Set())}>Clear</Btn>
           <Btn size="sm" disabled={picked.size === 0} onClick={() => setModal('retire')}>
             Retire selected
@@ -117,7 +116,7 @@ export function Apartments() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div className="row gap-4 mb-6">
         <button className={`btn sm ${filter === '' ? 'on' : ''}`} onClick={() => setFilter('')}>
           All · {total}
         </button>
@@ -160,8 +159,7 @@ export function Apartments() {
                 <button key={u.id}
                         className={`unit ${u.status} ${picked.has(u.id) ? 'picked' : ''}`}
                         aria-pressed={picking ? picked.has(u.id) : undefined}
-                        onClick={() => (picking ? toggle([u.id], !picked.has(u.id)) : setOpen(u))}
-                        style={{ width: '100%' }}>
+                        onClick={() => (picking ? toggle([u.id], !picked.has(u.id)) : setOpen(u))}>
                   <b>{u.unit_no}</b>
                   {u.name && u.name !== u.unit_no && <span>{u.name}</span>}
                   <span>{titleCase(u.status)}</span>
@@ -228,12 +226,12 @@ function MergeDuplicates({ duplicates, onClose, onDone }: {
 
   return (
     <Modal title="Merge duplicated units" onClose={onClose} wide>
-      <div className="note" style={{ marginBottom: 12 }}>
+      <div className="note mb-5">
         Each copy on the left is merged into the real unit on the right: any jobs, requests,
         assets or meters attached to the copy are moved onto the real unit, then the copy and
         its place are deleted. {attached > 0 && <b>{attached} attached record{attached === 1 ? '' : 's'} will move.</b>}
       </div>
-      <div className="tw" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+      <div className="tw scrollbox">
         <table className="wide">
           <thead><tr><th>Copy</th><th className="num">Attached</th><th>Merge into</th></tr></thead>
           <tbody>
@@ -256,7 +254,7 @@ function MergeDuplicates({ duplicates, onClose, onDone }: {
           </tbody>
         </table>
       </div>
-      {err && <div className="note crit" style={{ marginTop: 12 }} role="alert">{err.message}</div>}
+      {err && <div className="note crit mt-5" role="alert">{err.message}</div>}
       <div className="modal-foot">
         <Btn onClick={onClose}>Cancel</Btn>
         <Btn tone="pri" disabled={pairs.length === 0 || merge.isPending} onClick={() => merge.mutate()}>
@@ -323,18 +321,18 @@ function BatchAction({ mode, units, onClose, onDone }: {
            onClose={() => (run.isSuccess ? onDone(`${run.data?.message ?? ''}`, true) : onClose())}>
       {!run.isSuccess && (
         <>
-          <p style={{ margin: '0 0 10px', lineHeight: 1.55 }}>
+          <p className="mt-0 mb-5 lh">
             {units.slice(0, 12).map(unitLabel).join(', ')}{units.length > 12 ? ` and ${units.length - 12} more` : ''}.
           </p>
           {mode === 'delete' ? (
-            <div className="note crit" style={{ marginBottom: 12 }}>
+            <div className="note crit mb-5">
               Deleted units and their places are removed for good. Any unit a job, request,
               asset or meter still points at is <b>not</b> deleted — it is listed afterwards,
               and can be retired instead.
               {withJobs.length > 0 && <> {withJobs.length} of these have open jobs and will be refused.</>}
             </div>
           ) : (
-            <div className="note" style={{ marginBottom: 12 }}>
+            <div className="note mb-5">
               Retired units leave every list and picker. Nothing is deleted, and their jobs keep
               reading correctly.
             </div>
@@ -342,14 +340,14 @@ function BatchAction({ mode, units, onClose, onDone }: {
         </>
       )}
       {run.isSuccess && refused.length > 0 && (
-        <div className="note warn" style={{ marginBottom: 12, maxHeight: '45vh', overflowY: 'auto' }}>
+        <div className="note warn mb-5 scrollbox">
           <b>{run.data.message}</b>
-          <ul style={{ margin: '8px 0 0 18px', padding: 0 }}>
-            {refused.map((m) => <li key={m} style={{ marginBottom: 4 }}>{m}</li>)}
+          <ul className="p-0 mt-4 ml-7 mb-0">
+            {refused.map((m) => <li className="mb-2" key={m}>{m}</li>)}
           </ul>
         </div>
       )}
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
       <div className="modal-foot">
         {run.isSuccess ? (
           <Btn tone="pri" onClick={() => onDone(run.data.message, true)}>Close</Btn>
@@ -388,9 +386,9 @@ function UnitDetail({ unit, onClose, onDone }: {
 
   return (
     <Modal title={`Unit ${unit.unit_no}`} onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
 
-      <dl className="kv" style={{ marginBottom: 16 }}>
+      <dl className="kv mb-6">
         <dt>Status</dt><dd><Chip tone={TONE[unit.status] ?? ''} lamp>{titleCase(unit.status)}</Chip></dd>
         <dt>Block</dt><dd>{unit.block ?? '—'}{unit.floor ? ` · floor ${unit.floor}` : ''}</dd>
         <dt>Type</dt><dd>{unit.unit_type ?? '—'}</dd>
@@ -479,7 +477,7 @@ function AddUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: stri
 
   return (
     <Modal title="Add units" onClose={onClose} wide>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
       <div className="tw">
         <table className="wide">
           <thead><tr><th style={{ width: '24%' }}>Unit number</th><th>Block</th><th>Floor</th>
@@ -521,10 +519,10 @@ function AddUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: stri
           </tbody>
         </table>
       </div>
-      <Btn size="sm" icon="plus" style={{ marginTop: 10 }}
+      <Btn className="mt-5" size="sm" icon="plus"
            onClick={() => setRows((s) => [...s, { ...BLANK }])}>Another row</Btn>
 
-      <div className="note" style={{ marginTop: 14 }}>
+      <div className="note mt-6">
         Each unit also becomes a location, so jobs can be raised against it straight away. A unit
         number that already exists is skipped rather than duplicated.
       </div>
@@ -655,7 +653,7 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
             <input className="inp" type="file" accept=".csv,.txt,.json,text/csv,application/json"
                    onChange={(e) => void onFile(e.target.files?.[0])} />
           </Field>
-          <div className="note" style={{ marginTop: 14 }}>
+          <div className="note mt-6">
             <b>Column order does not matter.</b> The system reads the header row and works
             out which column is which — you get to correct it before anything is written.
             Columns it does not need are listed and left alone.
@@ -663,21 +661,21 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
         </>
       ) : (
         <>
-          <p className="eyebrow" style={{ marginBottom: 10 }}>
+          <p className="eyebrow mb-5">
             {fileName || 'pasted list'} · {read?.rowsRead ?? '…'} rows
-            <button className="btn sm" style={{ marginLeft: 10 }}
+            <button className="btn sm ml-5"
                     onClick={() => { setText(''); setRead(null); setFileName(''); setErr(null); }}>
               Choose another file
             </button>
           </p>
 
-          {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err}</div>}
+          {err && <div className="note crit mb-5" role="alert">{err}</div>}
 
           {look.isPending && <Loading rows={4} />}
 
           {read && (
             <>
-              <p className="eyebrow" style={{ marginBottom: 8 }}>Which column is which</p>
+              <p className="eyebrow mb-4">Which column is which</p>
               <div className="mapgrid">
                 {read.fields.map((f) => (
                   <label key={f} className={`maprow ${read.missing.includes(f) ? 'bad' : ''}`}>
@@ -700,25 +698,25 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
               </div>
 
               {read.missing.length > 0 && (
-                <div className="note crit" style={{ marginTop: 12 }}>
+                <div className="note crit mt-5">
                   Tell it which column holds the <b>unit number</b> before going on.
                 </div>
               )}
               {read.mappingProblem && (
-                <div className="note crit" style={{ marginTop: 12 }} role="alert">
+                <div className="note crit mt-5" role="alert">
                   {read.mappingProblem}
                 </div>
               )}
 
               {read.ignored.length > 0 && (
-                <p style={{ fontSize: '0.8125rem', color: 'var(--text-3)', marginTop: 12 }}>
+                <p className="t-ui c-3 mt-5">
                   Left alone: {read.ignored.join(', ')}. Nothing is read from these.
                 </p>
               )}
 
               {read.missing.length === 0 && (
                 <>
-                  <div className="grid g3" style={{ margin: '16px 0 12px' }}>
+                  <div className="grid g3 mt-6 mb-5">
                     <Tile label="Will be added" value={read.wouldCreate}
                           tone={read.wouldCreate ? 'ok' : 'warn'}
                           sub={`of ${read.rowsRead} rows`} />
@@ -733,25 +731,25 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
                   {(read.rejected.length > 0 || read.alreadyHere.length > 0
                     || read.repeatedInFile.length > 0) && (
                     <>
-                      <button className="btn sm" style={{ marginBottom: 10 }}
+                      <button className="btn sm mb-5"
                               onClick={() => setShowSkipped((v) => !v)}>
                         {showSkipped ? 'Hide' : 'Show'} what is being skipped
                       </button>
                       {showSkipped && (
-                        <div className="note warn" style={{ marginBottom: 12 }}>
+                        <div className="note warn mb-5">
                           {read.rejected.length > 0 && (
-                            <p style={{ margin: '0 0 6px' }}>
+                            <p className="mt-0 mb-3">
                               <b>Could not read:</b>{' '}
                               {read.rejected.map((r) => `line ${r.line} (${r.reason})`).join(', ')}
                             </p>
                           )}
                           {read.alreadyHere.length > 0 && (
-                            <p style={{ margin: '0 0 6px' }}>
+                            <p className="mt-0 mb-3">
                               <b>Already on the system:</b> {read.alreadyHere.join(', ')}
                             </p>
                           )}
                           {read.repeatedInFile.length > 0 && (
-                            <p style={{ margin: 0 }}>
+                            <p className="m-0">
                               <b>Repeated in the file:</b> {read.repeatedInFile.join(', ')}
                             </p>
                           )}
@@ -760,7 +758,7 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
                     </>
                   )}
 
-                  <p className="eyebrow" style={{ marginBottom: 8 }}>The first few, as they will land</p>
+                  <p className="eyebrow mb-4">The first few, as they will land</p>
                   <div className="tw">
                     <table className="wide">
                       <thead><tr><th>Block</th><th>Unit</th><th>Name</th>
@@ -780,7 +778,7 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
                     </table>
                   </div>
 
-                  <div className="note" style={{ marginTop: 14 }}>
+                  <div className="note mt-6">
                     Each unit also becomes a place, so a job can be raised against it straight
                     away. A unit already on the system is skipped rather than duplicated —
                     and a unit number that appears in more than one block is kept in each,
