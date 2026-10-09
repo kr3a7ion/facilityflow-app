@@ -1,27 +1,79 @@
-/* FacilityFlow design system — carried over from the approved prototype.
-   Tokens first; components only ever reference tokens, never literals, so both
-   themes resolve as a set. */
+/* FacilityFlow design tokens.
+ *
+ * Everything visual resolves from this block. Components reference tokens and never
+ * literals, so the two themes resolve as a set and a change lands in one place.
+ *
+ * There are three scales — type, space, radius — and they are deliberately short. The
+ * file used to carry 27 distinct font sizes, 25 spacings and 16 radii, which is not a
+ * system; it is 68 independent decisions that drifted. Six type steps, eight space
+ * steps and four radii cover every screen in the product, and the same names exist as
+ * Figma Variables, so a design and the build cannot disagree about what "small" means.
+ *
+ * Contrast: every text token clears WCAG AA (4.5:1) against every surface it is placed
+ * on — panel, panel-2, panel-3 and bg — in both themes. That is checked, not assumed:
+ * see scripts/contrast.mjs, which the test suite runs.
+ */
+
+/* ---- scales: identical in both themes, so declared once ---- */
 :root{
-  --bg:#EFF2F6; --panel:#FFFFFF; --panel-2:#F7F9FC; --panel-3:#E9EEF5;
-  --line:#DCE3EC; --line-2:#C2CDDA;
-  --text:#0C141D; --text-2:#4C5A6B; --text-3:#74839A;
-  --accent:#2563C9; --accent-hi:#1B4EA6; --accent-soft:#E3EBFA; --on-accent:#FFFFFF;
-  --ok:#1F7A4C; --warn:#C08A00; --crit:#BE3226; --idle:#6B7C79;
-  --ok-bg:#E2F2E9; --warn-bg:#FBF0D6; --crit-bg:#FBE3E0; --idle-bg:#EAEEED;
-  --shadow:0 1px 2px rgba(12,20,29,.05), 0 10px 28px -22px rgba(12,20,29,.55);
   --ui:"Archivo","Segoe UI",system-ui,sans-serif;
   --cond:"Saira Condensed","Arial Narrow",var(--ui);
   --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
-  --r:6px; --side-w:236px; --top-h:56px;
+
+  /* Type. Named by the job, not by number — var(--fs-ui) says where it belongs in a
+     way var(--fs-2) never could. Each step is a role; nothing sits between them. */
+  --fs-micro:0.625rem;      /* 10px — letterspaced uppercase labels: eyebrows, table heads,
+                                      field labels, mono tags. Never sentences. */
+  --fs-sm:0.75rem;          /* 12px — meta under a title, chips, captions, small buttons */
+  --fs-ui:0.8125rem;        /* 13px — dense chrome: tables, nav, notes, secondary text */
+  --fs-body:0.875rem;       /* 14px — the default. Anything a person reads as prose. */
+  --fs-lede:1.0625rem;      /* 17px — the subject of the screen: unit number, property,
+                                      month, modal heading. Also phone inputs, where
+                                      anything under 16px makes iOS zoom the page. */
+  --fs-title:1.5rem;        /* 24px — one per screen */
+  --fs-readout:2.375rem;    /* 38px — a number meant to be read across a room */
+  --fs-readout-lg:3.25rem;  /* 52px — the generator load, and nothing else */
+
+  /* Space. 2px is a hairline inset, 32px separates sections. Bare 1px values are left
+     alone on purpose: those are optical alignment against a border, not spacing. */
+  --s-1:2px; --s-2:4px; --s-3:6px; --s-4:8px;
+  --s-5:12px; --s-6:16px; --s-7:24px; --s-8:32px;
+
+  /* Radius. --r is the default and the one most things want. */
+  --r-sm:3px; --r:6px; --r-lg:10px; --r-xl:14px; --r-pill:999px;
+
+  /* Frame */
+  --side-w:236px;
+  --top-h:56px;
+  --tab-h:56px;              /* the phone tab bar, fixed to the bottom */
+  --view-foot:var(--s-8);    /* clearance under a page so the last row is reachable */
+}
+
+/* ---- light ---- */
+:root{
+  --bg:#EFF2F6; --panel:#FFFFFF; --panel-2:#F7F9FC; --panel-3:#E9EEF5;
+  --line:#DCE3EC; --line-2:#C2CDDA;
+  /* text-3 was #74839A: 3.85:1 on white and 3.30:1 on panel-3, which is a fail at the
+     58 places it is used, most of them the small uppercase labels that name things.
+     Darkened to clear 4.5:1 on the worst surface it lands on. */
+  --text:#0C141D; --text-2:#4C5A6B; --text-3:#5C6A80;
+  --accent:#2563C9; --accent-hi:#1B4EA6; --accent-soft:#E3EBFA; --on-accent:#FFFFFF;
+  /* warn was #C08A00 — 3.05:1, the worst token in the file, and it carries the word
+     "overdue". idle was #6B7C79 at 4.39:1. Both now clear AA on every surface. */
+  --ok:#1F7A4C; --warn:#8A6400; --crit:#BE3226; --idle:#5E6D6A;
+  --ok-bg:#E2F2E9; --warn-bg:#FBF0D6; --crit-bg:#FBE3E0; --idle-bg:#EAEEED;
+  --shadow:0 1px 2px rgba(12,20,29,.05), 0 10px 28px -22px rgba(12,20,29,.55);
   color-scheme:light;
 }
+
+/* ---- dark: one declaration, applied by preference or by the explicit switch ---- */
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
     --bg:#080C11; --panel:#0F151C; --panel-2:#151D26; --panel-3:#1C2632;
     --line:#212C38; --line-2:#2E3B4A;
-    --text:#E8EEF5; --text-2:#93A2B4; --text-3:#64748B;
+    --text:#E8EEF5; --text-2:#93A2B4; --text-3:#7E8DA2;
     --accent:#4C93E8; --accent-hi:#7FB4F2; --accent-soft:#10233A; --on-accent:#05101C;
-    --ok:#34C48F; --warn:#F7CE3E; --crit:#F0655C; --idle:#7C8C99;
+    --ok:#34C48F; --warn:#F7CE3E; --crit:#F0655C; --idle:#84929E;
     --ok-bg:#0D2A22; --warn-bg:#2C2510; --crit-bg:#2E1614; --idle-bg:#18202A;
     --shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 32px -24px rgba(0,0,0,.9);
     color-scheme:dark;
@@ -30,9 +82,9 @@
 :root[data-theme="dark"]{
   --bg:#080C11; --panel:#0F151C; --panel-2:#151D26; --panel-3:#1C2632;
   --line:#212C38; --line-2:#2E3B4A;
-  --text:#E8EEF5; --text-2:#93A2B4; --text-3:#64748B;
+  --text:#E8EEF5; --text-2:#93A2B4; --text-3:#7E8DA2;
   --accent:#4C93E8; --accent-hi:#7FB4F2; --accent-soft:#10233A; --on-accent:#05101C;
-  --ok:#34C48F; --warn:#F7CE3E; --crit:#F0655C; --idle:#7C8C99;
+  --ok:#34C48F; --warn:#F7CE3E; --crit:#F0655C; --idle:#84929E;
   --ok-bg:#0D2A22; --warn-bg:#2C2510; --crit-bg:#2E1614; --idle-bg:#18202A;
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 32px -24px rgba(0,0,0,.9);
   color-scheme:dark;
@@ -40,61 +92,74 @@
 
 *{box-sizing:border-box}
 html,body,#root{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);font-size:0.875rem;line-height:1.5;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--ui);font-size:var(--fs-body);line-height:1.5;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
 button{background:none;border:0;cursor:pointer}
 a{color:var(--accent-hi);text-underline-offset:3px}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm)}
 ::selection{background:var(--accent-soft)}
 
 /* ---------------- shell ---------------- */
 .app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100%}
 .side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
-.brand{display:flex;align-items:center;gap:10px;padding:18px 18px 16px;border-bottom:1px solid var(--line)}
-.brand .mark{width:30px;height:30px;border-radius:7px;background:var(--accent);display:grid;place-items:center;flex:none}
+.brand{display:flex;align-items:center;gap:var(--s-5);padding:var(--s-7) var(--s-7) var(--s-6);border-bottom:1px solid var(--line)}
+.brand .mark{width:30px;height:30px;border-radius:var(--r);background:var(--accent);display:grid;place-items:center;flex:none}
 .brand .mark svg{width:17px;height:17px;display:block}
-.brand b{font-family:var(--cond);font-size:1.3125rem;font-weight:700;letter-spacing:.02em;text-transform:uppercase;line-height:1;display:block}
-.brand small{display:block;font-family:var(--mono);font-size:0.5625rem;letter-spacing:.16em;color:var(--text-3);text-transform:uppercase;margin-top:2px}
-.nav{padding:14px 10px;overflow-y:auto;flex:1}
-.nav-lab{font-family:var(--mono);font-size:0.5938rem;letter-spacing:.15em;text-transform:uppercase;color:var(--text-3);padding:12px 10px 6px}
-.nav a{display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border-radius:var(--r);color:var(--text-2);text-align:left;font-size:0.8438rem;font-weight:500;text-decoration:none;transition:background .12s,color .12s}
+.brand b{font-family:var(--cond);font-size:var(--fs-title);font-weight:700;letter-spacing:.02em;text-transform:uppercase;line-height:1;display:block}
+.brand small{display:block;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.16em;color:var(--text-3);text-transform:uppercase;margin-top:var(--s-1)}
+.nav{padding:var(--s-6) var(--s-5);overflow-y:auto;flex:1}
+.nav-lab{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.15em;text-transform:uppercase;color:var(--text-3);padding:var(--s-5) var(--s-5) var(--s-3)}
+.nav a{display:flex;align-items:center;gap:var(--s-5);width:100%;padding:var(--s-4) var(--s-5);border-radius:var(--r);color:var(--text-2);text-align:left;font-size:var(--fs-ui);font-weight:500;text-decoration:none;transition:background .12s,color .12s}
 .nav a svg{width:16px;height:16px;flex:none;opacity:.85}
 .nav a:hover{background:var(--panel-3);color:var(--text)}
 .nav a.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
-.nav a .cnt{margin-left:auto;font-family:var(--mono);font-size:0.6562rem;background:var(--crit-bg);color:var(--crit);border:1px solid color-mix(in srgb,var(--crit) 40%,transparent);padding:0 6px;border-radius:20px}
-.who{border-top:1px solid var(--line);padding:11px 12px;display:flex;align-items:center;gap:7px}
-/* Two controls now live here beside a name, so the name truncates rather than wrapping
-   the whole block into three lines. The full name is in the tooltip. */
-.who>span:nth-child(2){flex:1;min-width:0;overflow:hidden}
-.av{width:30px;height:30px;border-radius:50%;background:var(--panel-3);border:1px solid var(--line-2);display:grid;place-items:center;font-family:var(--cond);font-weight:700;font-size:0.8125rem;color:var(--text-2);flex:none}
+.nav a .cnt{margin-left:auto;font-family:var(--mono);font-size:var(--fs-sm);background:var(--crit-bg);color:var(--crit);border:1px solid color-mix(in srgb,var(--crit) 40%,transparent);padding:0 var(--s-3);border-radius:var(--r-xl)}
+/* Scoped to the sidebar: .who is also the name cell in the Ring dialog, which is a
+   flex row and was quietly inheriting this block before. */
+.side .who{border-top:1px solid var(--line);padding:var(--s-5);display:grid;gap:var(--s-4)}
+.whoid{display:flex;align-items:center;gap:var(--s-4);min-width:0}
+/* The name gets the whole row and still truncates rather than wrapping the block into
+   three lines. The full name is in the tooltip. */
+.whoid .fill{overflow:hidden}
+/* Sign out sits apart from the three settings, so it is not the one you hit by feel. */
+.whoacts{display:flex;align-items:center;gap:var(--s-2)}
+.av{width:30px;height:30px;border-radius:50%;background:var(--panel-3);border:1px solid var(--line-2);display:grid;place-items:center;font-family:var(--cond);font-weight:700;font-size:var(--fs-ui);color:var(--text-2);flex:none}
 /* Two lines, not an ellipsis. "Gideon Okanl..." beside "SYSTEM ADMINI..." told the
    person neither who they are signed in as nor what they are allowed to do. */
-.who .nm{display:block;font-size:0.7812rem;font-weight:600;line-height:1.2}
-.who .rl{display:block;font-family:var(--mono);font-size:0.5938rem;letter-spacing:.08em;
-          text-transform:uppercase;color:var(--text-3);line-height:1.35;margin-top:2px}
-.who .icobtn{width:26px;height:26px;flex:none}
+.side .who .nm{display:block;font-size:var(--fs-ui);font-weight:600;line-height:1.2}
+.side .who .rl{display:block;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.08em;
+          text-transform:uppercase;color:var(--text-3);line-height:1.35;margin-top:var(--s-1)}
+/* Desktop-only strip, so these are mouse targets rather than thumb targets — but 26px
+   was under the 24px floor once the 1px border is counted, and tight either way. */
+.whoacts .icobtn{width:34px;height:34px;flex:none}
 .main{min-width:0;display:flex;flex-direction:column}
 
-.top{display:flex;align-items:center;gap:14px;padding:0 22px;height:var(--top-h);border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20}
-.top .prop{font-family:var(--cond);font-size:1.0625rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+.top{display:flex;align-items:center;gap:var(--s-6);padding:0 var(--s-7);height:var(--top-h);border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20}
+/* The property name is the only thing in this bar that can give, so it is the only
+   thing allowed to. Everything else is a control with a hit area worth protecting. */
+.top .prop{font-family:var(--cond);font-size:var(--fs-lede);font-weight:600;text-transform:uppercase;
+           letter-spacing:.03em;white-space:nowrap;min-width:0;flex:0 1 auto;
+           overflow:hidden;text-overflow:ellipsis}
 .top .sep{width:1px;height:20px;background:var(--line)}
-.search{flex:1;min-width:0;max-width:340px;display:flex;align-items:center;gap:8px;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:6px 10px;color:var(--text-3)}
-.search input{flex:1;min-width:0;background:none;border:0;font-size:0.8125rem;outline:none}
+.search{flex:1;min-width:0;max-width:340px;display:flex;align-items:center;gap:var(--s-4);background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:var(--s-3) var(--s-5);color:var(--text-3)}
+.search input{flex:1;min-width:0;min-height:30px;background:none;border:0;font-size:var(--fs-ui);outline:none}
 .top .spacer{flex:1}
-.clock{font-family:var(--mono);font-size:0.7188rem;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
-.icobtn{width:32px;height:32px;border-radius:var(--r);display:grid;place-items:center;color:var(--text-2);border:1px solid transparent;position:relative}
+.clock{font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+/* flex:none matters: in the top bar these were being shrunk to 43.64px on a phone,
+   which is a 44px target that is not one. The property name gives instead. */
+.icobtn{width:32px;height:32px;flex:none;border-radius:var(--r);display:grid;place-items:center;color:var(--text-2);border:1px solid transparent;position:relative}
 .icobtn:hover{background:var(--panel-3);color:var(--text)}
 .icobtn svg{width:16px;height:16px}
 .icobtn .dot{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--crit)}
 
 /* ---------------- status strip ---------------- */
 .mimic{display:flex;background:var(--panel-2);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin}
-.mcell{padding:9px 18px;border-right:1px solid var(--line);min-width:max-content;display:flex;flex-direction:column;gap:2px}
+.mcell{padding:var(--s-4) var(--s-7);border-right:1px solid var(--line);min-width:max-content;display:flex;flex-direction:column;gap:var(--s-1)}
 .mcell:last-child{border-right:0}
-.mlab{font-family:var(--mono);font-size:0.5625rem;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3)}
-.mval{display:flex;align-items:center;gap:7px;font-family:var(--cond);font-size:1rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;line-height:1.1}
-.mval em{font-style:normal;font-size:0.6875rem;color:var(--text-3)}
-.msub{font-family:var(--mono);font-size:0.625rem;color:var(--text-3);font-variant-numeric:tabular-nums}
+.mlab{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.14em;text-transform:uppercase;color:var(--text-3)}
+.mval{display:flex;align-items:center;gap:var(--s-3);font-family:var(--cond);font-size:var(--fs-lede);font-weight:600;letter-spacing:.03em;text-transform:uppercase;line-height:1.1}
+.mval em{font-style:normal;font-size:var(--fs-sm);color:var(--text-3)}
+.msub{font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-3);font-variant-numeric:tabular-nums}
 .lamp{width:8px;height:8px;border-radius:50%;flex:none;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 18%,transparent)}
 .lamp.ok{background:var(--ok);color:var(--ok)}
 .lamp.warn{background:var(--warn);color:var(--warn)}
@@ -102,36 +167,57 @@ a{color:var(--accent-hi);text-underline-offset:3px}
 .lamp.idle{background:var(--idle);color:var(--idle)}
 .lamp.live{animation:pulse 2.4s ease-in-out infinite}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 3px color-mix(in srgb,currentColor 20%,transparent)}50%{box-shadow:0 0 0 6px color-mix(in srgb,currentColor 4%,transparent)}}
-.minibar{width:74px;height:7px;border-radius:2px;background:var(--panel-3);border:1px solid var(--line);overflow:hidden}
+.minibar{width:74px;height:7px;border-radius:var(--r-sm);background:var(--panel-3);border:1px solid var(--line);overflow:hidden}
 .minibar i{display:block;height:100%;background:var(--ok)}
 .minibar i.warn{background:var(--warn)} .minibar i.crit{background:var(--crit)}
 
 /* ---------------- page ---------------- */
-.view{padding:22px 22px 60px}
-.vhead{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;margin-bottom:20px}
-.vhead h1{font-family:var(--cond);font-size:1.875rem;font-weight:700;text-transform:uppercase;letter-spacing:.015em;margin:0;line-height:1}
-.vhead p{margin:5px 0 0;color:var(--text-2);font-size:0.8438rem;max-width:62ch}
-.vhead .acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-.eyebrow{font-family:var(--mono);font-size:0.5938rem;letter-spacing:.16em;text-transform:uppercase;color:var(--text-3);margin:0 0 6px}
+.view{padding:var(--s-7) var(--s-7) var(--view-foot)}
+.vhead{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--s-6);margin-bottom:var(--s-7)}
+.vhead h1{font-family:var(--cond);font-size:var(--fs-title);font-weight:700;text-transform:uppercase;letter-spacing:.015em;margin:0;line-height:1}
+.vhead p{margin:var(--s-2) 0 0;color:var(--text-2);font-size:var(--fs-ui);max-width:62ch}
+.vhead .acts{margin-left:auto;display:flex;gap:var(--s-4);flex-wrap:wrap}
+.eyebrow{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.16em;text-transform:uppercase;color:var(--text-3);margin:0 0 var(--s-3)}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none;padding:7px 13px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--panel);font-size:0.8125rem;font-weight:500;white-space:nowrap;transition:background .12s,border-color .12s;min-height:36px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--s-3);text-decoration:none;padding:var(--s-3) var(--s-5);border-radius:var(--r);border:1px solid var(--line-2);background:var(--panel);font-size:var(--fs-ui);font-weight:500;white-space:nowrap;transition:background .12s,border-color .12s;min-height:36px}
 .btn:hover:not(:disabled){background:var(--panel-3);border-color:var(--text-3)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn svg{width:14px;height:14px}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
 .btn.pri:hover:not(:disabled){background:var(--accent-hi);border-color:var(--accent-hi)}
 .btn.danger{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 45%,transparent)}
-.btn.sm{padding:5px 10px;font-size:0.75rem;min-height:30px}
+.btn.sm{padding:var(--s-2) var(--s-5);font-size:var(--fs-sm);min-height:30px}
 .btn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+/* The two widths a button is ever asked for by hand: the full width of a modal foot or
+   a phone form, and an equal share of a row of two or three. */
+.btn.full{width:100%}
+.btn.grow{flex:1}
 
-.chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:0.625rem;letter-spacing:.07em;text-transform:uppercase;padding:2.5px 7px;border-radius:3px;border:1px solid var(--line-2);color:var(--text-2);background:var(--panel-2);white-space:nowrap}
+/*
+ * A number meant to be read from across a plant room, with its unit in the smaller
+ * grey after it.
+ *
+ * Four screens built this by hand with four different font sizes. The <u> carries the
+ * unit — not an underline, just the shortest element that reads as "and this bit is
+ * the unit" — and the three places that already did it this way (.tile, .gauge,
+ * .bigload) keep their own sizes.
+ */
+.readout{font-family:var(--cond);font-weight:700;line-height:1;font-size:var(--fs-readout);
+         font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.readout.lg{font-size:var(--fs-readout-lg)}
+.readout.sm{font-size:var(--fs-title)}
+.readout u{text-decoration:none;font-family:var(--ui);font-weight:400;
+           font-size:var(--fs-lede);color:var(--text-3);margin-left:var(--s-2)}
+.readout.ok{color:var(--ok)}.readout.warn{color:var(--warn)}.readout.crit{color:var(--crit)}
+
+.chip{display:inline-flex;align-items:center;gap:var(--s-2);font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.07em;text-transform:uppercase;padding:2.5px var(--s-3);border-radius:var(--r-sm);border:1px solid var(--line-2);color:var(--text-2);background:var(--panel-2);white-space:nowrap}
 .chip .lamp{width:6px;height:6px;box-shadow:none}
 .chip.ok{color:var(--ok);background:var(--ok-bg);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
 .chip.warn{color:var(--warn);background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
 .chip.crit{color:var(--crit);background:var(--crit-bg);border-color:color-mix(in srgb,var(--crit) 40%,transparent)}
 .chip.acc{color:var(--accent);background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
 
-.grid{display:grid;gap:14px}
+.grid{display:grid;gap:var(--s-6)}
 .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
 .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -139,95 +225,261 @@ a{color:var(--accent-hi);text-underline-offset:3px}
 @media (max-width:1180px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g21,.g3{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:760px){.g4,.g2{grid-template-columns:minmax(0,1fr)}}
 
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.card>header{display:flex;align-items:center;gap:10px;padding:11px 15px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.card>header h2{font-family:var(--cond);font-size:0.9375rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:0}
-.card>header .r{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.card .body{padding:15px}
+/* ---------------- layout primitives ----------------
+ *
+ * A row of controls, a column of blocks, and a thing that takes the slack. The pages
+ * were writing these out by hand — `style={{display:'flex',gap:8,flexWrap:'wrap'}}`
+ * appeared 32 times with five different gaps — so here they are once, and the Row and
+ * Stack components in Bits.tsx are thin wrappers over them.
+ *
+ * Wrapping is the default on purpose. A row that cannot wrap is a row that runs off a
+ * 390px screen, which is how this app's top bar came to overflow by 25px.
+ */
+.row{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s-4)}
+.row.top{align-items:flex-start}
+.row.base{align-items:baseline}
+.row.nowrap{flex-wrap:nowrap}
+.row.end{justify-content:flex-end}
+.row.between{justify-content:space-between}
+.col{display:flex;flex-direction:column;align-items:stretch;gap:var(--s-4)}
+/* Takes the remaining width, and — the part that is always forgotten — is allowed to
+   be narrower than its content, so long text truncates instead of pushing. */
+.fill{flex:1;min-width:0}
+.spacer{flex:1}
+.w-full{width:100%}
+/* White space, both ways. A table cell inherits nowrap and a long fault description
+   needs out of it; a chip in a wrapping row needs into it. */
+.nw{white-space:nowrap}
+.wrap{white-space:normal}
+.tal{text-align:left}.tac{text-align:center}.tar{text-align:right}
+
+/*
+ * Flow spacing.
+ *
+ * 288 hand-written marginTop/marginBottom values existed because a card body and a
+ * modal body are both a stack of blocks with one rhythm between them, and nothing said
+ * so. This says so. A block that wants a different gap reaches for one step of the
+ * margin utilities below.
+ */
+.card>.body:not(.flush)>*+*,
+.modal-card>.body>*+*{margin-top:var(--s-5)}
+/* Rows and grids manage their own children; the rhythm applies between them, not
+   inside them. */
+.row>*+*,.col>*+*,.grid>*+*{margin-top:0}
+
+/*
+ * The one escape hatch, and a closed one: gap and margin may only come from the eight
+ * steps of the space scale. scripts/design-tokens.mjs fails the build on a raw px
+ * value, so "just 13px here" is not available any more — which is the point.
+ */
+.gap-1{gap:var(--s-1)}.gap-2{gap:var(--s-2)}.gap-3{gap:var(--s-3)}.gap-4{gap:var(--s-4)}
+.gap-5{gap:var(--s-5)}.gap-6{gap:var(--s-6)}.gap-7{gap:var(--s-7)}.gap-8{gap:var(--s-8)}
+.mt-0{margin-top:0}
+.mt-1{margin-top:var(--s-1)}.mt-2{margin-top:var(--s-2)}.mt-3{margin-top:var(--s-3)}
+.mt-4{margin-top:var(--s-4)}.mt-5{margin-top:var(--s-5)}.mt-6{margin-top:var(--s-6)}
+.mt-7{margin-top:var(--s-7)}.mt-8{margin-top:var(--s-8)}
+.mb-0{margin-bottom:0}
+.mb-1{margin-bottom:var(--s-1)}.mb-2{margin-bottom:var(--s-2)}.mb-3{margin-bottom:var(--s-3)}
+.mb-4{margin-bottom:var(--s-4)}.mb-5{margin-bottom:var(--s-5)}.mb-6{margin-bottom:var(--s-6)}
+.mb-7{margin-bottom:var(--s-7)}.mb-8{margin-bottom:var(--s-8)}
+.m-0{margin:0}
+.m-1{margin:var(--s-1)}.m-2{margin:var(--s-2)}.m-3{margin:var(--s-3)}.m-4{margin:var(--s-4)}
+.m-5{margin:var(--s-5)}.m-6{margin:var(--s-6)}.m-7{margin:var(--s-7)}.m-8{margin:var(--s-8)}
+.ml-auto{margin-left:auto}
+.p-0{padding:0}
+.p-1{padding:var(--s-1)}.p-2{padding:var(--s-2)}.p-3{padding:var(--s-3)}.p-4{padding:var(--s-4)}
+.p-5{padding:var(--s-5)}.p-6{padding:var(--s-6)}.p-7{padding:var(--s-7)}.p-8{padding:var(--s-8)}
+.px-0{padding-left:0;padding-right:0}
+.px-1{padding-left:var(--s-1);padding-right:var(--s-1)}
+.px-2{padding-left:var(--s-2);padding-right:var(--s-2)}
+.px-3{padding-left:var(--s-3);padding-right:var(--s-3)}
+.px-4{padding-left:var(--s-4);padding-right:var(--s-4)}
+.px-5{padding-left:var(--s-5);padding-right:var(--s-5)}
+.px-6{padding-left:var(--s-6);padding-right:var(--s-6)}
+.px-7{padding-left:var(--s-7);padding-right:var(--s-7)}
+.px-8{padding-left:var(--s-8);padding-right:var(--s-8)}
+.py-0{padding-top:0;padding-bottom:0}
+.py-1{padding-top:var(--s-1);padding-bottom:var(--s-1)}
+.py-2{padding-top:var(--s-2);padding-bottom:var(--s-2)}
+.py-3{padding-top:var(--s-3);padding-bottom:var(--s-3)}
+.py-4{padding-top:var(--s-4);padding-bottom:var(--s-4)}
+.py-5{padding-top:var(--s-5);padding-bottom:var(--s-5)}
+.py-6{padding-top:var(--s-6);padding-bottom:var(--s-6)}
+.py-7{padding-top:var(--s-7);padding-bottom:var(--s-7)}
+.py-8{padding-top:var(--s-8);padding-bottom:var(--s-8)}
+
+/*
+ * Type, colour and weight, said as classes.
+ *
+ * 47 inline `fontSize` values and a scatter of inline `color: 'var(--text-3)'` were the
+ * other half of the drift: the stylesheet had six type steps while the markup was
+ * quietly adding 15 more. These are the same six steps and the same colour tokens, so
+ * markup and stylesheet can no longer disagree.
+ */
+.t-micro{font-size:var(--fs-micro)}
+.t-sm{font-size:var(--fs-sm)}
+.t-ui{font-size:var(--fs-ui)}
+.t-body{font-size:var(--fs-body)}
+.t-lede{font-size:var(--fs-lede)}
+.t-title{font-size:var(--fs-title)}
+.t-readout{font-size:var(--fs-readout)}
+.t-readout-lg{font-size:var(--fs-readout-lg)}
+.f-ui{font-family:var(--ui)}.f-cond{font-family:var(--cond)}.f-mono{font-family:var(--mono)}
+.fw-4{font-weight:400}.fw-5{font-weight:500}.fw-6{font-weight:600}.fw-7{font-weight:700}
+.c-1{color:var(--text)}.c-2{color:var(--text-2)}.c-3{color:var(--text-3)}
+.c-ok{color:var(--ok)}.c-warn{color:var(--warn)}.c-crit{color:var(--crit)}
+.c-idle{color:var(--idle)}.c-acc{color:var(--accent)}.c-on-acc{color:var(--on-accent)}
+/* Four line-heights: a single line, a tight title, prose, and a paragraph somebody has
+   to read standing up. */
+.lh-1{line-height:1}.lh-tight{line-height:1.3}.lh{line-height:1.5}.lh-loose{line-height:1.6}
+.hidden{display:none}.block{display:block}.inline-block{display:inline-block}
+.pl-0{padding-left:0}.pl-5{padding-left:var(--s-5)}.pl-6{padding-left:var(--s-6)}
+.pl-7{padding-left:var(--s-7)}.pl-8{padding-left:var(--s-8)}
+.ml-3{margin-left:var(--s-3)}.ml-4{margin-left:var(--s-4)}.ml-5{margin-left:var(--s-5)}
+.ml-6{margin-left:var(--s-6)}.ml-7{margin-left:var(--s-7)}
+.row.bottom{align-items:flex-end}
+.row.inline{display:inline-flex;flex-wrap:nowrap}
+
+/*
+ * The small semantic classes — the things the markup kept saying inline because there
+ * was no word for them.
+ */
+/* The letterspaced uppercase label. This app's whole visual identity, said once. */
+.caps{letter-spacing:.09em;text-transform:uppercase}
+.caps-wide{letter-spacing:.14em;text-transform:uppercase}
+/* Figures that have to line up down a column — every quantity, every reading. */
+.tnum{font-variant-numeric:tabular-nums}
+/* A fault description keeps the line breaks the technician typed. */
+.pre-wrap{white-space:pre-wrap}
+/* A device token or an asset tag: break anywhere rather than widen the table. */
+.break-all{word-break:break-all}
+/* A whole row that is a link, without the link looking like one. */
+.plain-link{text-decoration:none;color:inherit}
+.clickable{cursor:pointer}
+.no-border{border:0}
+.no-border-b{border-bottom:0}
+.flip{display:inline-block;transform:rotate(180deg)}
+/* A hairline between two blocks that are not in a bordered container. */
+.rule{height:1px;background:var(--line);border:0}
+/* A status fill — a lamp, a bar segment, a priority stripe. */
+.bg-ok{background:var(--ok)}.bg-warn{background:var(--warn)}
+.bg-crit{background:var(--crit)}.bg-idle{background:var(--idle)}.bg-acc{background:var(--accent)}
+
+/*
+ * Input widths.
+ *
+ * Twelve inline widths between 110px and 260px, which is somebody eyeballing each one.
+ * Three sizes: a number or a short code, a name, and a sentence. `compact` is the one
+ * that sits inside a table row, where the standard 40px control is too tall.
+ */
+.w-sm{width:130px}
+.w-md{width:180px}
+.w-lg{width:260px}
+.inp.compact,.compact{min-height:32px}
+.inp.compact{padding:var(--s-2) var(--s-4);font-size:var(--fs-sm)}
+.inline{display:inline}
+/* Deliberately faded — a row that is still listed but no longer counts. */
+.dim{opacity:.72}
+/* A list inside a dialog that must not push the dialog past the bottom of the screen. */
+.scrollbox{max-height:48vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* Prose stops at a readable measure rather than running the width of a 27-inch monitor. */
+.measure{max-width:62ch}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.card>header{display:flex;align-items:center;gap:var(--s-5);padding:var(--s-5) var(--s-6);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card>header h2{font-family:var(--cond);font-size:var(--fs-body);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:0}
+.card>header .r{margin-left:auto;display:flex;align-items:center;gap:var(--s-4);flex-wrap:wrap}
+.card .body{padding:var(--s-6)}
 .card .body.flush{padding:0}
 
-.tile{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 15px}
-.tile .t-lab{font-family:var(--mono);font-size:0.5938rem;letter-spacing:.13em;text-transform:uppercase;color:var(--text-3)}
-.tile .t-val{font-family:var(--cond);font-size:2.375rem;font-weight:700;line-height:1;margin:8px 0 4px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-.tile .t-val u{text-decoration:none;font-size:1.0625rem;color:var(--text-3);margin-left:3px}
-.tile .t-sub{font-size:0.75rem;color:var(--text-2);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s-6) var(--s-6)}
+.tile .t-lab{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.13em;text-transform:uppercase;color:var(--text-3)}
+.tile .t-val{font-family:var(--cond);font-size:var(--fs-readout);font-weight:700;line-height:1;margin:var(--s-4) 0 var(--s-2);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.tile .t-val u{text-decoration:none;font-size:var(--fs-lede);color:var(--text-3);margin-left:var(--s-1)}
+.tile .t-sub{font-size:var(--fs-sm);color:var(--text-2);display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap}
+/* The tone of a tile's number, stated as a class rather than an inline colour so a
+   screenshot of the markup still tells you what state it is in. */
+.tile.ok .t-val{color:var(--ok)}
+.tile.warn .t-val{color:var(--warn)}
+.tile.crit .t-val{color:var(--crit)}
+.tile.acc .t-val{color:var(--accent)}
 
 .tw{overflow-x:auto}
-table{border-collapse:collapse;width:100%;font-size:0.8125rem}
+table{border-collapse:collapse;width:100%;font-size:var(--fs-ui)}
 table.wide{min-width:620px}
-thead th{text-align:left;font-family:var(--mono);font-size:0.5938rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);font-weight:500;padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--panel-2)}
-tbody td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+thead th{text-align:left;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);font-weight:500;padding:var(--s-4) var(--s-6);border-bottom:1px solid var(--line);white-space:nowrap;background:var(--panel-2)}
+tbody td{padding:var(--s-5) var(--s-6);border-bottom:1px solid var(--line);vertical-align:middle}
 tbody tr:last-child td{border-bottom:0}
 tbody tr.click{cursor:pointer}
 tbody tr.click:hover{background:var(--panel-2)}
-td.mono,th.mono{font-family:var(--mono);font-size:0.7188rem;white-space:nowrap;font-variant-numeric:tabular-nums}
-td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:0.7188rem}
-.pri-cell{position:relative;padding-left:18px!important}
+td.mono,th.mono{font-family:var(--mono);font-size:var(--fs-sm);white-space:nowrap;font-variant-numeric:tabular-nums}
+td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:var(--fs-sm)}
+.pri-cell{position:relative;padding-left:var(--s-7)!important}
 .pri-cell::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px}
 .P1::before{background:var(--crit)}.P2::before{background:var(--warn)}.P3::before{background:var(--accent)}.P4::before{background:var(--idle)}
 .ttl{font-weight:600;color:var(--text);display:block;line-height:1.3}
-.sub{color:var(--text-3);font-size:0.7188rem;font-family:var(--mono);display:block}
+.sub{color:var(--text-3);font-size:var(--fs-sm);font-family:var(--mono);display:block}
 
 /* ---------------- gauges, stacks ---------------- */
-.tanks{display:flex;gap:20px;align-items:flex-end}
-.gauge{flex:1;display:flex;flex-direction:column;align-items:center;gap:9px;min-width:0}
-.tube{width:100%;max-width:88px;height:132px;border:1px solid var(--line-2);border-radius:5px;background:var(--panel-2);position:relative;overflow:hidden}
+.tanks{display:flex;gap:var(--s-7);align-items:flex-end}
+.gauge{flex:1;display:flex;flex-direction:column;align-items:center;gap:var(--s-4);min-width:0}
+.tube{width:100%;max-width:88px;height:132px;border:1px solid var(--line-2);border-radius:var(--r);background:var(--panel-2);position:relative;overflow:hidden}
 .tube i{position:absolute;left:0;right:0;bottom:0;display:block;background:linear-gradient(180deg,color-mix(in srgb,var(--ok) 70%,transparent),var(--ok))}
 .tube i.warn{background:linear-gradient(180deg,color-mix(in srgb,var(--warn) 70%,transparent),var(--warn))}
 .tube i.crit{background:linear-gradient(180deg,color-mix(in srgb,var(--crit) 70%,transparent),var(--crit))}
 .tube .mn{position:absolute;left:0;right:0;border-top:1.5px dashed var(--crit);opacity:.85}
-.tube .mn span{position:absolute;left:4px;top:-13px;font-family:var(--mono);font-size:0.5rem;color:var(--crit);letter-spacing:.1em;background:var(--panel);padding:0 3px;border-radius:2px;line-height:12px}
-.gauge .gv{font-family:var(--cond);font-size:1.5rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
-.gauge .gv u{text-decoration:none;font-size:0.75rem;color:var(--text-3)}
-.gauge .gn{font-family:var(--mono);font-size:0.5938rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);text-align:center}
-.stack{display:flex;gap:2px;height:26px;border-radius:3px;overflow:hidden}
-.stack b{display:grid;place-items:center;font-family:var(--mono);font-size:0.625rem;color:var(--panel);font-weight:500;min-width:0;overflow:hidden}
-.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px}
-.legend span{display:inline-flex;align-items:center;gap:6px;font-size:0.7188rem;color:var(--text-2)}
-.legend i{width:9px;height:9px;border-radius:2px;display:block}
+.tube .mn span{position:absolute;left:4px;top:-13px;font-family:var(--mono);font-size:var(--fs-micro);color:var(--crit);letter-spacing:.1em;background:var(--panel);padding:0 var(--s-1);border-radius:var(--r-sm);line-height:12px}
+.gauge .gv{font-family:var(--cond);font-size:var(--fs-title);font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.gauge .gv u{text-decoration:none;font-size:var(--fs-sm);color:var(--text-3)}
+.gauge .gn{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);text-align:center}
+.stack{display:flex;gap:var(--s-1);height:26px;border-radius:var(--r-sm);overflow:hidden}
+.stack b{display:grid;place-items:center;font-family:var(--mono);font-size:var(--fs-micro);color:var(--panel);font-weight:500;min-width:0;overflow:hidden}
+.legend{display:flex;flex-wrap:wrap;gap:var(--s-3) var(--s-6);margin-top:var(--s-5)}
+.legend span{display:inline-flex;align-items:center;gap:var(--s-3);font-size:var(--fs-sm);color:var(--text-2)}
+.legend i{width:9px;height:9px;border-radius:var(--r-sm);display:block}
 
 /* ---------------- timeline ---------------- */
 .tl{list-style:none;margin:0;padding:0}
-.tl li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:12px;padding-bottom:16px;position:relative}
+.tl li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:var(--s-5);padding-bottom:var(--s-6);position:relative}
 .tl li:not(:last-child)::before{content:"";position:absolute;left:10.5px;top:20px;bottom:0;width:1px;background:var(--line)}
 .tl .dot{width:21px;height:21px;border-radius:50%;border:1px solid var(--line-2);background:var(--panel-2);display:grid;place-items:center;z-index:1}
 .tl .dot svg{width:11px;height:11px;color:var(--text-3)}
 .tl .dot.acc{background:var(--accent-soft);border-color:var(--accent)}.tl .dot.acc svg{color:var(--accent)}
 .tl .dot.crit{background:var(--crit-bg);border-color:var(--crit)}.tl .dot.crit svg{color:var(--crit)}
 .tl .dot.ok{background:var(--ok-bg);border-color:var(--ok)}.tl .dot.ok svg{color:var(--ok)}
-.tl .ev b{font-weight:600;font-size:0.8125rem}
-.tl .ev p{margin:3px 0 0;font-size:0.7812rem;color:var(--text-2);white-space:pre-wrap}
-.tl .ev .when{font-family:var(--mono);font-size:0.6562rem;color:var(--text-3);margin-left:8px;font-weight:400}
+.tl .ev b{font-weight:600;font-size:var(--fs-ui)}
+.tl .ev p{margin:var(--s-1) 0 0;font-size:var(--fs-ui);color:var(--text-2);white-space:pre-wrap}
+.tl .ev .when{font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-3);margin-left:var(--s-4);font-weight:400}
 
-.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px;font-size:0.8125rem;margin:0}
-.kv dt{font-family:var(--mono);font-size:0.625rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);padding-top:3px}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--s-4) var(--s-6);font-size:var(--fs-ui);margin:0}
+.kv dt{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);padding-top:var(--s-1)}
 .kv dd{margin:0;font-weight:500}
-@media (max-width:560px){.kv{grid-template-columns:minmax(0,1fr);gap:2px 0}.kv dd{margin-bottom:10px}}
+@media (max-width:560px){.kv{grid-template-columns:minmax(0,1fr);gap:var(--s-1) 0}.kv dd{margin-bottom:var(--s-5)}}
 
 /* ---------------- roster ---------------- */
-.rgrid{min-width:820px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+.rgrid{min-width:820px;border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;background:var(--panel)}
 .rrow{display:grid;grid-template-columns:180px repeat(7,minmax(0,1fr));border-bottom:1px solid var(--line)}
 .rrow:last-child{border-bottom:0}
 .rrow.head{background:var(--panel-2)}
-.rcell{padding:8px 9px;border-right:1px solid var(--line);min-width:0}
+.rcell{padding:var(--s-4) var(--s-4);border-right:1px solid var(--line);min-width:0}
 .rcell:last-child{border-right:0}
 .rcell.today{background:var(--accent-soft)}
-.rrow.head .rcell{font-family:var(--mono);font-size:0.5938rem;letter-spacing:.11em;text-transform:uppercase;color:var(--text-3)}
-.rrow.head .rcell b{display:block;font-family:var(--cond);font-size:0.875rem;color:var(--text);letter-spacing:.03em}
-.who2{display:flex;align-items:center;gap:9px}
-.who2 .nm{display:block;font-size:0.7812rem;font-weight:600;line-height:1.2}
-.who2 .tr{display:block;font-family:var(--mono);font-size:0.5938rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em}
-.sh{border-radius:4px;padding:5px 7px;font-family:var(--mono);font-size:0.5938rem;letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;gap:5px;border:1px solid transparent;width:100%;text-align:left}
+.rrow.head .rcell{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.11em;text-transform:uppercase;color:var(--text-3)}
+.rrow.head .rcell b{display:block;font-family:var(--cond);font-size:var(--fs-body);color:var(--text);letter-spacing:.03em}
+.who2{display:flex;align-items:center;gap:var(--s-4)}
+.who2 .nm{display:block;font-size:var(--fs-ui);font-weight:600;line-height:1.2}
+.who2 .tr{display:block;font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-3);text-transform:uppercase;letter-spacing:.07em}
+.sh{border-radius:var(--r);padding:var(--s-2) var(--s-3);font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;gap:var(--s-2);border:1px solid transparent;width:100%;text-align:left}
 .sh.d{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 28%,transparent)}
 .sh.n{background:var(--panel-3);color:var(--text-2);border-color:var(--line-2)}
 .sh.off{color:var(--text-3);background:transparent;justify-content:center}
 .sh.present{background:var(--ok-bg);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 32%,transparent)}
 .sh.absent{background:var(--crit-bg);color:var(--crit);border-color:color-mix(in srgb,var(--crit) 32%,transparent);text-decoration:line-through}
-.sh .mk{font-size:0.5625rem;opacity:.8}
+.sh .mk{font-size:var(--fs-micro);opacity:.8}
 
 /* ---------------- units ---------------- */
-.units{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
-.unit{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:9px 10px;text-align:left;position:relative;overflow:hidden}
+.units{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:var(--s-4)}
+.unit{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:var(--s-4) var(--s-5);text-align:left;position:relative;overflow:hidden}
 .unit::after{content:"";position:absolute;top:0;right:0;bottom:0;width:3px;background:var(--idle)}
 .unit.occupied::after{background:var(--ok)}
 .unit.under_maintenance::after{background:var(--warn)}
@@ -235,35 +487,41 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono
 .unit.vacant_ready::after{background:var(--accent)}
 .unit:hover{border-color:var(--line-2);background:var(--panel-2)}
 .unit.picked{border-color:var(--accent);background:var(--panel-2);box-shadow:inset 0 0 0 2px var(--accent)}
-.unit b{display:block;font-family:var(--cond);font-size:1.0625rem;font-weight:600;letter-spacing:.02em}
-.unit span{display:block;font-family:var(--mono);font-size:0.5625rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
-.unit i{display:block;margin-top:3px;font-family:var(--mono);font-size:0.5625rem;font-style:normal;color:var(--crit);letter-spacing:.06em;text-transform:uppercase}
+.unit b{display:block;font-family:var(--cond);font-size:var(--fs-lede);font-weight:600;letter-spacing:.02em}
+.unit span{display:block;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+.unit i{display:block;margin-top:var(--s-1);font-family:var(--mono);font-size:var(--fs-micro);font-style:normal;color:var(--crit);letter-spacing:.06em;text-transform:uppercase}
 
 /* ---------------- forms ---------------- */
-.fld{margin-bottom:14px}
-.fld label{display:block;font-family:var(--mono);font-size:0.5938rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin-bottom:5px}
-.inp{width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:9px 10px;font-size:0.875rem;min-height:40px}
+.fld{margin-bottom:var(--s-6)}
+.fld label{display:block;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin-bottom:var(--s-2)}
+/* The sentence under a field that says why it is being asked for. */
+.fld .hint,.note>.hint{margin-top:var(--s-2);font-size:var(--fs-sm);color:var(--text-3)}
+.inp{width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:var(--s-4) var(--s-5);font-size:var(--fs-body);min-height:40px}
 .inp:focus{outline:none;border-color:var(--accent);background:var(--panel)}
 textarea.inp{resize:vertical;min-height:80px;line-height:1.55}
-select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--text-3) 50%),linear-gradient(135deg,var(--text-3) 50%,transparent 50%);background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:32px}
-.note{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r);padding:13px 15px;font-size:0.8125rem;color:var(--text-2)}
+select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--text-3) 50%),linear-gradient(135deg,var(--text-3) 50%,transparent 50%);background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:var(--s-8)}
+.note{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r);padding:var(--s-5) var(--s-6);font-size:var(--fs-ui);color:var(--text-2)}
 .note.warn{border-left-color:var(--warn)}
 .note.crit{border-left-color:var(--crit)}
+/* The reassuring one — "this screen IS the duty screen", "the fortnight reconciles". */
+.note.ok{border-left-color:var(--ok)}
 .note b{color:var(--text)}
 
 /* ---------------- states ---------------- */
-.center{min-height:100vh;display:grid;place-items:center;padding:20px}
-.panel-form{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:26px;box-shadow:var(--shadow)}
-.skeleton{background:linear-gradient(90deg,var(--panel-2) 25%,var(--panel-3) 37%,var(--panel-2) 63%);background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:var(--r)}
+.center{min-height:100vh;display:grid;place-items:center;padding:var(--s-7)}
+.panel-form{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s-7);box-shadow:var(--shadow)}
+.loading{display:grid;gap:var(--s-4);padding:var(--s-6)}
+.loading>*+*{margin-top:0}
+.skeleton{height:34px;background:linear-gradient(90deg,var(--panel-2) 25%,var(--panel-3) 37%,var(--panel-2) 63%);background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:var(--r)}
 @keyframes shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
-.empty{padding:34px 20px;text-align:center;color:var(--text-3);font-size:0.8125rem;line-height:1.55}
-.empty b{display:block;color:var(--text-2);font-size:0.875rem;margin-bottom:5px}
+.empty{padding:var(--s-8) var(--s-7);text-align:center;color:var(--text-3);font-size:var(--fs-ui);line-height:1.55}
+.empty b{display:block;color:var(--text-2);font-size:var(--fs-body);margin-bottom:var(--s-2)}
 .empty>*:not(b){max-width:44ch;margin-left:auto;margin-right:auto}
-.empty .act{margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.empty .act{margin-top:var(--s-6);display:flex;gap:var(--s-4);justify-content:center;flex-wrap:wrap}
 /* Somebody without the right cannot be handed the button, so they are told who has it. */
-.empty .ask{margin-top:10px;font-size:0.7812rem;color:var(--text-3);font-style:italic}
+.empty .ask{margin-top:var(--s-5);font-size:var(--fs-ui);color:var(--text-3);font-style:italic}
 .err{border-left-color:var(--crit);color:var(--text)}
-.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;background:var(--panel);border:1px solid var(--line-2);border-left:3px solid var(--accent);border-radius:var(--r);padding:11px 15px;box-shadow:var(--shadow);max-width:min(520px,calc(100vw - 32px));font-size:0.8438rem}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;background:var(--panel);border:1px solid var(--line-2);border-left:3px solid var(--accent);border-radius:var(--r);padding:var(--s-5) var(--s-6);box-shadow:var(--shadow);max-width:min(520px,calc(100vw - 32px));font-size:var(--fs-ui)}
 .toast.bad{border-left-color:var(--crit)}
 .toast.good{border-left-color:var(--ok)}
 
@@ -272,16 +530,17 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 @media (max-width:900px){
   .app{grid-template-columns:minmax(0,1fr)}
   .side{display:none}
-  .top{padding:0 14px;gap:10px}
-  .top .prop{font-size:0.9375rem}
-  .view{padding:16px 14px 96px}
-  .vhead h1{font-size:1.5rem}
+  .top{padding:0 var(--s-6);gap:var(--s-5)}
+  .top .prop{font-size:var(--fs-body)}
+  /* clears the fixed tab bar, the safe-area inset under it, and the duty strip */
+  :root{--view-foot:calc(var(--tab-h) + var(--s-8))}
+  .view{padding:var(--s-6) var(--s-6) var(--view-foot)}
   .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-  .tabbar a{flex:1;padding:9px 4px 10px;text-align:center;font-family:var(--mono);font-size:0.5312rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);text-decoration:none}
+  .tabbar a{flex:1;padding:var(--s-4) var(--s-2) var(--s-5);text-align:center;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);text-decoration:none}
   .tabbar a.on{color:var(--accent)}
-  .tabbar svg{width:19px;height:19px;display:block;margin:0 auto 3px}
-  .card>header{padding:10px 12px}
-  .card .body{padding:12px}
+  .tabbar svg{width:19px;height:19px;display:block;margin:0 auto var(--s-1)}
+  .card>header{padding:var(--s-5) var(--s-5)}
+  .card .body{padding:var(--s-5)}
   table.wide{min-width:520px}
 }
 @media (max-width:700px){
@@ -289,6 +548,9 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
   .vhead .acts{margin-left:0;width:100%}
   .vhead .acts>*{flex:1}
 }
+/* Controls worth a permanent slot on a desk that are not worth one on a phone, where
+   the same thing is one tap away in More. */
+@media (max-width:900px){.desk-only{display:none}}
 @media (max-width:620px){.search{display:none}.clock{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
@@ -298,34 +560,34 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .joblist{display:none}
 @media (max-width:700px){
   .jobtable{display:none}
-  .joblist{display:grid;gap:9px;padding:12px}
-  .jobrow{display:block;border:1px solid var(--line);border-radius:7px;background:var(--panel-2);
-          padding:11px 12px 11px 15px;position:relative;overflow:hidden;text-decoration:none;color:inherit}
+  .joblist{display:grid;gap:var(--s-4);padding:var(--s-5)}
+  .jobrow{display:block;border:1px solid var(--line);border-radius:var(--r);background:var(--panel-2);
+          padding:var(--s-5) var(--s-5) var(--s-5) var(--s-6);position:relative;overflow:hidden;text-decoration:none;color:inherit}
   .jobrow::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--idle)}
   .jobrow.P1::before{background:var(--crit)}
   .jobrow.P2::before{background:var(--warn)}
   .jobrow.P3::before{background:var(--accent)}
-  .jobrow b{display:block;font-size:0.8438rem;font-weight:600;line-height:1.35;margin-bottom:7px}
-  .jobrow .meta{display:flex;justify-content:space-between;gap:10px;margin-top:8px;
-                font-family:var(--mono);font-size:0.5938rem;color:var(--text-3)}
+  .jobrow b{display:block;font-size:var(--fs-ui);font-weight:600;line-height:1.35;margin-bottom:var(--s-3)}
+  .jobrow .meta{display:flex;justify-content:space-between;gap:var(--s-5);margin-top:var(--s-4);
+                font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-3)}
 }
 
 /* ---------------- photos ---------------- */
-.photos{display:flex;gap:8px;flex-wrap:wrap}
-.photo{width:76px;height:76px;border-radius:5px;border:1px solid var(--line);background:var(--panel-3);
+.photos{display:flex;gap:var(--s-4);flex-wrap:wrap}
+.photo{width:76px;height:76px;border-radius:var(--r);border:1px solid var(--line);background:var(--panel-3);
        display:grid;place-items:center;color:var(--text-3);position:relative;overflow:hidden;padding:0}
 .photo img{width:100%;height:100%;object-fit:cover;display:block}
 .photo svg{width:18px;height:18px}
 .photo span{position:absolute;bottom:0;left:0;right:0;background:color-mix(in srgb,var(--panel) 82%,transparent);
-            font-family:var(--mono);font-size:0.5312rem;text-align:center;padding:2px;letter-spacing:.06em;
+            font-family:var(--mono);font-size:var(--fs-micro);text-align:center;padding:var(--s-1);letter-spacing:.06em;
             text-transform:uppercase}
 .photo.add{border-style:dashed}
 .photo:hover{border-color:var(--accent)}
 .lightbox{position:fixed;inset:0;z-index:90;background:color-mix(in srgb,var(--bg) 92%,transparent);
-          display:grid;place-items:center;padding:24px;gap:14px;grid-template-rows:1fr auto}
-.lightbox img{max-width:min(1100px,92vw);max-height:78vh;object-fit:contain;border-radius:8px;
+          display:grid;place-items:center;padding:var(--s-7);gap:var(--s-6);grid-template-rows:1fr auto}
+.lightbox img{max-width:min(1100px,92vw);max-height:78vh;object-fit:contain;border-radius:var(--r-lg);
               border:1px solid var(--line-2)}
-.lb-bar{display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:0.7188rem;color:var(--text-2)}
+.lb-bar{display:flex;align-items:center;gap:var(--s-6);font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-2)}
 
 /* ---------------- modal ---------------- */
 /* A dialog is rendered where it is opened from, not through a portal, so it inherits the
@@ -334,69 +596,74 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
    prose inside came out as one unwrapped monospace line running off the side. The dialog
    now states its own typography rather than borrowing the caller's. */
 .modal,.modal *{white-space:normal}
-.modal{font-family:var(--ui);font-size:1rem;letter-spacing:normal;text-transform:none;
+.modal{font-family:var(--ui);font-size:var(--fs-body);letter-spacing:normal;text-transform:none;
        text-align:left}
 .modal .num,.modal .modal-foot,.modal header .r{text-align:right}
 .modal .mono,.modal .num,.modal code,.modal pre,.modal .eyebrow{font-family:var(--mono)}
 .modal .mono,.modal .num{white-space:nowrap}
 .modal{position:fixed;inset:0;z-index:95;background:color-mix(in srgb,var(--bg) 88%,transparent);
-       display:grid;place-items:center;padding:24px}
-.modal-card{background:var(--panel);border:1px solid var(--line-2);border-radius:10px;
+       display:grid;place-items:center;padding:var(--s-7)}
+.modal-card{background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-lg);
             box-shadow:var(--shadow);width:min(720px,94vw);max-height:88vh;display:flex;flex-direction:column}
-.modal-card>header{display:flex;align-items:center;gap:12px;padding:14px 16px;
+/* For the dialogs that hold a table — column mapping, duty screens, the role matrix. */
+.modal-card.wide{width:min(980px,95vw)}
+/* The first sentence of a dialog, the one that says what is about to happen. */
+.modal-card>.body>.lede{margin:0;line-height:1.55;font-size:var(--fs-body)}
+.bullets{margin:var(--s-3) 0 var(--s-3) var(--s-7);padding:0}
+.modal-card>header{display:flex;align-items:center;gap:var(--s-5);padding:var(--s-6) var(--s-6);
                    border-bottom:1px solid var(--line);flex:0 0 auto}
-.modal-card>header h2{margin:0;font-size:0.875rem;font-weight:600;letter-spacing:-.01em}
-.modal-card>header .r{margin-left:auto;display:flex;gap:8px;align-items:center}
-.modal-card>.body{padding:16px;overflow-y:auto;-webkit-overflow-scrolling:touch}
-.modal-foot{display:flex;gap:8px;justify-content:flex-end;padding-top:4px;margin-top:14px;
-            border-top:1px solid var(--line);padding-top:14px}
+.modal-card>header h2{margin:0;font-size:var(--fs-body);font-weight:600;letter-spacing:-.01em}
+.modal-card>header .r{margin-left:auto;display:flex;gap:var(--s-4);align-items:center}
+.modal-card>.body{padding:var(--s-6);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.modal-foot{display:flex;gap:var(--s-4);justify-content:flex-end;margin-top:var(--s-6);
+            border-top:1px solid var(--line);padding-top:var(--s-6)}
 @media (max-width:700px){
   .modal{padding:0;place-items:end stretch}
-  .modal-card{width:100%;max-height:94vh;border-radius:12px 12px 0 0}
+  .modal-card{width:100%;max-height:94vh;border-radius:var(--r-lg) var(--r-lg) 0 0}
 }
 
 /* ---------------- tab strip ---------------- */
-.tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:16px}
-.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:9px 13px;
-             font-family:var(--mono);font-size:0.6562rem;letter-spacing:.11em;text-transform:uppercase;
+.tabs{display:flex;gap:var(--s-1);flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:var(--s-6)}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:var(--s-4) var(--s-5);
+             font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.11em;text-transform:uppercase;
              color:var(--text-3);cursor:pointer;margin-bottom:-1px}
 .tabs button:hover{color:var(--text-2)}
 .tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
-.tabs button .cnt{margin-left:7px;font-size:0.625rem;background:var(--panel-3);border-radius:8px;
-                  padding:1px 6px;color:var(--text-2)}
+.tabs button .cnt{margin-left:var(--s-3);font-size:var(--fs-micro);background:var(--panel-3);border-radius:var(--r-lg);
+                  padding:1px var(--s-3);color:var(--text-2)}
 
 /* ---------------- budget bar ---------------- */
-.bbar{position:relative;height:20px;border-radius:3px;background:var(--panel-3);
+.bbar{position:relative;height:20px;border-radius:var(--r-sm);background:var(--panel-3);
       border:1px solid var(--line);overflow:hidden}
 .bbar i{display:block;height:100%;background:var(--ok)}
 .bbar i.warn{background:var(--warn)} .bbar i.crit{background:var(--crit)}
 .bbar .cap{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;
-           padding-right:7px;font-family:var(--mono);font-size:0.625rem;color:var(--text-2)}
+           padding-right:var(--s-3);font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-2)}
 
 /* Isolation points read as a lock-out register, not a bullet list. */
-.iso{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
-.iso li{display:flex;align-items:center;gap:10px;background:var(--panel-2);border:1px solid var(--line);
-        border-radius:var(--r);padding:8px 10px;font-size:0.7812rem}
-.iso li .tagno{font-family:var(--mono);font-size:0.6875rem;color:var(--text-3)}
-.iso li .sp{margin-left:auto;display:flex;gap:8px;align-items:center}
+.iso{list-style:none;margin:var(--s-5) 0 0;padding:0;display:grid;gap:var(--s-3)}
+.iso li{display:flex;align-items:center;gap:var(--s-5);background:var(--panel-2);border:1px solid var(--line);
+        border-radius:var(--r);padding:var(--s-4) var(--s-5);font-size:var(--fs-ui)}
+.iso li .tagno{font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-3)}
+.iso li .sp{margin-left:auto;display:flex;gap:var(--s-4);align-items:center}
 
 /* ---------------- checklist sheet ---------------- */
-.sheet{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.sheet li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;align-items:start;
+.sheet{list-style:none;margin:0;padding:0;display:grid;gap:var(--s-4)}
+.sheet li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s-5) var(--s-5);align-items:start;
           background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--line-2);
-          border-radius:var(--r);padding:11px 12px}
+          border-radius:var(--r);padding:var(--s-5) var(--s-5)}
 .sheet li.set{border-left-color:var(--ok)}
 .sheet li.bad{border-left-color:var(--crit);background:var(--crit-bg)}
 .sheet .task{min-width:0}
-.sheet .task b{display:block;font-size:0.8438rem;font-weight:500;line-height:1.45}
-.sheet .task .chip{margin-top:5px}
-.sheet .exp{display:block;font-family:var(--mono);font-size:0.6562rem;color:var(--text-3);margin-top:4px}
-.sheet .extra{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
-.sheet .extra .inp{min-height:34px;padding:6px 9px;font-size:0.8125rem}
+.sheet .task b{display:block;font-size:var(--fs-ui);font-weight:500;line-height:1.45}
+.sheet .task .chip{margin-top:var(--s-2)}
+.sheet .exp{display:block;font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-3);margin-top:var(--s-2)}
+.sheet .extra{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--s-4)}
+.sheet .extra .inp{min-height:34px;padding:var(--s-3) var(--s-4);font-size:var(--fs-ui)}
 
-.marks{display:flex;gap:4px}
+.marks{display:flex;gap:var(--s-2)}
 .mark{border:1px solid var(--line);background:var(--panel);border-radius:var(--r);
-      padding:6px 11px;font-family:var(--mono);font-size:0.6562rem;letter-spacing:.08em;
+      padding:var(--s-3) var(--s-5);font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.08em;
       text-transform:uppercase;color:var(--text-3);white-space:nowrap}
 .mark:hover:not(:disabled){border-color:var(--line-2);color:var(--text-2)}
 .mark:disabled{opacity:.45;cursor:default}
@@ -406,7 +673,7 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 @media (max-width:640px){
   .sheet li{grid-template-columns:minmax(0,1fr)}
   .marks{justify-content:stretch}
-  .mark{flex:1;text-align:center;padding:9px 6px}
+  .mark{flex:1;text-align:center;padding:var(--s-4) var(--s-3)}
 }
 
 /* ---------------- print ----------------
@@ -498,18 +765,18 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 /* Every list screen carries one of these. It is deliberately quiet when the month is
    the current one and deliberately loud when it is not, because the difference between
    "this month so far" and "March" is the difference between two decisions. */
-.monthbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;
-          background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
-.monthbar>b{font-family:var(--cond);font-size:1.0625rem;font-weight:700;letter-spacing:.01em;
+.monthbar{display:flex;align-items:center;gap:var(--s-4);flex-wrap:wrap;margin-bottom:var(--s-6);
+          background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s-3) var(--s-5)}
+.monthbar>b{font-family:var(--cond);font-size:var(--fs-lede);font-weight:700;letter-spacing:.01em;
             min-width:150px;text-align:center}
 .monthbar .spacer{flex:1}
-.monthbar .mnote{font-family:var(--mono);font-size:0.6562rem;letter-spacing:.06em;
+.monthbar .mnote{font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.06em;
                  text-transform:uppercase;color:var(--text-3)}
-.monthbar .mpick{width:150px;min-height:32px;padding:4px 8px;font-size:0.75rem}
+.monthbar .mpick{width:150px;min-height:32px;padding:var(--s-2) var(--s-4);font-size:var(--fs-sm)}
 .monthbar .icobtn:disabled{opacity:.35;cursor:default}
 .monthbar .icobtn svg{width:15px;height:15px}
 .view.past .vhead h1::after{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;
-                            background:var(--warn);margin-left:9px;vertical-align:middle}
+                            background:var(--warn);margin-left:var(--s-4);vertical-align:middle}
 @media (max-width:700px){
   .monthbar>b{min-width:0;flex:1}
   .monthbar .mpick{display:none}
@@ -518,17 +785,17 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 /* ---------------- job grid ---------------- */
 /* The board as cards rather than rows. A supervisor standing at a desk reads a wall of
    tiles faster than a table, and on a tablet the table was always going to lose. */
-.jgrid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(255px,1fr))}
-.jcard{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 13px;
-       display:flex;flex-direction:column;gap:8px;cursor:pointer;text-align:left;
+.jgrid{display:grid;gap:var(--s-5);grid-template-columns:repeat(auto-fill,minmax(255px,1fr))}
+.jcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s-5) var(--s-5);
+       display:flex;flex-direction:column;gap:var(--s-4);cursor:pointer;text-align:left;
        transition:border-color .12s,transform .12s}
 .jcard:hover{border-color:var(--line-2);transform:translateY(-1px)}
-.jcard .jtop{display:flex;align-items:center;gap:7px}
-.jcard .jref{font-family:var(--mono);font-size:0.6875rem;color:var(--text-3)}
-.jcard .jttl{font-weight:600;font-size:0.8438rem;line-height:1.35;
+.jcard .jtop{display:flex;align-items:center;gap:var(--s-3)}
+.jcard .jref{font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-3)}
+.jcard .jttl{font-weight:600;font-size:var(--fs-ui);line-height:1.35;
              display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.jcard .jmeta{font-size:0.7188rem;color:var(--text-3);display:flex;gap:8px;flex-wrap:wrap}
-.jcard .jfoot{display:flex;align-items:center;gap:7px;margin-top:auto;padding-top:8px;
+.jcard .jmeta{font-size:var(--fs-sm);color:var(--text-3);display:flex;gap:var(--s-4);flex-wrap:wrap}
+.jcard .jfoot{display:flex;align-items:center;gap:var(--s-3);margin-top:auto;padding-top:var(--s-4);
               border-top:1px solid var(--line);flex-wrap:wrap}
 /* A left edge in the priority colour, so P1 is findable without reading anything. */
 .jcard.p1{box-shadow:inset 3px 0 0 var(--crit)}
@@ -538,7 +805,7 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
    and the grid stops looking like a grid. */
 .jcard.p4{box-shadow:inset 3px 0 0 var(--line)}
 .vtoggle{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden}
-.vtoggle button{background:var(--panel);border:0;padding:7px 10px;cursor:pointer;color:var(--text-3);
+.vtoggle button{background:var(--panel);border:0;padding:var(--s-3) var(--s-5);cursor:pointer;color:var(--text-3);
                 display:grid;place-items:center;min-height:36px}
 .vtoggle button+button{border-left:1px solid var(--line-2)}
 .vtoggle button.on{background:var(--panel-3);color:var(--text)}
@@ -547,30 +814,34 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 /* ---------------- phases and load ---------------- */
 /* Three bars, one per phase, drawn against the heaviest. Imbalance is the sort of thing
    that is invisible in a column of numbers and obvious the moment it is a picture. */
-.phases{display:grid;gap:7px;margin:12px 0}
-.phase{display:grid;grid-template-columns:26px minmax(0,1fr) 74px;align-items:center;gap:10px}
-.phase span:first-child{font-family:var(--mono);font-size:0.6875rem;color:var(--text-3)}
-.phase .bar{height:14px;border-radius:3px;background:var(--panel-3);border:1px solid var(--line);
+.phases{display:grid;gap:var(--s-3);margin:var(--s-5) 0}
+.phase{display:grid;grid-template-columns:26px minmax(0,1fr) 74px;align-items:center;gap:var(--s-5)}
+.phase span:first-child{font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-3)}
+.phase .bar{height:14px;border-radius:var(--r-sm);background:var(--panel-3);border:1px solid var(--line);
             overflow:hidden}
 .phase .bar i{display:block;height:100%;background:var(--accent)}
 .phase .bar i.warn{background:var(--warn)} .phase .bar i.crit{background:var(--crit)}
-.phase .amp{font-family:var(--mono);font-size:0.75rem;text-align:right;font-variant-numeric:tabular-nums}
-.bigload{font-family:var(--cond);font-size:3.25rem;font-weight:700;line-height:1;
+.phase .amp{font-family:var(--mono);font-size:var(--fs-sm);text-align:right;font-variant-numeric:tabular-nums}
+.bigload{font-family:var(--cond);font-size:var(--fs-readout-lg);font-weight:700;line-height:1;
          font-variant-numeric:tabular-nums}
-.bigload u{text-decoration:none;font-size:1.1875rem;color:var(--text-3);margin-left:5px}
-.setlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.bigload u{text-decoration:none;font-size:var(--fs-lede);color:var(--text-3);margin-left:var(--s-2)}
+.setlist{list-style:none;margin:0;padding:0;display:grid;gap:var(--s-4)}
 /* Flex rather than a two-column grid: an `auto` column sized by a chip plus a bar plus a
    percentage will happily grow past its share and sit on top of the name beside it. */
-.setlist li{display:flex;flex-wrap:wrap;align-items:center;gap:7px 12px;
-            background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:9px 11px}
+.setlist li{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s-3) var(--s-5);
+            background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);padding:var(--s-4) var(--s-5)}
 .setlist li.pick{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 8%,var(--panel-2))}
-.setlist li .sname{font-weight:600;font-size:0.8125rem;display:flex;align-items:baseline;gap:8px;
+/* The tint moves the background enough that --text-3 lands at 4.40:1 on this one row —
+   under AA by a tenth. This is the row the screen is recommending, so it is the last
+   place to put the faintest grey: the secondary text steps up a level inside it. */
+.setlist li.pick .sub,.setlist li.pick .swhy{color:var(--text-2)}
+.setlist li .sname{font-weight:600;font-size:var(--fs-ui);display:flex;align-items:baseline;gap:var(--s-4);
                    min-width:0;flex:0 1 auto}
 .setlist li .sname b{white-space:nowrap}
-.setlist li .smeta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+.setlist li .smeta{display:flex;align-items:center;gap:var(--s-4);flex-wrap:wrap;
                    justify-content:flex-end;margin-left:auto}
-.setlist li .swhy{flex:1 0 100%;font-size:0.7188rem;color:var(--text-3);line-height:1.45}
-.loadbar{height:8px;border-radius:3px;background:var(--panel-3);border:1px solid var(--line);
+.setlist li .swhy{flex:1 0 100%;font-size:var(--fs-sm);color:var(--text-3);line-height:1.45}
+.loadbar{height:8px;border-radius:var(--r-sm);background:var(--panel-3);border:1px solid var(--line);
          overflow:hidden;width:110px}
 .loadbar i{display:block;height:100%;background:var(--ok)}
 .loadbar i.warn{background:var(--warn)} .loadbar i.crit{background:var(--crit)}
@@ -580,16 +851,16 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 /* The panel a fresh install opens on. It is deliberately the loudest thing on the
    screen while work remains and collapses to a single line once it does not — a
    checklist that keeps shouting after it is finished is one people stop reading. */
-.startcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;
-           overflow:hidden;margin-bottom:14px}
+.startcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
+           overflow:hidden;margin-bottom:var(--s-6)}
 .startcard.urgent{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
-.starthead{display:flex;align-items:center;gap:13px;padding:14px 16px;
+.starthead{display:flex;align-items:center;gap:var(--s-5);padding:var(--s-6) var(--s-6);
            border-bottom:1px solid var(--line);flex-wrap:wrap}
-.starthead h2{font-family:var(--cond);font-size:1.375rem;font-weight:700;margin:0;line-height:1}
-.starthead .sub{font-size:0.8125rem;color:var(--text-2);flex-basis:100%;margin-top:-2px}
-.starthead .r{margin-left:auto;display:flex;align-items:center;gap:9px}
+.starthead h2{font-family:var(--cond);font-size:var(--fs-title);font-weight:700;margin:0;line-height:1}
+.starthead .sub{font-size:var(--fs-ui);color:var(--text-2);flex-basis:100%;margin-top:-2px}
+.starthead .r{margin-left:auto;display:flex;align-items:center;gap:var(--s-4)}
 /* A meter, not a percentage: "4 of 14" is a number somebody can act on. */
-.progress{height:6px;border-radius:3px;background:var(--panel-3);border:1px solid var(--line);
+.progress{height:6px;border-radius:var(--r-sm);background:var(--panel-3);border:1px solid var(--line);
           overflow:hidden;width:130px;flex:none}
 .progress i{display:block;height:100%;background:var(--accent);transition:width .3s}
 .progress i.done{background:var(--ok)}
@@ -598,31 +869,31 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 /* Every child is placed explicitly. Leaving any of them to auto-placement lets the
    row-spanning action button claim a cell the title wanted, and the whole row inverts. */
 .steps li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;
-          grid-template-rows:auto auto;gap:5px 12px;
-          align-items:start;padding:13px 16px;border-bottom:1px solid var(--line)}
+          grid-template-rows:auto auto;gap:var(--s-2) var(--s-5);
+          align-items:start;padding:var(--s-5) var(--s-6);border-bottom:1px solid var(--line)}
 .steps li:last-child{border-bottom:0}
 .steps li.is-done{opacity:.55}
 .steps .tick{grid-column:1;grid-row:1;width:20px;height:20px;border-radius:50%;
              border:1.5px solid var(--line-2);display:grid;place-items:center;margin-top:1px}
-.steps li.is-done .tick{background:var(--ok);border-color:var(--ok);color:#fff}
+.steps li.is-done .tick{background:var(--ok);border-color:var(--ok);color:var(--on-accent)}
 .steps li.is-attention .tick{border-color:var(--warn);color:var(--warn)}
 .steps .tick svg{width:12px;height:12px}
-.steps .ttl{grid-column:2;grid-row:1;font-weight:600;font-size:0.875rem;
-            display:flex;align-items:center;gap:8px;flex-wrap:wrap;text-align:left}
-.steps .why{grid-column:2;grid-row:2;font-size:0.8125rem;color:var(--text-3);
+.steps .ttl{grid-column:2;grid-row:1;font-weight:600;font-size:var(--fs-body);
+            display:flex;align-items:center;gap:var(--s-4);flex-wrap:wrap;text-align:left}
+.steps .why{grid-column:2;grid-row:2;font-size:var(--fs-ui);color:var(--text-3);
             line-height:1.5;max-width:72ch}
 .steps .go{grid-column:3;grid-row:1/3;align-self:center;justify-self:end}
 @media (max-width:640px){
   .steps li{grid-template-columns:24px minmax(0,1fr);grid-template-rows:auto auto auto}
-  .steps .go{grid-column:2;grid-row:3;justify-self:start;margin-top:8px}
+  .steps .go{grid-column:2;grid-row:3;justify-self:start;margin-top:var(--s-4)}
 }
 
 /* ---------------- role explainer ---------------- */
 /* Shown where a role is actually chosen, not three tabs away on a reference screen. */
 .rolehint{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r);
-          padding:11px 13px;margin-top:8px;font-size:0.8125rem;color:var(--text-2);line-height:1.55}
+          padding:var(--s-5) var(--s-5);margin-top:var(--s-4);font-size:var(--fs-ui);color:var(--text-2);line-height:1.55}
 .rolehint b{color:var(--text)}
-.rolehint .cando{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.rolehint .cando{display:flex;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-4)}
 
 /* ---------------- notifications ---------------- */
 /* The bell had a red dot and no click handler for months: something told people they had
@@ -633,27 +904,27 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .bellscrim{position:fixed;inset:0;z-index:55;background:transparent}
 @media (max-width:640px){.bellscrim{background:rgba(8,12,18,.45)}}
 .bellpop{position:absolute;top:calc(100% + 8px);right:0;width:min(380px,calc(100vw - 32px));
-         background:var(--panel);border:1px solid var(--line);border-radius:10px;
+         background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
          box-shadow:0 18px 44px rgba(0,0,0,.28);z-index:60;overflow:hidden}
-.bellpop header{display:flex;align-items:center;gap:8px;padding:11px 13px;
+.bellpop header{display:flex;align-items:center;gap:var(--s-4);padding:var(--s-5) var(--s-5);
                 border-bottom:1px solid var(--line);background:var(--panel-2)}
-.bellpop header b{font-size:0.8438rem}
+.bellpop header b{font-size:var(--fs-ui)}
 .bellpop header .spacer{flex:1}
 .bellpop ul{list-style:none;margin:0;padding:0;max-height:min(60vh,420px);overflow:auto}
 .bellpop li{border-bottom:1px solid var(--line)}
 .bellpop li:last-child{border-bottom:0}
-.bellpop li a,.bellpop li .row{display:block;padding:10px 13px;text-decoration:none;color:inherit}
+.bellpop li a,.bellpop li .row{display:block;padding:var(--s-5) var(--s-5);text-decoration:none;color:inherit}
 .bellpop li a:hover{background:var(--panel-2)}
 .bellpop li.unread{box-shadow:inset 3px 0 0 var(--accent)}
-.bellpop .nt{display:block;font-size:0.8438rem;font-weight:600;line-height:1.35}
-.bellpop .nb{display:block;font-size:0.7812rem;color:var(--text-2);line-height:1.45;margin-top:3px}
+.bellpop .nt{display:block;font-size:var(--fs-ui);font-weight:600;line-height:1.35}
+.bellpop .nb{display:block;font-size:var(--fs-ui);color:var(--text-2);line-height:1.45;margin-top:var(--s-1)}
 /* Without display:block the title and the body were two inline spans in one flow,
    so they wrapped into each other and read as one run-on sentence. */
 /* A job ref or an asset tag has no spaces in it; without this one long token pushes
    the whole row wider than the panel and the text scrolls out of sight. */
 .bellpop .nt,.bellpop .nb,.bellpop .nw{overflow-wrap:anywhere;word-break:break-word}
-.bellpop .nw{font-family:var(--mono);font-size:0.6562rem;color:var(--text-3);margin-top:4px;display:block}
-.bellpop .none{padding:22px 14px;text-align:center;color:var(--text-3);font-size:0.8125rem}
+.bellpop .nw{font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-3);margin-top:var(--s-2);display:block}
+.bellpop .none{padding:var(--s-7) var(--s-6);text-align:center;color:var(--text-3);font-size:var(--fs-ui)}
 
 /* On a phone the bell sits a few pixels from the right edge, so anchoring the panel to it
    with right:0 pushed 358px of panel off the LEFT of a 390px screen and the messages were
@@ -666,46 +937,46 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
   .bellpop{position:fixed;top:calc(var(--top-h) + 6px);left:10px;right:10px;width:auto;
            max-height:calc(100vh - var(--top-h) - 20px);display:flex;flex-direction:column}
   .bellpop ul{max-height:none;flex:1}
-  .bellpop header{padding:12px 13px}
+  .bellpop header{padding:var(--s-5) var(--s-5)}
   /* Bigger targets: this list is tapped with a thumb, often with a glove on. */
-  .bellpop li a,.bellpop li .row{padding:13px 14px}
+  .bellpop li a,.bellpop li .row{padding:var(--s-5) var(--s-6)}
 }
 
 /* ---------------- phone: More sheet ---------------- */
 /* The sidebar is hidden below 900px, so everything that lives in it has to be reachable
    from here. Tap targets are sized for a gloved hand on a phone propped on a plant-room
    ledge, not for a mouse. */
-.tabbar .more{flex:1;padding:9px 4px 10px;text-align:center;font-family:var(--mono);
-              font-size:0.5312rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);
+.tabbar .more{flex:1;padding:var(--s-4) var(--s-2) var(--s-5);text-align:center;font-family:var(--mono);
+              font-size:var(--fs-micro);letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);
               background:none;border:0}
-.tabbar .more svg{width:19px;height:19px;display:block;margin:0 auto 3px}
+.tabbar .more svg{width:19px;height:19px;display:block;margin:0 auto var(--s-1)}
 .tabbar .more.on{color:var(--accent)}
 
 .sheetwrap{position:fixed;inset:0;z-index:70;background:rgba(8,12,18,.5);
            display:flex;align-items:flex-end}
 .sheet{width:100%;background:var(--panel);border-top-left-radius:16px;border-top-right-radius:16px;
-       padding:6px 14px calc(14px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto;
+       padding:var(--s-3) var(--s-6) calc(var(--s-6) + env(safe-area-inset-bottom));max-height:86vh;overflow:auto;
        box-shadow:0 -14px 44px rgba(0,0,0,.3)}
-.sheet::before{content:"";display:block;width:38px;height:4px;border-radius:2px;
-               background:var(--line-2);margin:8px auto 12px}
-.shead{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--line)}
-.shead b{display:block;font-size:0.9062rem}
-.shead small{display:block;font-family:var(--mono);font-size:0.5938rem;letter-spacing:.08em;
-             text-transform:uppercase;color:var(--text-3);margin-top:2px}
+.sheet::before{content:"";display:block;width:38px;height:4px;border-radius:var(--r-sm);
+               background:var(--line-2);margin:var(--s-4) auto var(--s-5)}
+.shead{display:flex;align-items:center;gap:var(--s-5);padding-bottom:var(--s-5);border-bottom:1px solid var(--line)}
+.shead b{display:block;font-size:var(--fs-body)}
+.shead small{display:block;font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.08em;
+             text-transform:uppercase;color:var(--text-3);margin-top:var(--s-1)}
 .shead .icobtn{margin-left:auto}
 
-.sgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:14px 0}
-.sgrid a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;
-         min-height:78px;padding:10px 6px;border:1px solid var(--line);border-radius:10px;
+.sgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s-4);padding:var(--s-6) 0}
+.sgrid a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s-3);
+         min-height:78px;padding:var(--s-5) var(--s-3);border:1px solid var(--line);border-radius:var(--r-lg);
          background:var(--panel-2);color:var(--text-2);text-decoration:none;
-         font-size:0.7188rem;line-height:1.25;text-align:center}
+         font-size:var(--fs-sm);line-height:1.25;text-align:center}
 .sgrid a.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .sgrid svg{width:21px;height:21px}
 
-.sfoot{display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
-.sfoot button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:46px;
-              border:1px solid var(--line);border-radius:10px;background:var(--panel-2);
-              color:var(--text);font-size:0.8438rem;width:100%}
+.sfoot{display:grid;gap:var(--s-4);padding-top:var(--s-5);border-top:1px solid var(--line)}
+.sfoot button{display:flex;align-items:center;justify-content:center;gap:var(--s-4);min-height:46px;
+              border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel-2);
+              color:var(--text);font-size:var(--fs-ui);width:100%}
 .sfoot button.danger{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 32%,transparent)}
 
 /* ---------------- phone: fit for a plant room ---------------- */
@@ -718,46 +989,59 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
   /* The strip scrolls, but it ended mid-word with no sign it was scrollable at all.
      Snap it to cells and let the last one breathe so the edge reads as "more". */
   .mimic{scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
-  .mimic .mcell{scroll-snap-align:start;min-width:42vw;padding:6px 14px;gap:1px}
+  .mimic .mcell{scroll-snap-align:start;min-width:42vw;padding:var(--s-3) var(--s-6);gap:1px}
   .mimic::after{content:"";flex:none;width:10px}
   /* The strip was 140px of an 844px screen before a technician saw a single job. The
      same six readings, two thirds the height. */
-  .mimic .mlab{font-size:0.5312rem;letter-spacing:.1em}
-  .mimic .mval{font-size:0.875rem}
-  .mimic .msub{font-size:0.5625rem}
+  .mimic .mlab{letter-spacing:.1em}
+  .mimic .mval{font-size:var(--fs-body)}
 
   /* "September / 2026" over two lines with 15px arrows either side. The month is one
      line, and the steppers are thumb-sized. */
-  .monthbar{gap:6px;padding:8px 10px}
-  .monthbar>b{font-size:0.9688rem;white-space:nowrap;flex:1;text-align:center}
-  .monthbar .icobtn{width:40px;height:40px;flex:none}
+  .monthbar{gap:var(--s-3);padding:var(--s-4) var(--s-5)}
+  .monthbar>b{font-size:var(--fs-body);white-space:nowrap;flex:1;text-align:center}
+  .monthbar .icobtn{width:44px;height:44px;flex:none}
   .monthbar .icobtn svg{width:18px;height:18px}
   .monthbar .mnote{flex-basis:100%;order:9;text-align:center}
   .monthbar .mpick{flex-basis:100%;order:10;width:100%}
   .monthbar .spacer{display:none}
 
-  /* Anything tappable clears the 44px Apple/Android target on a phone. Gloves, a ladder,
-     one hand on the rail. */
-  .btn{min-height:42px}
-  .btn.sm{min-height:36px}
-  .inp{min-height:44px;font-size:1rem}  /* 16px stops iOS zooming the page on focus */
+  /*
+   * Anything tappable clears 44px on a phone. Gloves, a ladder, one hand on the rail.
+   *
+   * This block used to say that and then set 42px and 36px, which is the kind of
+   * comment that is worse than no comment. scripts/contrast-audit.mjs measures every
+   * control in a real 390px viewport now, so the claim and the code cannot drift again.
+   */
+  .btn{min-height:44px}
+  .btn.sm{min-height:44px}
+  .inp{min-height:44px;font-size:var(--fs-lede)}  /* >=16px stops iOS zooming on focus */
   select.inp{min-height:44px}
+  .icobtn{width:44px;height:44px}
+  .icobtn svg{width:19px;height:19px}
+  /* Icon-only below 620px, so it needs a floor on both axes, not just height. */
+  .emgbtn{min-height:44px;min-width:44px;justify-content:center;padding:var(--s-2) var(--s-4)}
+  /* `compact` means "this control sits in a dense table row". There are no dense
+     table rows on a phone — the tables become cards — so it stops applying. */
+  .inp.compact{min-height:44px;padding:var(--s-3) var(--s-5);font-size:var(--fs-lede)}
+  .tabs button{min-height:44px}
+  .tabbar a{min-height:52px}
 }
 
 /* ---------------- host: which network ---------------- */
 /* A list of adapters is a decision, not a table: one is going on the wall. */
-.niclist{display:grid;gap:8px}
-.nic{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;
-     align-items:center;border:1px solid var(--line);border-radius:10px;
-     padding:11px 13px;background:var(--panel-2);cursor:pointer}
+.niclist{display:grid;gap:var(--s-4)}
+.nic{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s-2) var(--s-5);
+     align-items:center;border:1px solid var(--line);border-radius:var(--r-lg);
+     padding:var(--s-5) var(--s-5);background:var(--panel-2);cursor:pointer}
 .nic.on{border-color:var(--accent);background:var(--accent-soft)}
 .nic.dead{cursor:default;background:transparent}
 .nic input{grid-column:1;grid-row:1;margin:0;width:17px;height:17px;accent-color:var(--accent)}
-.nic .nname{grid-column:2;grid-row:1;display:flex;align-items:center;gap:7px;flex-wrap:wrap;
-            font-weight:600;font-size:0.8438rem;min-width:0}
-.nic .naddr{grid-column:3;grid-row:1;font-family:var(--mono);font-size:0.8438rem;
+.nic .nname{grid-column:2;grid-row:1;display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap;
+            font-weight:600;font-size:var(--fs-ui);min-width:0}
+.nic .naddr{grid-column:3;grid-row:1;font-family:var(--mono);font-size:var(--fs-ui);
             font-weight:500;white-space:nowrap}
-.nic .nnote{grid-column:2/4;font-size:0.7812rem;color:var(--text-3);line-height:1.5}
+.nic .nnote{grid-column:2/4;font-size:var(--fs-ui);color:var(--text-3);line-height:1.5}
 .nic.dead .nname{grid-column:1/3}
 .nic.dead .nnote{grid-column:1/4}
 @media (max-width:700px){
@@ -768,17 +1052,17 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 }
 
 /* ---------------- generator logbook ---------------- */
-.setlog{display:grid;gap:8px}
+.setlog{display:grid;gap:var(--s-4)}
 .slrow{display:grid;grid-template-columns:minmax(0,1.3fr) auto minmax(0,1fr) auto;
-       gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;
-       padding:11px 13px;background:var(--panel-2)}
+       gap:var(--s-5);align-items:center;border:1px solid var(--line);border-radius:var(--r-lg);
+       padding:var(--s-5) var(--s-5);background:var(--panel-2)}
 .slrow.act{border-color:color-mix(in srgb,var(--crit) 45%,transparent);
            box-shadow:inset 3px 0 0 var(--crit)}
 .slrow.watch{box-shadow:inset 3px 0 0 var(--warn)}
-.sltag{font-family:var(--cond);font-size:1rem;font-weight:700;letter-spacing:.02em;min-width:0}
-.sltag .sub{display:block;font-family:var(--sans);font-size:0.75rem;font-weight:400;
+.sltag{font-family:var(--cond);font-size:var(--fs-lede);font-weight:700;letter-spacing:.02em;min-width:0}
+.sltag .sub{display:block;font-family:var(--sans);font-size:var(--fs-sm);font-weight:400;
             letter-spacing:0;text-transform:none}
-.sllast{font-family:var(--mono);font-size:0.6875rem;color:var(--text-3)}
+.sllast{font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-3)}
 /* A figure the system judged to be wrong reads as wrong in the book. */
 .warnv{color:var(--crit);font-weight:600}
 @media (max-width:700px){
@@ -798,8 +1082,8 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 
 /* ---------------- work waiting to be accepted ---------------- */
 /* Above every screen, because the whole point is that it is seen without going looking. */
-.waiting{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start;
-         margin:0 22px 14px;padding:13px 15px;border-radius:10px;
+.waiting{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:var(--s-5);align-items:start;
+         margin:0 var(--s-7) var(--s-6);padding:var(--s-5) var(--s-6);border-radius:var(--r-lg);
          background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 42%,transparent)}
 .waiting.p1{background:var(--crit-bg);border-color:color-mix(in srgb,var(--crit) 48%,transparent);
             animation:waitpulse 2.4s ease-in-out infinite}
@@ -807,40 +1091,40 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
                      50%{box-shadow:0 0 0 7px transparent}}
 .waiting .wicon{color:var(--warn);display:grid;place-items:center;width:28px;height:28px;flex:none}
 .waiting.p1 .wicon{color:var(--crit)}
-.waiting .wbody>b{display:block;font-size:0.875rem;margin-bottom:6px}
-.waiting ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.waiting li{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:0.8438rem}
+.waiting .wbody>b{display:block;font-size:var(--fs-body);margin-bottom:var(--s-3)}
+.waiting ul{list-style:none;margin:0;padding:0;display:grid;gap:var(--s-3)}
+.waiting li{display:flex;align-items:center;gap:var(--s-4);flex-wrap:wrap;font-size:var(--fs-ui)}
 .waiting li a{color:var(--text);font-weight:600;text-decoration:none}
 .waiting li a:hover{text-decoration:underline}
 .waiting .wact{white-space:nowrap}
 @media (max-width:700px){
-  .waiting{margin:0 14px 12px;grid-template-columns:auto minmax(0,1fr)}
+  .waiting{margin:0 var(--s-6) var(--s-5);grid-template-columns:auto minmax(0,1fr)}
   .waiting .wact{grid-column:1/3;justify-self:stretch}
   .waiting .wact .btn{width:100%}
   /* Each job becomes its own block. Flowed inline, the Accept button for one job ended
      up sitting between the next job's title and its reference, and on a red banner that
      somebody is reading in a hurry that is a button pressed against the wrong job. */
-  .waiting li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 8px;
-              padding:8px 0;border-top:1px solid color-mix(in srgb,var(--text) 10%,transparent)}
+  .waiting li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--s-2) var(--s-4);
+              padding:var(--s-4) 0;border-top:1px solid color-mix(in srgb,var(--text) 10%,transparent)}
   .waiting li:first-child{border-top:0;padding-top:0}
   .waiting li a{grid-column:2}
   .waiting li .sub{grid-column:2;grid-row:2}
-  .waiting li .btn{grid-column:1/3;width:100%;margin-top:4px}
+  .waiting li .btn{grid-column:1/3;width:100%;margin-top:var(--s-2)}
 }
 
 /* The live-connection lamp. Off is the state that carries information. */
 .livedot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--text-3);opacity:.45}
 .livedot.on{background:var(--ok);opacity:1;
             box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 20%,transparent)}
-.pairsteps{margin:0 0 16px;padding-left:20px;font-size:0.8438rem;line-height:1.6;color:var(--text-2)}
-.pairsteps li{margin-bottom:7px}
+.pairsteps{margin:0 0 var(--s-6);padding-left:var(--s-7);font-size:var(--fs-ui);line-height:1.6;color:var(--text-2)}
+.pairsteps li{margin-bottom:var(--s-3)}
 .pairsteps b{color:var(--text)}
 
 /* ---------------- the alarm: a ring, and the emergency alert ---------------- */
 /* These two cover the screen on purpose, and neither has a close button — only an
    acknowledge. "I dismissed it" and "I saw it" have to be the same action, or the roll
    call the sender is reading is a guess. */
-.alarm{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:20px;
+.alarm{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:var(--s-7);
        backdrop-filter:blur(2px)}
 .alarm.emergency{background:color-mix(in srgb,var(--crit) 24%,rgba(8,12,18,.86));
                  animation:alarmpulse 1.6s ease-in-out infinite}
@@ -851,81 +1135,81 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 }
 @media (prefers-reduced-motion:reduce){.alarm.emergency{animation:none}}
 
-.alarmcard{width:min(560px,100%);background:var(--panel);border-radius:14px;
-           border:1px solid var(--line-2);padding:24px 24px 22px;
+.alarmcard{width:min(560px,100%);background:var(--panel);border-radius:var(--r-xl);
+           border:1px solid var(--line-2);padding:var(--s-7) var(--s-7) var(--s-7);
            box-shadow:0 28px 70px rgba(0,0,0,.45);max-height:90vh;overflow:auto;
            text-align:left}
 .alarm.emergency .alarmcard{border-top:5px solid var(--crit)}
-.alarmcard .kind{display:flex;align-items:center;gap:7px;margin:0 0 8px;
-                 font-family:var(--mono);font-size:0.6875rem;letter-spacing:.1em;
+.alarmcard .kind{display:flex;align-items:center;gap:var(--s-3);margin:0 0 var(--s-4);
+                 font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.1em;
                  text-transform:uppercase;color:var(--crit)}
 .alarm.ringing .alarmcard .kind{color:var(--accent)}
-.alarmcard h1{margin:0 0 10px;font-size:1.375rem;line-height:1.3;font-family:var(--cond)}
-.alarmcard .why{margin:0 0 10px;font-size:0.9375rem;line-height:1.5;color:var(--text)}
-.alarmcard .by{margin:0 0 16px;font-size:0.8125rem;color:var(--text-3)}
-.alarmcard .seen{display:flex;align-items:center;gap:6px;margin:0 0 14px;
-                 font-size:0.8438rem;color:var(--ok)}
-.alarmcard .bad{margin:12px 0 0;font-size:0.8125rem;color:var(--crit)}
-.alarmcard .tally{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
-.alarmcard .standdown{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
-.alarmcard .standdown small{display:block;margin-top:6px;font-size:0.75rem;color:var(--text-3)}
+.alarmcard h1{margin:0 0 var(--s-5);font-size:var(--fs-title);line-height:1.3;font-family:var(--cond)}
+.alarmcard .why{margin:0 0 var(--s-5);font-size:var(--fs-body);line-height:1.5;color:var(--text)}
+.alarmcard .by{margin:0 0 var(--s-6);font-size:var(--fs-ui);color:var(--text-3)}
+.alarmcard .seen{display:flex;align-items:center;gap:var(--s-3);margin:0 0 var(--s-6);
+                 font-size:var(--fs-ui);color:var(--ok)}
+.alarmcard .bad{margin:var(--s-5) 0 0;font-size:var(--fs-ui);color:var(--crit)}
+.alarmcard .tally{display:flex;flex-wrap:wrap;gap:var(--s-4);align-items:center;margin-bottom:var(--s-5)}
+.alarmcard .standdown{margin-top:var(--s-6);padding-top:var(--s-6);border-top:1px solid var(--line)}
+.alarmcard .standdown small{display:block;margin-top:var(--s-3);font-size:var(--fs-sm);color:var(--text-3)}
 
 /* Who has answered and who has not. The reason this feature is worth building. */
-.rollcall{list-style:none;margin:0 0 4px;padding:0;max-height:230px;overflow:auto;
+.rollcall{list-style:none;margin:0 0 var(--s-2);padding:0;max-height:230px;overflow:auto;
           border:1px solid var(--line);border-radius:var(--r)}
-.rollcall li{display:flex;justify-content:space-between;gap:10px;padding:8px 11px;
-             font-size:0.8125rem;border-bottom:1px solid var(--line)}
+.rollcall li{display:flex;justify-content:space-between;gap:var(--s-5);padding:var(--s-4) var(--s-5);
+             font-size:var(--fs-ui);border-bottom:1px solid var(--line)}
 .rollcall li:last-child{border-bottom:0}
 .rollcall li.out{background:var(--warn-bg);color:var(--text)}
 .rollcall li.out .mono{color:var(--crit)}
-.rollcall .mono{font-family:var(--mono);font-size:0.6875rem;color:var(--text-3);white-space:nowrap}
+.rollcall .mono{font-family:var(--mono);font-size:var(--fs-sm);color:var(--text-3);white-space:nowrap}
 
 @media (max-width:640px){
-  .alarmcard{padding:18px 16px 16px;border-radius:12px}
-  .alarmcard h1{font-size:1.1875rem}
+  .alarmcard{padding:var(--s-7) var(--s-6) var(--s-6);border-radius:var(--r-lg)}
+  .alarmcard h1{font-size:var(--fs-lede)}
 }
 
 /* ---------------- raising an alert ---------------- */
 /* A word, not an icon: nobody should have to hunt for this one, and nobody should wonder
    afterwards what the little triangle did. */
-.emgbtn{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;
+.emgbtn{display:inline-flex;align-items:center;gap:var(--s-3);padding:var(--s-2) var(--s-5);border-radius:var(--r-pill);
         border:1px solid color-mix(in srgb,var(--crit) 45%,var(--line));
         background:color-mix(in srgb,var(--crit) 10%,transparent);color:var(--crit);
-        font-family:var(--mono);font-size:0.6562rem;letter-spacing:.09em;text-transform:uppercase;
+        font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.09em;text-transform:uppercase;
         cursor:pointer;white-space:nowrap}
 .emgbtn:hover{background:color-mix(in srgb,var(--crit) 18%,transparent)}
 @media (max-width:620px){.emgbtn span{display:none}}
 
-.emgpick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.emgpick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s-4);margin-bottom:var(--s-6)}
 @media (max-width:560px){.emgpick{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.emgopt{text-align:left;padding:10px 11px;border-radius:var(--r);border:1px solid var(--line);
+.emgopt{text-align:left;padding:var(--s-5) var(--s-5);border-radius:var(--r);border:1px solid var(--line);
         background:var(--panel-2);cursor:pointer;color:inherit}
-.emgopt b{display:block;font-size:0.875rem}
-.emgopt small{display:block;margin-top:3px;font-size:0.7188rem;color:var(--text-3);line-height:1.35}
+.emgopt b{display:block;font-size:var(--fs-body)}
+.emgopt small{display:block;margin-top:var(--s-1);font-size:var(--fs-sm);color:var(--text-3);line-height:1.35}
 .emgopt:hover{border-color:var(--line-2)}
 .emgopt.on{border-color:var(--crit);background:color-mix(in srgb,var(--crit) 12%,var(--panel-2))}
 .emgopt.on b{color:var(--crit)}
 
 /* ---------------- ringing a device ---------------- */
-.ringrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.ringrow{display:flex;align-items:center;gap:var(--s-5);padding:var(--s-4) 0;border-bottom:1px solid var(--line)}
 .ringrow:last-child{border-bottom:0}
 .ringrow .who{flex:1;min-width:0}
-.ringrow .who b{display:block;font-size:0.875rem}
-.ringrow .who small{display:block;font-size:0.75rem;color:var(--text-3)}
+.ringrow .who b{display:block;font-size:var(--fs-body)}
+.ringrow .who small{display:block;font-size:var(--fs-sm);color:var(--text-3)}
 
 /* ---------------- import: mapping the columns ---------------- */
 /* The step that makes a real spreadsheet importable. Each row is one thing the system
    needs, with the column it thinks holds it — wrong guesses are corrected here rather
    than by renaming columns in Excel. */
-.mapgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.mapgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-4)}
 @media (max-width:640px){.mapgrid{grid-template-columns:minmax(0,1fr)}}
-.maprow{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:10px;align-items:center;
-        padding:9px 11px;border:1px solid var(--line);border-radius:var(--r);
+.maprow{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:var(--s-5);align-items:center;
+        padding:var(--s-4) var(--s-5);border:1px solid var(--line);border-radius:var(--r);
         background:var(--panel-2)}
 .maprow.bad{border-color:var(--crit);background:color-mix(in srgb,var(--crit) 8%,var(--panel-2))}
-.maprow .lbl b{display:block;font-size:0.8438rem}
-.maprow .lbl small{display:block;margin-top:2px;font-size:0.7188rem;color:var(--text-3);line-height:1.35}
-.maprow select{padding:6px 8px;font-size:0.8125rem}
+.maprow .lbl b{display:block;font-size:var(--fs-ui)}
+.maprow .lbl small{display:block;margin-top:var(--s-1);font-size:var(--fs-sm);color:var(--text-3);line-height:1.35}
+.maprow select{padding:var(--s-3) var(--s-4);font-size:var(--fs-ui)}
 @media (max-width:420px){.maprow{grid-template-columns:minmax(0,1fr)}}
 
 /* ---------------- the duty screen ---------------- */
@@ -933,9 +1217,9 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
    does not move, because the whole value of it is being readable from across a plant room
    without anybody touching it. */
 .dutybar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;align-items:center;
-         gap:12px;padding:9px 14px calc(9px + env(safe-area-inset-bottom));
+         gap:var(--s-5);padding:var(--s-4) var(--s-6) calc(var(--s-4) + env(safe-area-inset-bottom));
          background:var(--panel);border-top:2px solid var(--line-2);
-         box-shadow:0 -10px 30px rgba(0,0,0,.18);font-size:0.8438rem;flex-wrap:wrap}
+         box-shadow:0 -10px 30px rgba(0,0,0,.18);font-size:var(--fs-ui);flex-wrap:wrap}
 .dutybar.late{border-top-color:var(--crit);
               background:color-mix(in srgb,var(--crit) 10%,var(--panel));
               animation:dutypulse 2s ease-in-out infinite}
@@ -944,15 +1228,15 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
   50%{background:color-mix(in srgb,var(--crit) 18%,var(--panel))}
 }
 @media (prefers-reduced-motion:reduce){.dutybar.late{animation:none}}
-.dutybar .badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);
-                font-size:0.625rem;letter-spacing:.09em;text-transform:uppercase;
+.dutybar .badge{display:inline-flex;align-items:center;gap:var(--s-3);font-family:var(--mono);
+                font-size:var(--fs-micro);letter-spacing:.09em;text-transform:uppercase;
                 color:var(--text-3);white-space:nowrap}
 .dutybar.late .badge{color:var(--crit)}
-.dutybar .what{display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap}
+.dutybar .what{display:flex;align-items:center;gap:var(--s-4);flex:1;min-width:0;flex-wrap:wrap}
 .dutybar .what.quiet{color:var(--text-3)}
-.dutybar .pill{display:inline-block;padding:2px 9px;border-radius:999px;
+.dutybar .pill{display:inline-block;padding:var(--s-1) var(--s-4);border-radius:var(--r-pill);
                border:1px solid var(--crit);color:var(--crit);text-decoration:none;
-               font-family:var(--mono);font-size:0.6875rem;white-space:nowrap}
+               font-family:var(--mono);font-size:var(--fs-sm);white-space:nowrap}
 .dutybar .right{margin-left:auto}
 /* The phone tab bar lives here too; the duty strip sits above it rather than under it. */
 @media (max-width:900px){.dutybar{bottom:56px}}
