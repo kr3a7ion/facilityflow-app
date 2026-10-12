@@ -16,7 +16,7 @@ import { monthOf, send, ctxOf } from './_helpers.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as remote from '../services/remote.js';
-import * as alertRouting from '../services/alertRouting.js';
+import * as slaRules from '../services/slaRules.js';
 import { certPaths, caFingerprint, expiryOf, namesOf } from '../services/tls.js';
 
 const NewUser = z.object({
@@ -862,6 +862,21 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
             message: 'The SLA matrix needs one row for each of P1 to P4, with response and resolve minutes.',
           });
         }
+        // Escalation is now picked on the screen rather than fixed, so check it names a
+        // role that exists: an unknown one would make every breach of that priority tell
+        // nobody.
+        for (const row of shape.data) {
+          const known = app.db.prepare('SELECT 1 FROM roles WHERE key = ? AND property_id = ?')
+            .get(row.escalateToRole, me.propertyId);
+          if (!known) {
+            return reply.code(400).send({ error: 'unknown_role',
+              message: `${row.priority} escalates to "${row.escalateToRole}", which is not a role here.` });
+          }
+          if (row.resolveMinutes < row.respondMinutes) {
+            return reply.code(400).send({ error: 'resolve_before_respond',
+              message: `${row.priority}: resolve has to be at least as long as respond.` });
+          }
+        }
       }
       const before = getSetting(app.db, me.propertyId, body.data.key, null);
       setSetting(app.db, me.propertyId, body.data.key, body.data.value, nowIso(), me.userId ?? undefined);
@@ -873,31 +888,54 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true };
     });
 
-  // ---- who is alerted ----------------------------------------------------------
-  app.get('/api/admin/alert-routing', { preHandler: requirePermission('admin.settings.manage') }, async (req) => ({
-    events: alertRouting.allRouting(app.db, req.principal!.propertyId),
-    levels: alertRouting.LEVELS,
-  }));
+  // ---- specific response and resolve targets -----------------------------------
+  // Rules layered over P1-P4 for a trade, a place, or both. Same permission as the
+  // matrix they narrow.
+  const ruleBody = z.object({
+    priority: z.enum(['P1', 'P2', 'P3', 'P4']),
+    trade: z.string().max(40).nullable().optional(),
+    locationId: z.string().max(40).nullable().optional(),
+    respondMinutes: z.number().int().positive().max(100000).nullable().optional(),
+    resolveMinutes: z.number().int().positive().max(1000000).nullable().optional(),
+    escalateToRole: z.string().max(40).nullable().optional(),
+    note: z.string().max(200).nullable().optional(),
+  });
 
-  app.put('/api/admin/alert-routing/:key', { preHandler: requirePermission('admin.settings.manage') },
+  app.get('/api/admin/sla-rules', { preHandler: requirePermission('admin.settings.manage') },
+    async (req) => ({ rules: slaRules.list(app.db, req.principal!.propertyId) }));
+
+  app.post('/api/admin/sla-rules', { preHandler: requirePermission('admin.settings.manage') },
     async (req, reply) => {
-      const body = z.object({
-        roles: z.array(z.string().max(40)).max(30).optional(),
-        context: z.array(z.enum(['@team_lead', '@reporter', '@assignee', '@completer'])).optional(),
-        level: z.enum(['quiet', 'chime', 'good', 'urgent']).optional(),
-        off: z.boolean().optional(),
-      }).safeParse(req.body);
+      const body = ruleBody.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+      return send(reply, () => ({ rule: slaRules.create(app.db, ctxOf(req), body.data) }), 201);
+    });
+
+  app.patch('/api/admin/sla-rules/:id', { preHandler: requirePermission('admin.settings.manage') },
+    async (req, reply) => {
+      const body = ruleBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
       return send(reply, () => ({
-        routing: alertRouting.setRouting(app.db, ctxOf(req), (req.params as { key: string }).key, body.data),
+        rule: slaRules.update(app.db, ctxOf(req), (req.params as { id: string }).id, body.data),
       }));
     });
 
-  /** Back to the shipped default for one event. */
-  app.delete('/api/admin/alert-routing/:key', { preHandler: requirePermission('admin.settings.manage') },
-    async (req, reply) => send(reply, () => ({
-      routing: alertRouting.setRouting(app.db, ctxOf(req), (req.params as { key: string }).key, null),
-    })));
+  app.delete('/api/admin/sla-rules/:id', { preHandler: requirePermission('admin.settings.manage') },
+    async (req, reply) => send(reply, () =>
+      slaRules.remove(app.db, ctxOf(req), (req.params as { id: string }).id)));
+
+  /** What a job raised now would get — so the form can show the result before saving. */
+  app.get('/api/admin/sla-rules/preview', { preHandler: requirePermission('admin.settings.manage') },
+    async (req, reply) => {
+      const q = z.object({
+        priority: z.enum(['P1', 'P2', 'P3', 'P4']),
+        trade: z.string().max(40).optional(),
+        locationId: z.string().max(40).optional(),
+      }).safeParse(req.query);
+      if (!q.success) return reply.code(400).send({ error: 'invalid', issues: q.error.issues });
+      const r = slaRules.resolve(app.db, req.principal!.propertyId, q.data.priority, q.data);
+      return { ...r, rule: r.ruleId ? slaRules.describe(app.db, req.principal!.propertyId, r.ruleId) : null };
+    });
 
   // ---- backups ---------------------------------------------------------------
   app.get('/api/admin/backups', { preHandler: requirePermission('admin.backup.run') }, async () => {

@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
-import { titleCase, when } from '../lib/format';
+import { titleCase, when, duration } from '../lib/format';
 import { humanBytes } from '../lib/image';
 import { preview } from '../lib/sound';
 import { useMonth } from '../lib/month';
@@ -74,7 +74,7 @@ export function Admin() {
         </div>
       </div>
 
-      <div className="row gap-7 mb-7 top">
+      <div className="row gap-7 mb-7 start">
         {GROUPS.map((g) => {
           const mine = allowed.filter((t) => (g.keys as readonly string[]).includes(t.key));
           if (mine.length === 0) return null;
@@ -697,7 +697,7 @@ function Roles() {
               <div className="mb-6" key={module}>
                 <div className="t-lab mb-3">{module}</div>
                 {perms.map((p) => (
-                  <label className="row gap-4 top py-2 px-0 t-ui clickable" key={p.code}>
+                  <label className="row gap-4 start py-2 px-0 t-ui clickable" key={p.code}>
                     <input className="mt-1" type="checkbox" checked={codes.has(p.code)}
                            onChange={(e) => {
                              const next = new Set(codes);
@@ -869,12 +869,19 @@ function Settings() {
   const [draft, setDraft] = useState<SlaRow[] | null>(null);
   const [tolerance, setTolerance] = useState<string>('');
 
-  const settings = useQuery<{ settings: { sla_matrix: SlaRow[] | null;
+  const settings = useQuery<{ settings: { sla_matrix: SlaRow[] | null; trades: string[] | null;
                                           fuel_variance_tolerance_pct: number | null } }>({
     queryKey: ['admin-settings'], queryFn: () => api.get('/api/admin/settings'),
   });
 
   const sla = draft ?? settings.data?.settings.sla_matrix ?? [];
+  // Who a breach can go to. Read from the roles that exist, so a renamed or new role is
+  // offered without a code change; falls back to showing the key if roles cannot be read.
+  const roles = useQuery<{ roles: { key: string; name: string }[] }>({
+    queryKey: ['admin-roles-brief'], queryFn: () => api.get('/api/admin/roles'), retry: false,
+  });
+  const roleList = roles.data?.roles ?? [];
+  const roleName = (key: string) => roleList.find((r) => r.key === key)?.name ?? titleCase(key);
 
   const put = useMutation({
     mutationFn: (v: { key: string; value: unknown }) => api.post('/api/admin/settings', v),
@@ -924,7 +931,17 @@ function Settings() {
                              }} />
                     </td>
                   ))}
-                  <td className="mono">{row.escalateToRole}</td>
+                  <td>
+                    {roleList.length ? (
+                      <select className="inp py-2 px-4 compact" value={row.escalateToRole}
+                              aria-label={`${row.priority} escalates to`}
+                              onChange={(e) => setDraft(sla.map((r, j) => j === i ? { ...r, escalateToRole: e.target.value } : r))}>
+                        {!roleList.some((r) => r.key === row.escalateToRole) && (
+                          <option value={row.escalateToRole}>{row.escalateToRole}</option>)}
+                        {roleList.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}
+                      </select>
+                    ) : <span className="mono">{row.escalateToRole}</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -936,6 +953,10 @@ function Settings() {
         A job's deadline is computed once when it is raised and stored on the job. Changing these
         targets shapes future work — <b>it never rewrites a deadline somebody was already judged against.</b>
       </div>
+
+      <SlaRules base={settings.data?.settings.sla_matrix ?? []}
+                trades={settings.data?.settings.trades ?? []}
+                roles={roleList} roleName={roleName} />
 
       <Card title="Fuel variance tolerance"
             right={<Btn size="sm" tone="pri" disabled={!tolerance || put.isPending}
@@ -2886,13 +2907,13 @@ function JoinCard({ url, port, nic }: { url: string | null; port: number; nic: N
         <Empty title="No address to hand out"
                hint="This PC has no cable or wifi connection the department could reach it on. Connect it to the office network and this fills in." />
       ) : (
-        <div className="row gap-7 top">
+        <div className="row gap-7 start">
           {svg && (
             <div className="p-4" style={{ width: 132, height: 132, flex: 'none', background: '#fff', borderRadius: 8, border: '1px solid var(--line)' }}
                  dangerouslySetInnerHTML={{ __html: svg }} />
           )}
-          <div className="fill">
-            <div className="f-mono t-body fw-5 mb-3 break-all">
+          <div className="joinaddr">
+            <div className="url f-mono t-body fw-5 mb-3">
               {primary}
             </div>
             {nic && (
@@ -2901,7 +2922,7 @@ function JoinCard({ url, port, nic }: { url: string | null; port: number; nic: N
                 {nic.kind === 'wifi' ? ' — phones must be on this same wifi' : ''}
               </p>
             )}
-            <p className="sub mt-5 mb-0">
+            <p className="t-ui mt-5 mb-0">
               Anyone on the office wifi opens this and signs in. On a phone, <b>Add to home
               screen</b> and it behaves like an app.
             </p>
@@ -2995,5 +3016,256 @@ function CmdList({ windows }: { windows: boolean }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+
+/* ------------------------------------------------- specific target rules -- */
+interface SlaRuleRow {
+  id: string; priority: 'P1' | 'P2' | 'P3' | 'P4'; trade: string | null;
+  location_id: string | null; location_name: string | null;
+  respond_minutes: number | null; resolve_minutes: number | null;
+  escalate_to_role: string | null; note: string | null;
+  updated_at: string; updated_by_name: string | null;
+}
+interface RulePlace { id: string; parent_id: string | null; type: string; name: string; is_active: number }
+
+/** Places as an indented list, parents before children, for a select. */
+function placeOptions(places: RulePlace[]): { id: string; label: string }[] {
+  const kids = new Map<string | null, RulePlace[]>();
+  for (const p of places) (kids.get(p.parent_id) ?? kids.set(p.parent_id, []).get(p.parent_id)!).push(p);
+  const known = new Set(places.map((p) => p.id));
+  const out: { id: string; label: string }[] = [];
+  const walk = (parent: string | null, depth: number) => {
+    for (const p of kids.get(parent) ?? []) {
+      // Apartments are thousands of rows and are covered by their block or floor.
+      if (p.type === 'apartment') continue;
+      out.push({ id: p.id, label: `${' '.repeat(depth)}${p.name}` });
+      if (depth < 12) walk(p.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  // Anything whose parent is outside the list still gets offered, at the top level.
+  for (const p of places) if (p.parent_id && !known.has(p.parent_id) && p.type !== 'apartment') {
+    if (!out.some((o) => o.id === p.id)) out.push({ id: p.id, label: p.name });
+  }
+  return out;
+}
+
+function appliesTo(r: { trade: string | null; location_name: string | null }): string {
+  if (r.trade && r.location_name) return `${titleCase(r.trade)} in ${r.location_name}`;
+  if (r.trade) return `${titleCase(r.trade)}, anywhere`;
+  return `Any trade in ${r.location_name ?? 'a place that no longer exists'}`;
+}
+
+function SlaRules({ base, trades, roles, roleName }: {
+  base: SlaRow[]; trades: string[]; roles: { key: string; name: string }[];
+  roleName: (key: string) => string;
+}) {
+  const [editing, setEditing] = useState<SlaRuleRow | 'new' | null>(null);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const rules = useQuery<{ rules: SlaRuleRow[] }>({
+    queryKey: ['sla-rules'], queryFn: () => api.get('/api/admin/sla-rules'),
+  });
+  const list = rules.data?.rules ?? [];
+  const baseFor = (p: string) => base.find((b) => b.priority === p);
+
+  return (
+    <>
+      <Flash msg={msg} />
+      <Card title="Specific rules" flush
+            right={<Btn size="sm" tone="pri" icon="plus" onClick={() => setEditing('new')}>Add a rule</Btn>}>
+        {rules.isLoading ? <div className="p-6"><Loading rows={2} /></div>
+          : rules.isError ? <div className="p-6"><ErrorNote error={rules.error} /></div>
+          : list.length === 0 ? (
+            <Empty title="No specific rules"
+                   hint="Every job takes its priority's targets from the table above. Add a rule when one trade or one place needs its own — electrical faster, the plant room escalating to the head of department." />
+          ) : (
+            <div className="tw">
+              <table className="wide">
+                <thead><tr><th>Priority</th><th>Applies to</th><th className="num">Respond</th>
+                  <th className="num">Resolve</th><th>Escalates to</th><th /></tr></thead>
+                <tbody>
+                  {list.map((r) => {
+                    const d = baseFor(r.priority);
+                    return (
+                      <tr key={r.id}>
+                        <td className="mono">{r.priority}</td>
+                        <td>
+                          {appliesTo(r)}
+                          {r.note && <span className="sub">{r.note}</span>}
+                        </td>
+                        <td className="num">
+                          {r.respond_minutes != null ? <b>{duration(r.respond_minutes)}</b>
+                            : <span className="c-3">{duration(d?.respondMinutes)}</span>}
+                        </td>
+                        <td className="num">
+                          {r.resolve_minutes != null ? <b>{duration(r.resolve_minutes)}</b>
+                            : <span className="c-3">{duration(d?.resolveMinutes)}</span>}
+                        </td>
+                        <td>
+                          {r.escalate_to_role ? <b>{roleName(r.escalate_to_role)}</b>
+                            : <span className="c-3">{d ? roleName(d.escalateToRole) : '—'}</span>}
+                        </td>
+                        <td className="tar">
+                          <Btn size="sm" onClick={() => setEditing(r)}>Edit</Btn>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+      </Card>
+      <div className="note mt-6 mb-6">
+        <b>The most specific rule wins.</b> A rule naming both a trade and a place, then one naming
+        a place — the nearest place first, so a floor beats its block — then one naming a trade.
+        Anything a rule leaves blank (shown grey) comes from the priority's row above.
+      </div>
+
+      {editing && (
+        <RuleModal rule={editing === 'new' ? null : editing} base={base} trades={trades}
+                   roles={roles} roleName={roleName}
+                   onClose={() => setEditing(null)}
+                   onDone={(text) => { setEditing(null); setMsg({ text }); }} />
+      )}
+    </>
+  );
+}
+
+function RuleModal({ rule, base, trades, roles, roleName, onClose, onDone }: {
+  rule: SlaRuleRow | null; base: SlaRow[]; trades: string[];
+  roles: { key: string; name: string }[]; roleName: (key: string) => string;
+  onClose: () => void; onDone: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [f, setF] = useState({
+    priority: rule?.priority ?? 'P2',
+    trade: rule?.trade ?? '',
+    locationId: rule?.location_id ?? '',
+    respond: rule?.respond_minutes != null ? String(rule.respond_minutes) : '',
+    resolve: rule?.resolve_minutes != null ? String(rule.resolve_minutes) : '',
+    role: rule?.escalate_to_role ?? '',
+    note: rule?.note ?? '',
+  });
+  const [err, setErr] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const places = useQuery<{ locations: RulePlace[] }>({
+    queryKey: ['locations'], queryFn: () => api.get('/api/locations'),
+  });
+  const options = placeOptions(places.data?.locations ?? []);
+  const d = base.find((b) => b.priority === f.priority);
+  const num = (v: string) => (v.trim() === '' ? null : Number(v));
+
+  const body = {
+    priority: f.priority, trade: f.trade || null, locationId: f.locationId || null,
+    respondMinutes: num(f.respond), resolveMinutes: num(f.resolve),
+    escalateToRole: f.role || null, note: f.note.trim() || null,
+  };
+  const save = useMutation({
+    mutationFn: () => (rule ? api.patch(`/api/admin/sla-rules/${rule.id}`, body)
+                            : api.post('/api/admin/sla-rules', body)),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['sla-rules'] });
+      onDone(rule ? 'Rule saved. It applies to jobs raised from now on.'
+                  : 'Rule added. It applies to jobs raised from now on.');
+    },
+    onError: (e) => setErr((e as ApiError).message),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.del<{ jobsKeepTheirDeadlines: number }>(`/api/admin/sla-rules/${rule!.id}`),
+    onSuccess: async (r) => {
+      await qc.invalidateQueries({ queryKey: ['sla-rules'] });
+      const n = r.jobsKeepTheirDeadlines;
+      onDone(n > 0
+        ? `Rule deleted. New jobs take the default again; the ${n} job${n === 1 ? '' : 's'} it already set keep their deadlines.`
+        : 'Rule deleted.');
+    },
+    onError: (e) => setErr((e as ApiError).message),
+  });
+
+  const badNumber = [f.respond, f.resolve].some((v) => v.trim() !== '' && !(Number.isInteger(Number(v)) && Number(v) > 0));
+  const noScope = !f.trade && !f.locationId;
+  const noChange = f.respond.trim() === '' && f.resolve.trim() === '' && !f.role;
+  const effRespond = num(f.respond) ?? d?.respondMinutes ?? 0;
+  const effResolve = num(f.resolve) ?? d?.resolveMinutes ?? 0;
+  const placeName = options.find((o) => o.id === f.locationId)?.label.trim();
+
+  return (
+    <Modal title={rule ? 'Edit rule' : 'Add a rule'} onClose={onClose}
+           actions={<>
+             {rule && !confirmDelete && (
+               <Btn tone="danger" onClick={() => setConfirmDelete(true)}>Delete</Btn>)}
+             {rule && confirmDelete && (
+               <Btn tone="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>
+                 {remove.isPending ? 'Deleting…' : 'Yes, delete this rule'}
+               </Btn>)}
+             <span className="fill" />
+             <Btn onClick={onClose}>Cancel</Btn>
+             <Btn tone="pri" disabled={save.isPending || badNumber || noScope || noChange}
+                  onClick={() => { setErr(null); save.mutate(); }}>
+               {save.isPending ? 'Saving…' : rule ? 'Save rule' : 'Add rule'}
+             </Btn>
+           </>}>
+      {err && <div className="note crit" role="alert">{err}</div>}
+      {confirmDelete && (
+        <div className="note warn">
+          Jobs this rule already set keep their deadlines. New jobs go back to the {f.priority} default.
+        </div>
+      )}
+      <Field label="Priority">
+        <select className="inp" value={f.priority}
+                onChange={(e) => setF({ ...f, priority: e.target.value as typeof f.priority })}>
+          {base.map((b) => <option key={b.priority} value={b.priority}>{b.priority} · {b.label}</option>)}
+        </select>
+      </Field>
+      <div className="g2">
+        <Field label="Trade">
+          <select className="inp" value={f.trade} onChange={(e) => setF({ ...f, trade: e.target.value })}>
+            <option value="">Any trade</option>
+            {trades.map((t) => <option key={t} value={t.toLowerCase()}>{titleCase(t)}</option>)}
+          </select>
+        </Field>
+        <Field label="Place" hint="Covers everything under it: a block includes its floors and units.">
+          <select className="inp" value={f.locationId} onChange={(e) => setF({ ...f, locationId: e.target.value })}>
+            <option value="">Anywhere</option>
+            {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        </Field>
+      </div>
+      <div className="g2">
+        <Field label="Respond within (minutes)" hint={`Blank keeps the ${f.priority} default, ${duration(d?.respondMinutes)}.`}>
+          <input className="inp" inputMode="numeric" value={f.respond} placeholder={`default ${d?.respondMinutes ?? ''}`}
+                 onChange={(e) => setF({ ...f, respond: e.target.value.replace(/[^0-9]/g, '') })} />
+        </Field>
+        <Field label="Resolve within (minutes)" hint={`Blank keeps the ${f.priority} default, ${duration(d?.resolveMinutes)}.`}>
+          <input className="inp" inputMode="numeric" value={f.resolve} placeholder={`default ${d?.resolveMinutes ?? ''}`}
+                 onChange={(e) => setF({ ...f, resolve: e.target.value.replace(/[^0-9]/g, '') })} />
+        </Field>
+      </div>
+      <Field label="Escalates to">
+        <select className="inp" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
+          <option value="">{d ? `As ${f.priority} does — ${roleName(d.escalateToRole)}` : 'As the priority does'}</option>
+          {roles.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}
+        </select>
+      </Field>
+      <Field label="Note (optional)" hint="Why this rule exists, for whoever reads it next year.">
+        <input className="inp" value={f.note} maxLength={200} onChange={(e) => setF({ ...f, note: e.target.value })} />
+      </Field>
+
+      {noScope ? (
+        <div className="note">Pick a trade, a place, or both. A rule for every {f.priority} job is just the {f.priority} row in the table.</div>
+      ) : noChange ? (
+        <div className="note">Change at least one of respond, resolve or escalates to.</div>
+      ) : (
+        <div className={`note ${effResolve < effRespond ? 'crit' : 'ok'}`}>
+          A {f.priority} {f.trade ? titleCase(f.trade).toLowerCase() + ' ' : ''}job
+          {placeName ? ` in ${placeName}` : ''} would get: respond in <b>{duration(effRespond)}</b>,
+          resolve in <b>{duration(effResolve)}</b>, escalate to <b>{roleName(f.role || d?.escalateToRole || '')}</b>.
+          {effResolve < effRespond && ' Resolve has to be at least as long as respond.'}
+        </div>
+      )}
+    </Modal>
   );
 }

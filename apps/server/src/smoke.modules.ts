@@ -3524,157 +3524,125 @@ r = await post('/api/records/apartment/delete-batch', ifeoma, { ids: [porto.id] 
 check('a technician cannot batch delete', r.statusCode === 403);
 
 // --------------------------------------------------------------------------
-heading('Who is alerted, and the changeover');
+heading('Specific response and resolve targets');
 // --------------------------------------------------------------------------
 {
-  // Grace changed her password earlier in the suite, which ended her old session.
-  const grace = await login('grace', GRACE_PW);
-  const userOf = (u: string) => (db.prepare('SELECT id FROM users WHERE username = ?').get(u) as { id: string }).id;
-  const latest = (u: string, kind: string) => db.prepare(
-    `SELECT kind, title, body, level FROM notifications WHERE user_id = ? AND kind = ?
-      ORDER BY created_at DESC, rowid DESC LIMIT 1`
-  ).get(userOf(u), kind) as { kind: string; title: string; body: string | null; level: string | null } | undefined;
-  const count = (u: string, kind: string) => (db.prepare(
-    'SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND kind = ?'
-  ).get(userOf(u), kind) as { n: number }).n;
+  const mins = (job: { reported_at: string; respond_by: string }) =>
+    Math.round((new Date(job.respond_by).getTime() - new Date(job.reported_at).getTime()) / 60000);
+  const raise = async (trade: string, locationId: string, title: string) => {
+    const res = await post('/api/jobs', admin, { title, trade, locationId, priority: 'P2' });
+    if (res.statusCode !== 201) throw new Error(`could not raise ${title}: ${res.body}`);
+    return res.json().job as { id: string; reported_at: string; respond_by: string; sla_rule_id: string | null };
+  };
 
-  // ---- the catalogue and its settings
-  r = await get('/api/admin/alert-routing', ifeoma);
-  check('a technician cannot see or change alert routing', r.statusCode === 403);
-  r = await get('/api/admin/alert-routing', admin);
-  const events = r.json().events as { key: string; routing: { roles: string[]; level: string } }[];
-  for (const k of ['wo.completed', 'ppm.due_soon', 'ppm.due_today', 'power.mains_off', 'power.genset_fault',
-                   'fuel_low', 'fuel_delivered', 'stock_low']) {
-    check(`the catalogue lists ${k}`, events.some((e) => e.key === k));
-  }
-  check('mains failing is urgent by default',
-    events.find((e) => e.key === 'power.mains_off')?.routing.level === 'urgent');
-  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_off', headers: admin,
-                         payload: { roles: ['nobody'] } });
-  check('routing to a role that does not exist is refused', r.statusCode === 400 && r.json().error === 'unknown_role');
-  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_off', headers: admin,
-                         payload: { roles: [], context: [] } });
-  check('routing an event to nobody is refused', r.statusCode === 400 && r.json().error === 'nobody');
-  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_off', headers: admin,
-                         payload: { context: ['@reporter'] } });
-  check('a person an event cannot reach is refused', r.statusCode === 400 && r.json().error === 'bad_context');
-  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/no.such', headers: admin, payload: {} });
-  check('an unknown event is a 404', r.statusCode === 404);
+  r = await post('/api/locations', admin, { type: 'block', code: 'BLK-SLA', name: 'Block S', parentId: siteId });
+  const blockS = r.json().id as string;
+  r = await post('/api/locations', admin, { type: 'floor', code: 'BLK-SLA-3', name: 'Block S floor 3', parentId: blockS });
+  const floorS3 = r.json().id as string;
+  check('a block with a floor under it to aim rules at', !!blockS && !!floorS3);
 
-  // ---- completion reaches whoever reported it; sign-off is good news
-  r = await post('/api/jobs', admin, { title: 'Alerts: reported by the admin', trade: 'general',
-                                       locationId: siteId, priority: 'P3' });
-  const reported = r.json().job as { id: string; ref: string };
-  r = await post(`/api/jobs/${reported.id}/assign`, grace, { staffId: staffIds['ifeoma']! });
-  await post(`/api/jobs/${reported.id}/accept`, ifeoma);
-  await post(`/api/jobs/${reported.id}/start`, ifeoma);
-  r = await post(`/api/jobs/${reported.id}/complete`, ifeoma, { resolutionNotes: 'Done and tested.' });
-  check('the job completes', r.statusCode === 200, r.body.slice(0, 160));
-  check('whoever reported it is told it is done', latest('admin', 'wo.completed')?.title === `${reported.ref} is ready to verify`);
-  check('and the supervisor still is', latest('grace', 'wo.completed')?.title === `${reported.ref} is ready to verify`);
-  check('at the routed loudness', latest('grace', 'wo.completed')?.level === 'chime');
-  check('the person who did it is not told about their own work',
-    latest('ifeoma', 'wo.completed')?.title !== `${reported.ref} is ready to verify`);
-  await post(`/api/jobs/${reported.id}/verify`, grace);
-  check('sign-off reaches whoever did the work as good news', latest('ifeoma', 'wo.verified')?.level === 'good');
+  r = await post('/api/admin/sla-rules', ifeoma, { priority: 'P2', trade: 'electrical', respondMinutes: 30 });
+  check('a technician cannot write a target rule', r.statusCode === 403);
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', respondMinutes: 30 });
+  check('a rule with no trade and no place is refused — that is the default row',
+    r.statusCode === 400 && r.json().error === 'no_scope', r.body.slice(0, 160));
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical' });
+  check('a rule that changes nothing is refused',
+    r.statusCode === 400 && r.json().error === 'no_change', r.body.slice(0, 160));
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'welding', respondMinutes: 30 });
+  check('a trade the property does not have is refused', r.statusCode === 400 && r.json().error === 'unknown_trade');
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical', resolveMinutes: 30 });
+  check('resolving faster than the default response is refused, judged on what the job would get',
+    r.statusCode === 400 && r.json().error === 'resolve_before_respond', r.body.slice(0, 200));
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical', escalateToRole: 'nobody' });
+  check('escalating to a role that does not exist is refused', r.statusCode === 400 && r.json().error === 'unknown_role');
 
-  // ---- escalations are finally loud
-  check('escalations are stored as urgent',
-    (db.prepare(`SELECT COUNT(*) n FROM notifications WHERE kind = 'escalation' AND level = 'urgent'`).get() as { n: number }).n > 0);
+  r = await post('/api/admin/sla-rules', admin,
+    { priority: 'P2', trade: 'Electrical', respondMinutes: 30, note: 'Lifts and DBs' });
+  check('a trade rule is created', r.statusCode === 201, r.body.slice(0, 200));
+  const tradeRule = r.json().rule as { id: string; trade: string };
+  check('and its trade is stored the way jobs carry it', tradeRule.trade === 'electrical');
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical', respondMinutes: 45 });
+  check('a second rule for the same priority, trade and place is refused',
+    r.statusCode === 409 && r.json().error === 'duplicate_rule');
 
-  // ---- diesel delivered
-  check('a diesel delivery puts a quiet line on the supervisor\'s bell',
-    (db.prepare(`SELECT COUNT(*) n FROM notifications WHERE kind = 'fuel_delivered' AND level = 'quiet'`).get() as { n: number }).n > 0);
+  const elecAtSite = await raise('electrical', siteId, 'SLA: electrical, no place rule');
+  check('a P2 electrical job takes the trade rule (30 minutes, not 60)', mins(elecAtSite) === 30, String(mins(elecAtSite)));
+  check('and records which rule it took', elecAtSite.sla_rule_id === tradeRule.id);
+  r = await get(`/api/jobs/${elecAtSite.id}`, admin);
+  check('the job card can say why', r.json().slaRule === 'P2 · electrical', String(r.json().slaRule));
+  const plumbAtSite = await raise('plumbing', siteId, 'SLA: plumbing, nothing applies');
+  check('a P2 plumbing job keeps the default', mins(plumbAtSite) === 60 && plumbAtSite.sla_rule_id === null);
 
-  // ---- planned work coming due, then due today
-  r = await post('/api/ppm/schedules', grace, {
-    name: 'Alerts: weekly changeover test', scopeType: 'asset', assetId: gen01,
-    triggerType: 'calendar', intervalValue: 7, intervalUnit: 'day', firstDueAt: iso(0), priority: 'P4',
-  });
-  const before = count('musa', 'ppm.due_soon');
-  r = await post('/api/ppm/generate', grace);
-  check('planned work coming due is generated', r.json().created.length >= 1, r.body.slice(0, 160));
-  check('and the team lead is told it is coming', count('musa', 'ppm.due_soon') === before + 1);
-  const dueToday = (db.prepare(
-    `SELECT id, ref FROM work_orders WHERE source = 'ppm' AND title LIKE 'Alerts: weekly changeover test%'`
-  ).get() as { id: string; ref: string });
-  const n1 = remindDue(db, propertyId);
-  check('a planned job due today is reminded about', n1 >= 1 && latest('grace', 'ppm.due_today') !== undefined, String(n1));
-  check('naming the job', (db.prepare(
-    `SELECT COUNT(*) n FROM notifications WHERE kind = 'ppm.due_today' AND entity_id = ?`).get(dueToday.id) as { n: number }).n > 0);
-  check('and only once', remindDue(db, propertyId) === 0);
+  r = await post('/api/admin/sla-rules', admin,
+    { priority: 'P2', locationId: blockS, respondMinutes: 20, escalateToRole: 'hod' });
+  check('a place rule is created', r.statusCode === 201, r.body.slice(0, 200));
+  const blockRule = r.json().rule as { id: string };
+  const plumbOnFloor = await raise('plumbing', floorS3, 'SLA: plumbing on a floor of the block');
+  check('a job on a floor takes the rule on the block above it', mins(plumbOnFloor) === 20, String(mins(plumbOnFloor)));
+  const elecOnFloor = await raise('electrical', floorS3, 'SLA: electrical on a floor of the block');
+  check('a place rule beats a trade rule', mins(elecOnFloor) === 20 && elecOnFloor.sla_rule_id === blockRule.id);
 
-  // ---- the changeover
-  r = await post('/api/power/changeover', grace, { event: 'mains_on' });
-  check('mains cannot be restored while it is on', r.statusCode === 409 && r.json().error === 'already_on');
-  r = await post('/api/power/changeover', grace, { event: 'mains_off', note: 'PHCN gone' });
-  check('mains failing is recorded', r.statusCode === 201 && r.json().mains === 'off', r.body.slice(0, 200));
-  check('technicians are told, urgently', latest('ifeoma', 'power.mains_off')?.level === 'urgent');
-  check('with the time on the property\'s clock', /^Mains failed at \d\d:\d\d$/.test(latest('ifeoma', 'power.mains_off')?.title ?? ''));
-  check('the person who recorded it is not told', latest('grace', 'power.mains_off') === undefined);
-  r = await get('/api/status/plant', grace);
-  check('the status strip shows mains off', r.json().utility.state === 'off');
-  r = await post('/api/power/changeover', ifeoma, { event: 'mains_off' });
-  check('mains cannot fail twice', r.statusCode === 409 && r.json().error === 'already_off');
+  r = await post('/api/admin/sla-rules', admin,
+    { priority: 'P2', trade: 'electrical', locationId: blockS, respondMinutes: 10 });
+  const bothRule = r.json().rule as { id: string };
+  const elecOnFloor2 = await raise('electrical', floorS3, 'SLA: electrical on the floor, both rule');
+  check('a rule naming both the trade and the place beats either alone', mins(elecOnFloor2) === 10 && elecOnFloor2.sla_rule_id === bothRule.id);
 
-  r = await post('/api/power/changeover', ifeoma, { event: 'genset_start' });
-  check('a generator event has to say which set', r.statusCode === 400 && r.json().error === 'unknown_genset');
-  r = await post('/api/power/changeover', ifeoma, { event: 'genset_start', gensetAssetId: gen01 });
-  check('a technician records a set starting', r.statusCode === 201, r.body.slice(0, 200));
-  r = await get('/api/status/plant', grace);
-  const g01 = (r.json().gensets as { runningSince: string | null; tag: string }[]).find((g) => g.runningSince);
-  check('the status strip knows it is running', !!g01);
-  check('the team lead is told', /started$/.test(latest('musa', 'power.genset_start')?.title ?? ''));
-  r = await post('/api/power/changeover', ifeoma, { event: 'genset_start', gensetAssetId: gen01 });
-  check('a running set cannot start again', r.statusCode === 409 && r.json().error === 'already_running');
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', locationId: floorS3, respondMinutes: 25 });
+  const floorRule = r.json().rule as { id: string };
+  const plumbOnFloor2 = await raise('plumbing', floorS3, 'SLA: plumbing, floor rule and block rule');
+  check('the nearer place wins: the floor\'s rule over the block\'s',
+    mins(plumbOnFloor2) === 25 && plumbOnFloor2.sla_rule_id === floorRule.id);
 
-  r = await post('/api/power/changeover', grace, { event: 'mains_on' });
-  check('mains is restored', r.statusCode === 201 && r.json().mains === 'on');
-  check('and the message says the set is still running',
-    /still running/.test(latest('musa', 'power.mains_on')?.body ?? ''), latest('musa', 'power.mains_on')?.body ?? '');
-  r = await post('/api/power/changeover', ifeoma, { event: 'genset_stop', gensetAssetId: gen01 });
-  check('the set is stopped, with how long it ran', r.statusCode === 201 && typeof r.json().ranMinutes === 'number');
-  check('and asks for the run to be logged', /Log the run/.test(latest('grace', 'power.genset_stop')?.body ?? ''));
-  r = await post('/api/power/changeover', ifeoma, { event: 'genset_stop', gensetAssetId: gen01 });
-  check('a stopped set cannot stop again', r.statusCode === 409 && r.json().error === 'not_running');
+  r = await get(`/api/admin/sla-rules/preview?priority=P2&trade=plumbing&locationId=${floorS3}`, admin);
+  check('the preview gives the same answer the job got',
+    r.json().respondMinutes === 25 && r.json().ruleId === floorRule.id, r.body.slice(0, 200));
 
-  r = await post('/api/power/changeover', ifeoma, { event: 'genset_fault', gensetAssetId: gen01, note: 'Low oil pressure trip' });
-  check('a fault is recorded', r.statusCode === 201);
-  check('and takes the set out of service',
-    (db.prepare('SELECT status FROM assets WHERE id = ?').get(gen01) as { status: string }).status === 'faulty');
-  check('the head of department is told, urgently, with the reason',
-    latest('hod', 'power.genset_fault')?.level === 'urgent' && /Low oil pressure/.test(latest('hod', 'power.genset_fault')?.body ?? ''));
-  r = await post('/api/power/changeover', ifeoma, { event: 'genset_start', gensetAssetId: gen01 });
-  check('a faulty set cannot be started', r.statusCode === 409 && r.json().error === 'not_available');
-  r = await post('/api/power/changeover', ifeoma, { event: 'mains_off', at: iso(1) });
-  check('a changeover cannot be recorded in the future', r.statusCode === 400 && r.json().error === 'future');
+  r = await get('/api/admin/sla-rules', admin);
+  check('the list carries all four live rules', (r.json().rules as unknown[]).length === 4);
 
-  r = await get('/api/power/now', grace);
-  check('the changeover history is kept in order', (r.json().history as { event: string }[])
-    .slice(0, 5).map((h) => h.event).join(',') === 'genset_fault,genset_stop,mains_on,genset_start,mains_off',
-    JSON.stringify((r.json().history as { event: string }[]).map((h) => h.event)));
+  r = await patch(`/api/admin/sla-rules/${tradeRule.id}`, admin,
+    { priority: 'P2', trade: 'electrical', respondMinutes: 35, note: null });
+  check('a rule can be edited', r.statusCode === 200 && r.json().rule.respond_minutes === 35, r.body.slice(0, 200));
+  r = await patch(`/api/admin/sla-rules/${tradeRule.id}`, admin,
+    { priority: 'P2', trade: 'electrical', locationId: blockS, respondMinutes: 35 });
+  check('but not into a copy of another rule', r.statusCode === 409);
+  const before = (db.prepare('SELECT respond_by FROM work_orders WHERE id = ?').get(elecAtSite.id) as { respond_by: string }).respond_by;
+  check('editing a rule does not move a deadline already set', before === elecAtSite.respond_by);
 
-  // ---- routing changes take effect at once, and reset
-  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_off', headers: admin,
-                         payload: { roles: ['supervisor'], level: 'chime' } });
-  check('routing can be changed', r.statusCode === 200 && r.json().routing.level === 'chime');
-  const techBefore = count('ifeoma', 'power.mains_off');
-  await post('/api/power/changeover', hod, { event: 'mains_off' });
-  check('a technician taken off the routing is no longer told', count('ifeoma', 'power.mains_off') === techBefore);
-  check('and the supervisor hears it at the new loudness', latest('grace', 'power.mains_off')?.level === 'chime');
-  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_on', headers: admin,
-                         payload: { off: true } });
-  const supBefore = count('grace', 'power.mains_on');
-  await post('/api/power/changeover', hod, { event: 'mains_on' });
-  check('an event switched off tells nobody', count('grace', 'power.mains_on') === supBefore);
-  r = await app.inject({ method: 'DELETE', url: '/api/admin/alert-routing/power.mains_off', headers: admin });
-  check('routing resets to the default', r.statusCode === 200 && r.json().routing.level === 'urgent'
-    && (r.json().routing.roles as string[]).includes('technician'));
-  check('routing changes are audited',
-    (db.prepare(`SELECT COUNT(*) n FROM audit_log WHERE action LIKE 'alert_routing.%'`).get() as { n: number }).n >= 3);
+  r = await del(`/api/admin/sla-rules/${tradeRule.id}`, admin);
+  check('a rule can be deleted', r.statusCode === 200 && r.json().jobsKeepTheirDeadlines >= 1, r.body.slice(0, 160));
+  const elecAfter = await raise('electrical', siteId, 'SLA: electrical after the rule went');
+  check('new jobs go back to the default', mins(elecAfter) === 60 && elecAfter.sla_rule_id === null);
+  check('the old job still points at the rule that set its deadline',
+    (db.prepare('SELECT sla_rule_id FROM work_orders WHERE id = ?').get(elecAtSite.id) as { sla_rule_id: string }).sla_rule_id === tradeRule.id);
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical', respondMinutes: 40 });
+  check('and the same rule can be made again once deleted', r.statusCode === 201, r.body.slice(0, 160));
+  r = await patch(`/api/admin/sla-rules/${tradeRule.id}`, admin, { priority: 'P2', trade: 'electrical', respondMinutes: 50 });
+  check('a deleted rule cannot be edited', r.statusCode === 404);
 
-  // Leave the set as the rest of the suite found it.
-  db.prepare(`UPDATE assets SET status = 'in_service' WHERE id = ?`).run(gen01);
+  // Escalation reaches the person the job's own rule names.
+  const past = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  db.prepare('UPDATE work_orders SET reported_at = ?, respond_by = ?, due_at = ? WHERE id = ?')
+    .run(past, past, past, plumbOnFloor.id);
+  const escalated = tick(db, propertyId).escalated.find((e) => e.id === plumbOnFloor.id);
+  check('a breached job escalates to the role its rule names (hod), not the P2 default',
+    escalated?.role === 'hod', JSON.stringify(escalated));
+
+  r = await get('/api/admin/settings', admin);
+  const matrix = r.json().settings.sla_matrix as { priority: string; escalateToRole: string }[];
+  r = await post('/api/admin/settings', admin,
+    { key: 'sla_matrix', value: matrix.map((m) => (m.priority === 'P3' ? { ...m, escalateToRole: 'nobody' } : m)) });
+  check('the default table cannot escalate to a role that does not exist',
+    r.statusCode === 400 && r.json().error === 'unknown_role', r.body.slice(0, 160));
+
+  const logged = db.prepare(
+    `SELECT action FROM audit_log WHERE entity_type = 'sla_rule' GROUP BY action ORDER BY action`
+  ).all() as { action: string }[];
+  check('rules are created, edited and deleted on the audit log',
+    logged.map((l) => l.action).join(',') === 'sla_rule.created,sla_rule.deleted,sla_rule.updated',
+    JSON.stringify(logged));
 }
 
 // --------------------------------------------------------------------------

@@ -4,7 +4,8 @@ import { nextRef } from '../lib/refs.js';
 import { nowIso } from '../lib/time.js';
 import { HttpError } from '../lib/errors.js';
 import { audit } from '../audit.js';
-import { slaFor, labourRateKobo } from './settings.js';
+import { labourRateKobo } from './settings.js';
+import * as slaRules from './slaRules.js';
 import { isAvailable, propertyTimezone } from './roster.js';
 import { notifyUser } from './escalation.js';
 import * as bus from './bus.js';
@@ -27,6 +28,7 @@ export interface WorkOrder {
   held_minutes_total: number; completed_at: string | null; completed_by: string | null;
   verified_by: string | null; verified_at: string | null; closed_at: string | null;
   reopened_count: number; escalation_level: number; costs_frozen: number;
+  sla_rule_id: string | null;
   labour_minutes: number; cost_labour_kobo: number; cost_parts_kobo: number; cost_vendor_kobo: number;
   ppm_schedule_id: string | null; hold_reason: string | null; resolution_notes: string | null;
   request_id: string | null; created_by: string | null;
@@ -154,7 +156,10 @@ export function create(db: Db, ctx: Ctx, input: CreateInput): WorkOrder {
       'A job needs an asset, a location or an apartment — otherwise it can never be reported on.');
   }
   const priority = input.priority ?? 'P3';
-  const sla = slaFor(db, ctx.propertyId, priority);
+  // The priority's default, or the most specific rule for this trade and place.
+  const sla = slaRules.resolve(db, ctx.propertyId, priority, {
+    trade: input.trade, locationId: input.locationId, apartmentId: input.apartmentId, assetId: input.assetId,
+  });
   const at = nowIso();
   const reportedAt = input.reportedAt ?? at;
   // The deadline is computed once, at creation, and stored. Recomputing it later
@@ -169,14 +174,15 @@ export function create(db: Db, ctx: Ctx, input: CreateInput): WorkOrder {
     db.prepare(
       `INSERT INTO work_orders (id, property_id, ref, source, request_id, ppm_schedule_id, title, description,
         trade, priority, asset_id, location_id, apartment_id, status, reported_at, respond_by, due_at,
-        charge_to, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`
+        charge_to, created_by, created_at, updated_at, sla_rule_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(id, ctx.propertyId, ref, input.source ?? 'reactive', input.requestId ?? null,
           input.ppmScheduleId ?? null, input.title, input.description ?? null, input.trade ?? null,
           priority, input.assetId ?? null, input.locationId ?? null, input.apartmentId ?? null,
-          reportedAt, respondBy, dueAt, input.chargeTo ?? 'house', ctx.userId, at, at);
+          reportedAt, respondBy, dueAt, input.chargeTo ?? 'house', ctx.userId, at, at, sla.ruleId);
     event(db, ctx, id, 'created', null, 'open', input.title,
-          { priority, respondBy, dueAt, source: input.source ?? 'reactive' });
+          { priority, respondBy, dueAt, source: input.source ?? 'reactive',
+            ...(sla.ruleId ? { slaRule: slaRules.describe(db, ctx.propertyId, sla.ruleId) } : {}) });
     audit(db, {
       propertyId: ctx.propertyId, userId: ctx.userId, actorName: ctx.displayName,
       action: 'wo.created', entityType: 'work_order', entityId: id,

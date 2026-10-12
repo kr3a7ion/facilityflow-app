@@ -19,6 +19,70 @@ const TONE: Record<string, 'ok' | 'warn' | 'crit' | 'acc' | ''> = {
 };
 const STATUSES = ['occupied', 'vacant_ready', 'vacant_dirty', 'under_maintenance', 'out_of_service'] as const;
 
+/*
+ * Floors are free text — typed in by hand or carried over from whatever list was imported:
+ * "Ground", "Ground Floor", "1st", "First Floor", "2", "09". Sorted as text, "First" comes
+ * before "Ground" and "12" before "2", which is not how anybody walks a building. This
+ * reads the level out of the label and sorts on that; anything it cannot read keeps its
+ * label and goes after the floors it could, alphabetically.
+ */
+const ORDINAL_WORDS = ['ground', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth',
+  'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth',
+  'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth', 'twentieth'];
+
+export function floorLevel(label: string | null): number | null {
+  if (label == null) return null;
+  const s = label.trim().toLowerCase().replace(/\bfloor\b|\blevel\b|\bflr\b/g, '').trim();
+  if (s === '') return null;
+  if (/^(lower ground|lg)$/.test(s)) return -0.5;
+  if (/^(basement|b)$/.test(s)) return -1;
+  const bn = s.match(/^(?:basement|b)\s*-?\s*(\d+)$/);
+  if (bn) return -Number(bn[1]);
+  if (/^(ground|g|gf)$/.test(s)) return 0;
+  if (/^(upper ground|ug)$/.test(s)) return 0.5;
+  if (/^(penthouse|ph|roof)$/.test(s)) return 1000;
+  const n = s.match(/^-?\d+/);              // "2", "09", "1st", "12th"
+  if (n) return Number(n[0]);
+  const w = ORDINAL_WORDS.indexOf(s.split(/\s+/)[0]!);
+  return w >= 0 ? w : null;
+}
+
+/** How a floor reads as a heading: "Floor 9", "Ground floor", or the label as written. */
+function floorHeading(label: string | null): string {
+  if (label == null || label.trim() === '') return 'Floor not given';
+  const t = label.trim();
+  if (/floor|level|basement|ground|penthouse|roof/i.test(t)) return t.charAt(0).toUpperCase() + t.slice(1);
+  if (/^\d+$/.test(t)) return `Floor ${Number(t)}`;
+  return `Floor ${t}`;
+}
+
+/** Floors of one block, lowest first, each with its units in door-number order. */
+function byFloor(units: Apartment[]): [string | null, Apartment[]][] {
+  const map = new Map<string, { label: string | null; units: Apartment[] }>();
+  for (const u of units) {
+    // "09" and "9", "Ground" and "ground floor" are the same floor; group on the level
+    // when it can be read and on the trimmed label when it cannot.
+    const lvl = floorLevel(u.floor);
+    const key = lvl != null ? `#${lvl}` : (u.floor?.trim().toLowerCase() || '');
+    const g = map.get(key) ?? map.set(key, { label: u.floor?.trim() || null, units: [] }).get(key)!;
+    g.units.push(u);
+  }
+  const groups = [...map.values()];
+  for (const g of groups) {
+    g.units.sort((a, b) => a.unit_no.localeCompare(b.unit_no, undefined, { numeric: true }));
+  }
+  groups.sort((a, b) => {
+    const la = floorLevel(a.label), lb = floorLevel(b.label);
+    if (a.label == null) return 1;            // no floor given: last
+    if (b.label == null) return -1;
+    if (la != null && lb != null) return la - lb;
+    if (la != null) return -1;                // readable levels before unreadable labels
+    if (lb != null) return 1;
+    return a.label.localeCompare(b.label, undefined, { numeric: true });
+  });
+  return groups.map((g) => [g.label, g.units]);
+}
+
 export function Apartments() {
   const { can } = useSession();
   const [filter, setFilter] = useState<string>('');
@@ -54,7 +118,9 @@ export function Apartments() {
       const key = a.block ?? 'Unassigned';
       (map.get(key) ?? map.set(key, []).get(key)!).push(a);
     }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+    // Natural order, so Block 2 comes before Block 10; unassigned units last.
+    return [...map.entries()].sort(([a], [b]) =>
+      a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b, undefined, { numeric: true }));
   }, [q.data, filter]);
 
   const total = q.data?.apartments.length ?? 0;
@@ -104,7 +170,7 @@ export function Apartments() {
       {picking && (
         <div className="note mb-6 row gap-4" style={{ position: 'sticky', top: 8, zIndex: 2 }}>
           <b>{picked.size} selected</b>
-          <span className="sub">Tap units to select them, or use “Select all” on a block.</span>
+          <span className="sub">Tap units to select them, or select a whole floor or block.</span>
           <span className="fill" />
           <Btn size="sm" disabled={picked.size === 0} onClick={() => setPicked(new Set())}>Clear</Btn>
           <Btn size="sm" disabled={picked.size === 0} onClick={() => setModal('retire')}>
@@ -154,19 +220,45 @@ export function Apartments() {
                     </Chip>
                   )}
                 </>}>
-            <div className="units">
-              {units.map((u) => (
-                <button key={u.id}
-                        className={`unit ${u.status} ${picked.has(u.id) ? 'picked' : ''}`}
-                        aria-pressed={picking ? picked.has(u.id) : undefined}
-                        onClick={() => (picking ? toggle([u.id], !picked.has(u.id)) : setOpen(u))}>
-                  <b>{u.unit_no}</b>
-                  {u.name && u.name !== u.unit_no && <span>{u.name}</span>}
-                  <span>{titleCase(u.status)}</span>
-                  {u.open_jobs > 0 && <i>{u.open_jobs} job{u.open_jobs > 1 ? 's' : ''}</i>}
-                </button>
-              ))}
-            </div>
+            {(() => {
+              const floors = byFloor(units);
+              // One floor nobody named: a heading would only say "Floor not given".
+              const plain = floors.length === 1 && floors[0]![0] == null;
+              return floors.map(([floor, onFloor]) => {
+                const jobs = onFloor.reduce((s, u) => s + u.open_jobs, 0);
+                const all = onFloor.every((u) => picked.has(u.id));
+                return (
+                  <section key={floor ?? ''} className="floorgroup"
+                           aria-label={plain ? undefined : floorHeading(floor)}>
+                    {!plain && (
+                      <div className="floorhead">
+                        <h3>{floorHeading(floor)}</h3>
+                        <span className="sub">{onFloor.length} unit{onFloor.length === 1 ? '' : 's'}</span>
+                        {jobs > 0 && <span className="sub c-crit">{jobs} open job{jobs === 1 ? '' : 's'}</span>}
+                        {picking && floors.length > 1 && (
+                          <Btn size="sm" onClick={() => toggle(onFloor.map((u) => u.id), !all)}>
+                            {all ? 'Unselect floor' : 'Select floor'}
+                          </Btn>
+                        )}
+                      </div>
+                    )}
+                    <div className="units">
+                      {onFloor.map((u) => (
+                        <button key={u.id}
+                                className={`unit ${u.status} ${picked.has(u.id) ? 'picked' : ''}`}
+                                aria-pressed={picking ? picked.has(u.id) : undefined}
+                                onClick={() => (picking ? toggle([u.id], !picked.has(u.id)) : setOpen(u))}>
+                          <b>{u.unit_no}</b>
+                          {u.name && u.name !== u.unit_no && <span>{u.name}</span>}
+                          <span>{titleCase(u.status)}</span>
+                          {u.open_jobs > 0 && <i>{u.open_jobs} job{u.open_jobs > 1 ? 's' : ''}</i>}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                );
+              });
+            })()}
           </Card>
         ))}
 

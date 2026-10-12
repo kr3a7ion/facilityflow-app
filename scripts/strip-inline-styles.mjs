@@ -190,7 +190,7 @@ function translate(pairs, tagName) {
         // is already a .row from the stylesheet — .vhead, .card>header, .who. Same
         // classes apply either way.
         if (v === "'center'" && (isRow || isGrid)) break;  // .row default
-        if (v === "'flex-start'") { classes.push('top'); break; }
+        if (v === "'flex-start'") { classes.push('start'); break; }
         if (v === "'baseline'") { classes.push('base'); break; }
         if (v === "'flex-end'") { classes.push('bottom'); break; }
         keep.push([k, v]);

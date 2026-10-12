@@ -173,6 +173,8 @@ a{color:var(--accent-hi);text-underline-offset:3px}
 
 /* ---------------- page ---------------- */
 .view{padding:var(--s-7) var(--s-7) var(--view-foot)}
+/* Cards stacked straight onto a page (the block cards on Apartments) touched edge to edge. */
+.view>.card+.card{margin-top:var(--s-6)}
 .vhead{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--s-6);margin-bottom:var(--s-7)}
 .vhead h1{font-family:var(--cond);font-size:var(--fs-title);font-weight:700;text-transform:uppercase;letter-spacing:.015em;margin:0;line-height:1}
 .vhead p{margin:var(--s-2) 0 0;color:var(--text-2);font-size:var(--fs-ui);max-width:62ch}
@@ -236,7 +238,7 @@ a{color:var(--accent-hi);text-underline-offset:3px}
  * 390px screen, which is how this app's top bar came to overflow by 25px.
  */
 .row{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s-4)}
-.row.top{align-items:flex-start}
+.row.start{align-items:flex-start}
 .row.base{align-items:baseline}
 .row.nowrap{flex-wrap:nowrap}
 .row.end{justify-content:flex-end}
@@ -338,7 +340,7 @@ a{color:var(--accent-hi);text-underline-offset:3px}
 .ml-3{margin-left:var(--s-3)}.ml-4{margin-left:var(--s-4)}.ml-5{margin-left:var(--s-5)}
 .ml-6{margin-left:var(--s-6)}.ml-7{margin-left:var(--s-7)}
 .row.bottom{align-items:flex-end}
-.row.inline{display:inline-flex;flex-wrap:nowrap}
+.row.inline-row{display:inline-flex;flex-wrap:nowrap}
 
 /*
  * The small semantic classes — the things the markup kept saying inline because there
@@ -488,6 +490,11 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono
 
 /* ---------------- units ---------------- */
 .units{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:var(--s-4)}
+/* A block card holds one section per floor, lowest first; the heading carries its count. */
+.floorgroup+.floorgroup{margin-top:var(--s-7);padding-top:var(--s-6);border-top:1px solid var(--line)}
+.floorhead{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--s-2) var(--s-5);margin-bottom:var(--s-5)}
+.floorhead h3{margin:0;font-family:var(--cond);font-size:var(--fs-body);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.floorhead .btn{margin-left:auto}
 .unit{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:var(--s-4) var(--s-5);text-align:left;position:relative;overflow:hidden}
 .unit::after{content:"";position:absolute;top:0;right:0;bottom:0;width:3px;background:var(--idle)}
 .unit.occupied::after{background:var(--ok)}
@@ -754,6 +761,10 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
        display:flex;flex-direction:column;align-items:center;gap:5px;background:var(--panel)}
 .label .qr{display:grid;place-items:center}
 .label .qr svg{width:100%;height:100%;display:block}
+/* Admin → Host PC: the address beside its QR. Drops under the code on a phone rather than
+   breaking the address mid-port, which is exactly how it gets copied wrong onto a wall. */
+.joinaddr{flex:1 1 15rem;min-width:0}
+.joinaddr .url{overflow-wrap:anywhere}
 .label b{font-family:var(--cond);font-size:1rem;letter-spacing:.03em;line-height:1}
 .label span{font-size:0.6875rem;color:var(--text-2);line-height:1.25;
             display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

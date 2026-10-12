@@ -46,7 +46,7 @@ export function LogoTile({ size = 30, radius }: { size?: number; radius?: number
  */
 export function Wordmark({ size = 44 }: { size?: number }) {
   return (
-    <span className="row inline gap-5">
+    <span className="row inline-row gap-5">
       <LogoTile size={size} />
       <span className="fill">
         <span className="f-cond fw-7 lh-1 block caps" style={{ fontSize: Math.round(size * 0.72) }}>

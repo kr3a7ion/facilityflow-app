@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission, scopeOf } from '../auth/guard.js';
 import * as jobs from '../services/jobs.js';
+import * as slaRules from '../services/slaRules.js';
 import { availableStaff } from '../services/roster.js';
 import { issueToJob } from '../services/stores.js';
 import { ulid } from '../lib/ids.js';
@@ -174,6 +175,8 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
         job,
         showsCost: costs,
         sla: jobs.slaState(wo),
+        // Which specific rule set this job's deadlines, when one did.
+        slaRule: wo.sla_rule_id ? slaRules.describe(app.db, me.propertyId, wo.sla_rule_id) : null,
         // A planned job carries the sheet its schedule attached, with whatever has already
         // been recorded merged in — otherwise the technician has an empty form every visit.
         checklist: checklistFor(app.db, wo),
