@@ -438,7 +438,7 @@ function NewPermit({ onClose, onDone }: { onClose: () => void; onDone: (msg: str
       <p className="eyebrow mb-4">Precautions in place</p>
       <div className="grid gap-3 mb-6">
         {list.map((c) => (
-          <label className="row gap-4 top t-ui" key={c}>
+          <label className="row gap-4 start t-ui" key={c}>
             <input className="mt-1" type="checkbox" checked={checked.includes(c)}
                    onChange={(e) => setChecked((s) => (e.target.checked ? [...s, c] : s.filter((x) => x !== c)))} />
             <span>{c}</span>

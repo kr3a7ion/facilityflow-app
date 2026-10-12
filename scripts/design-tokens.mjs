@@ -149,6 +149,26 @@ for (const [prefix, max] of Object.entries(LIMITS)) {
   else pass();
 }
 
+/* ---------------------------------------------- modifier name collisions ---- */
+/*
+ * A modifier like `.row.top` only works if `top` means nothing on its own. It did: `.top`
+ * is the page header — sticky, fixed height, z-index 20 — so every `row top` in the markup
+ * became a 56px sticky strip and its contents spilled over the card below (the QR on
+ * Admin → Host PC sat on top of its own text). Any class used as a modifier on a layout
+ * primitive must not also be a component in its own right.
+ */
+const PRIMITIVES = ['row', 'col', 'grid', 'stack'];
+const standalone = new Set(
+  [...css.matchAll(/(?:^|[\s,}])\.([a-z][a-z0-9-]*)\s*[{,:]/gm)].map((m) => m[1]),
+);
+for (const p of PRIMITIVES) {
+  for (const m of css.matchAll(new RegExp(`\\.${p}\\.([a-z][a-z0-9-]*)`, 'g'))) {
+    if (standalone.has(m[1]) && !PRIMITIVES.includes(m[1])) {
+      fail(`.${p}.${m[1]} — "${m[1]}" is also a component of its own (.${m[1]}), so every element carrying it gets both`);
+    } else pass();
+  }
+}
+
 /* --------------------------------------------------------------- result ---- */
 
 if (failures) {
