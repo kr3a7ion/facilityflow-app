@@ -5,6 +5,78 @@ import { api, ApiError } from '../lib/api';
 
 export type Tone = 'ok' | 'warn' | 'crit' | 'acc' | '';
 
+/**
+ * One step of the space scale: 1 is a hairline inset, 8 separates sections.
+ *
+ * Spacing is a number from this list or it does not happen. The pages used to carry 288
+ * hand-written margins across 24 different pixel values — 13px here, 14px there, 15px
+ * two lines down — which is not a rhythm, it is 288 separate guesses. Eight steps, and
+ * scripts/design-tokens.mjs fails the build on anything else.
+ */
+export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+/**
+ * A horizontal run of things — a toolbar, a row of chips, a name beside two buttons.
+ *
+ * Wraps by default, because on a 390px screen it has to: a row that cannot wrap is a row
+ * that runs off the edge, which is exactly how this app's own top bar came to overflow.
+ */
+export function Row({ gap = 4, align, justify, nowrap, className = '', children }: {
+  gap?: Step;
+  /** `top` for things of different heights, `base` to sit text on one baseline. */
+  align?: 'top' | 'base';
+  justify?: 'end' | 'between';
+  nowrap?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`row gap-${gap} ${align ?? ''} ${justify ?? ''} ${nowrap ? 'nowrap' : ''} ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+/** A vertical run of things, when the container's own rhythm is not what is wanted. */
+export function Stack({ gap = 4, className = '', children }:
+  { gap?: Step; className?: string; children: ReactNode }) {
+  return <div className={`col gap-${gap} ${className}`}>{children}</div>;
+}
+
+/**
+ * The sentence that explains the screen it is on.
+ *
+ * There are ~120 of these in the app and nearly every one of them used to carry its own
+ * inline margin. The rhythm now comes from the card or modal body it sits in, so the
+ * call site says what it is and nothing about where it sits.
+ */
+export function Note({ tone = '', role, className = '', children }:
+  { tone?: Tone; role?: 'alert' | 'status'; className?: string; children: ReactNode }) {
+  return <div className={`note ${tone} ${className}`} role={role}>{children}</div>;
+}
+
+/**
+ * A number meant to be read from the other side of a plant room, with its unit in the
+ * smaller grey after it.
+ *
+ * Four screens built this by hand, at 2.75rem, 2.375rem, 1.875rem and 1.1875rem, none of
+ * which were steps on any scale.
+ */
+export function Readout({ size, tone, value, unit }: {
+  size?: 'sm' | 'lg'; tone?: Exclude<Tone, 'acc'>; value: ReactNode; unit?: string;
+}) {
+  return (
+    <div className={`readout ${size ?? ''} ${tone ?? ''}`}>
+      {value}{unit && <u>{unit}</u>}
+    </div>
+  );
+}
+
+/** Pushes whatever follows it to the far end of a row. */
+export function Spacer() {
+  return <span className="spacer" />;
+}
+
 export function Chip({ tone = '', lamp, children }:
   { tone?: Tone; lamp?: boolean; children: ReactNode }) {
   return (
@@ -33,9 +105,9 @@ export function Card({ title, right, flush, className, children }:
 export function Tile({ label, value, unit, sub, tone }:
   { label: string; value: ReactNode; unit?: string; sub?: ReactNode; tone?: Tone }) {
   return (
-    <div className="tile">
+    <div className={`tile ${tone ?? ''}`}>
       <div className="t-lab">{label}</div>
-      <div className="t-val" style={tone ? { color: `var(--${tone === 'acc' ? 'accent' : tone})` } : undefined}>
+      <div className="t-val">
         {value}{unit && <u>{unit}</u>}
       </div>
       {sub && <div className="t-sub">{sub}</div>}
@@ -64,9 +136,11 @@ export function Empty({ title, hint, action, ask }:
 
 export function Loading({ rows = 3 }: { rows?: number }) {
   return (
-    <div style={{ display: 'grid', gap: 8, padding: 15 }} aria-busy="true" aria-label="Loading">
+    <div className="loading" aria-busy="true" aria-label="Loading">
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="skeleton" style={{ height: 34, opacity: 1 - i * 0.18 }} />
+        // The fade down the stack is data, not decoration — it is what makes a skeleton
+        // read as "a list is coming" rather than "the page is broken".
+        <div key={i} className="skeleton" style={{ opacity: 1 - i * 0.18 }} />
       ))}
     </div>
   );
@@ -77,17 +151,23 @@ export function ErrorNote({ error, hint }: { error: unknown; hint?: string }) {
   return (
     <div className="note crit err">
       <b>{message}</b>
-      {hint && <div style={{ marginTop: 6 }}>{hint}</div>}
+      {hint && <div className="hint">{hint}</div>}
     </div>
   );
 }
 
-export function Btn({ icon, tone, size, ...rest }:
+/**
+ * `full` is the width of a modal foot or a phone form; `grow` is an equal share of a row
+ * of two or three. Between them they were 23 hand-written `style={{width:'100%'}}` and
+ * `style={{flex:1}}` blocks.
+ */
+export function Btn({ icon, tone, size, full, grow, ...rest }:
   ButtonHTMLAttributes<HTMLButtonElement> &
-  { icon?: IconName; tone?: 'pri' | 'danger' | 'on'; size?: 'sm' }) {
+  { icon?: IconName; tone?: 'pri' | 'danger' | 'on'; size?: 'sm'; full?: boolean; grow?: boolean }) {
   const { children, className, ...button } = rest;
   return (
-    <button className={`btn ${tone ?? ''} ${size ?? ''} ${className ?? ''}`} {...button}>
+    <button className={`btn ${tone ?? ''} ${size ?? ''} ${full ? 'full' : ''} ${grow ? 'grow' : ''} ${className ?? ''}`}
+            {...button}>
       {icon && <Icon name={icon} />}
       {children}
     </button>
@@ -132,7 +212,7 @@ export function Modal({ title, onClose, wide, actions, children }:
     <div className="modal" role="dialog" aria-modal="true" aria-label={title}
          onClick={onClose}
          onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className="modal-card" style={wide ? { width: 'min(980px,95vw)' } : undefined}
+      <div className={`modal-card ${wide ? 'wide' : ''}`}
            onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>{title}</h2>
@@ -155,7 +235,7 @@ export function Field({ label, hint, children }:
     <div className="fld">
       <label>{label}</label>
       {children}
-      {hint && <div style={{ marginTop: 5, fontSize: '0.7188rem', color: 'var(--text-3)' }}>{hint}</div>}
+      {hint && <div className="hint">{hint}</div>}
     </div>
   );
 }
@@ -191,7 +271,7 @@ export function BudgetBar({ budget, actual }: { budget: number; actual: number }
 export function Flash({ msg }: { msg: { text: string; bad?: boolean } | null }) {
   if (!msg) return null;
   return (
-    <div className={`note ${msg.bad ? 'crit' : ''}`} style={{ marginBottom: 14 }}
+    <div className={`note mb-6 ${msg.bad ? 'crit' : ''}`}
          role={msg.bad ? 'alert' : 'status'}>{msg.text}</div>
   );
 }
@@ -314,14 +394,14 @@ export function RetireBtn({ kind, id, label, active = true, onDone, size = 'sm' 
       <Btn size={size} onClick={() => { setErr(null); setAsking(true); }}>Retire</Btn>
       {asking && (
         <Modal title={`Retire ${label}?`} onClose={() => setAsking(false)}>
-          <p style={{ margin: '0 0 12px', lineHeight: 1.55 }}>
+          <p className="lede">
             <b>{label}</b> stops appearing in lists and pickers from now on.
           </p>
-          <div className="note" style={{ marginBottom: 14 }}>
+          <Note>
             Nothing is deleted. Every job, movement and record that already refers to it keeps
             working and keeps reading correctly — and you can bring it back at any time.
-          </div>
-          {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err}</div>}
+          </Note>
+          {err && <Note tone="crit" role="alert">{err}</Note>}
           <div className="modal-foot">
             <Btn onClick={() => setAsking(false)}>Cancel</Btn>
             <Btn tone="pri" disabled={busy} onClick={() => void go(false)}>
@@ -380,26 +460,26 @@ export function DeleteBtn({ kind, id, label, onDone, size = 'sm' }: {
         <Modal title={`Delete ${label}?`} onClose={() => setAsking(false)}>
           {!check && !err && <p className="sub">Checking what refers to it…</p>}
           {check && !check.ok && (
-            <div className="note warn" style={{ marginBottom: 14 }}>
+            <Note tone="warn">
               <b>{label} cannot be deleted.</b> Other records point at it:
-              <ul style={{ margin: '6px 0 6px 18px', padding: 0 }}>
+              <ul className="bullets">
                 {check.blockers.map((b) => <li key={b}>{b}</li>)}
               </ul>
               Retire it instead — it disappears from lists and its history stays readable.
-            </div>
+            </Note>
           )}
           {check?.ok && (
             <>
-              <p style={{ margin: '0 0 12px', lineHeight: 1.55 }}>
+              <p className="lede">
                 <b>{label}</b> will be removed permanently.
               </p>
-              <div className="note crit" style={{ marginBottom: 14 }}>
+              <Note tone="crit">
                 This cannot be undone. Nothing refers to it yet, so nothing else is affected —
                 but if you might want it back, Retire is the safer choice.
-              </div>
+              </Note>
             </>
           )}
-          {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err}</div>}
+          {err && <Note tone="crit" role="alert">{err}</Note>}
           <div className="modal-foot">
             <Btn onClick={() => setAsking(false)}>{check?.ok ? 'Cancel' : 'Close'}</Btn>
             {check?.ok && (

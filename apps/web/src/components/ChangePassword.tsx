@@ -47,9 +47,9 @@ export function ChangePassword({ forced, onClose }: { forced?: boolean; onClose?
   const body = (
     <>
       {forced && (
-        <div className="note warn" style={{ marginBottom: 14 }}>
+        <div className="note warn mb-6">
           <b>Choose your own password before you start.</b>
-          <div style={{ marginTop: 5 }}>
+          <div className="mt-2">
             The one you signed in with was typed by somebody else, so until you change it the
             audit log cannot honestly say that a job was closed by you.
           </div>
@@ -64,7 +64,7 @@ export function ChangePassword({ forced, onClose }: { forced?: boolean; onClose?
       <div className="fld"><label htmlFor="cp-new">New password</label>
         <input id="cp-new" className="inp" type="password" autoComplete="new-password"
                value={next} onChange={(e) => setNext(e.target.value)} />
-        <p className="sub" style={{ marginTop: 5, whiteSpace: 'normal' }}>
+        <p className="sub mt-2 wrap">
           At least {MIN} characters. Length beats punctuation — three unrelated words you will
           actually remember beat one word with a digit stuck on the end.
         </p></div>
@@ -72,25 +72,25 @@ export function ChangePassword({ forced, onClose }: { forced?: boolean; onClose?
       <div className="fld"><label htmlFor="cp-again">New password again</label>
         <input id="cp-again" className="inp" type="password" autoComplete="new-password"
                value={again} onChange={(e) => setAgain(e.target.value)} />
-        {mismatch && <p className="sub" style={{ marginTop: 5, color: 'var(--crit)' }}>
+        {mismatch && <p className="sub mt-2 c-crit">
           These two do not match.</p>}
-        {reused && <p className="sub" style={{ marginTop: 5, color: 'var(--crit)' }}>
+        {reused && <p className="sub mt-2 c-crit">
           That is the password you are replacing.</p>}
       </div>
 
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
 
-      <div className="note" style={{ marginBottom: 12 }}>
+      <div className="note mb-5">
         Saving signs you out on every other device — a tablet left signed in on the floor
         stops being your account the moment you do this.
       </div>
 
-      <Btn tone="pri" style={{ width: '100%' }} disabled={!ready || save.isPending}
+      <Btn full tone="pri" disabled={!ready || save.isPending}
            onClick={() => save.mutate()}>
         {save.isPending ? 'Saving…' : 'Change password'}
       </Btn>
       {!forced && (
-        <Btn style={{ width: '100%', marginTop: 8 }} onClick={onClose}>Cancel</Btn>
+        <Btn full className="mt-4" onClick={onClose}>Cancel</Btn>
       )}
     </>
   );
@@ -101,7 +101,7 @@ export function ChangePassword({ forced, onClose }: { forced?: boolean; onClose?
     return (
       <div className="center">
         <div className="panel-form">
-          <div className="brand" style={{ padding: 0, border: 0, marginBottom: 18 }}>
+          <div className="brand p-0 mb-7 no-border">
             <LogoTile size={34} />
             <span><b>{me?.user.displayName ?? 'FacilityFlow'}</b>
               <small>{me?.user.roleName ?? 'Maintenance & FM'}</small></span>

@@ -34,10 +34,7 @@ export function Logo({ size = 24, title }: { size?: number; title?: string }) {
 export function LogoTile({ size = 30, radius }: { size?: number; radius?: number }) {
   const r = radius ?? Math.round(size * 0.24);
   return (
-    <span style={{
-      width: size, height: size, borderRadius: r, background: 'var(--accent)',
-      color: 'var(--on-accent)', display: 'grid', placeItems: 'center', flex: 'none',
-    }}>
+    <span className="c-on-acc grid bg-acc" style={{ width: size, height: size, borderRadius: r, placeItems: 'center', flex: 'none' }}>
       <Logo size={Math.round(size * 0.62)} />
     </span>
   );
@@ -49,20 +46,13 @@ export function LogoTile({ size = 30, radius }: { size?: number; radius?: number
  */
 export function Wordmark({ size = 44 }: { size?: number }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+    <span className="row inline gap-5">
       <LogoTile size={size} />
-      <span style={{ minWidth: 0 }}>
-        <span style={{
-          fontFamily: 'var(--cond)', fontSize: Math.round(size * 0.72), fontWeight: 700,
-          letterSpacing: '.02em', textTransform: 'uppercase', lineHeight: 1, display: 'block',
-        }}>
+      <span className="fill">
+        <span className="f-cond fw-7 lh-1 block caps" style={{ fontSize: Math.round(size * 0.72) }}>
           FacilityFlow
         </span>
-        <span style={{
-          display: 'block', fontFamily: 'var(--mono)', fontSize: Math.max(9, Math.round(size * 0.21)),
-          letterSpacing: '.16em', color: 'var(--text-3)', textTransform: 'uppercase',
-          marginTop: 3,
-        }}>
+        <span className="block f-mono c-3 mt-1 caps-wide caps" style={{ fontSize: Math.max(9, Math.round(size * 0.21)) }}>
           Maintenance &amp; FM
         </span>
       </span>

@@ -163,7 +163,7 @@ export function Roster() {
                onClick={() => setAnchor(shift(d.from, -7))} />
           <Btn disabled={anchor === null} onClick={() => setAnchor(null)}>Today</Btn>
           <Btn aria-label="Next week" onClick={() => setAnchor(shift(d.from, 7))}>
-            <span style={{ display: 'inline-block', transform: 'rotate(180deg)' }}>
+            <span className="inline-block flip">
               <Chevron />
             </span>
           </Btn>
@@ -186,7 +186,7 @@ export function Roster() {
 
       <Flash msg={msg} />
 
-      <div className="grid g4" style={{ marginBottom: 16 }}>
+      <div className="grid g4 mb-6">
         <Tile label="Present today" value={present} tone={present > 0 ? 'ok' : undefined}
               sub={`of ${today.filter((e) => e.status !== 'off').length} scheduled`} />
         <Tile label="Absent today" value={absent} tone={absent > 0 ? 'crit' : undefined}
@@ -205,7 +205,7 @@ export function Roster() {
       {editing && (
         <Card title="Painting shifts"
               right={<Chip tone="acc">Click any day to set it</Chip>}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="row gap-4">
             {pats.map((p) => (
               <button key={p.id} className={`btn sm ${brush === p.id ? 'on' : ''}`}
                       onClick={() => setBrush(p.id)}>
@@ -216,7 +216,7 @@ export function Roster() {
               Rest day
             </button>
           </div>
-          <div className="note" style={{ marginTop: 12 }}>
+          <div className="note mt-5">
             Changes save as you click and stay unpublished until you press Publish, so a
             half-built week is never visible to the team.
           </div>
@@ -234,10 +234,9 @@ export function Roster() {
                      ? <Link className="btn pri" to="/admin?tab=shifts">Set the patterns</Link> : undefined}
                    ask="Ask an administrator to define the shift patterns under Admin → Shifts." />
           ) : (
-            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+            <div className="row gap-4">
               {pats.map((p) => (
-                <span key={p.id} className={`chip ${p.crosses_midnight ? '' : 'acc'}`}
-                      style={{ padding: '6px 11px', fontSize: '0.6875rem' }}>
+                <span key={p.id} className={`chip ${p.crosses_midnight ? '' : 'acc'} py-3 px-5 t-sm`}>
                   {p.name} · {p.start_time}–{p.end_time}{p.crosses_midnight ? ' · crosses midnight' : ''}
                 </span>
               ))}
@@ -246,7 +245,7 @@ export function Roster() {
         </Card>
       )}
 
-      <div style={{ marginTop: 14, overflowX: 'auto' }}>
+      <div className="mt-6 tw">
         {people.length === 0 ? <Card><Empty
           title="No staff on the books"
           hint="A roster is a grid of people against days, so the people have to exist first. Nothing can be assigned to anybody until they do."
@@ -268,7 +267,7 @@ export function Roster() {
                 <div className="rcell">
                   <div className="who2">
                     <span className="av">{initials(`${s.first_name} ${s.last_name}`)}</span>
-                    <span style={{ minWidth: 0 }}>
+                    <span className="fill">
                       <span className="nm">{s.first_name} {s.last_name}</span>
                       <span className="tr">{s.trade ?? '—'}</span>
                     </span>
@@ -311,7 +310,7 @@ export function Roster() {
         )}
       </div>
 
-      <div className="note" style={{ marginTop: 14 }}>
+      <div className="note mt-6">
         <b>The tick is the whole point.</b> A published roster is a plan; a supervisor marks present or
         absent on the day, and the assignment screen only offers people marked present. No clock-in
         device, no late minutes, no overtime approval — availability is all this stores.
@@ -395,7 +394,7 @@ function FillPattern({ people, patterns, from, onClose, onDone }: {
 
   return (
     <Modal title="Fill a pattern" onClose={onClose} wide>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
 
       <div className="grid g2">
         <Field label="From">
@@ -407,7 +406,7 @@ function FillPattern({ people, patterns, from, onClose, onDone }: {
       </div>
 
       <Field label="Who">
-        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+        <div className="row gap-3">
           {people.map((p) => {
             const on = staffIds.includes(p.staff_id);
             return (
@@ -427,7 +426,7 @@ function FillPattern({ people, patterns, from, onClose, onDone }: {
       </Field>
 
       <Field label="Rest days" hint="Left off the rota entirely — nobody is scheduled on these.">
-        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+        <div className="row gap-3">
           {DOW.map((name, i) => (
             <button key={name} className={`btn sm ${restDays.includes(i) ? 'on' : ''}`}
                     onClick={() => setRestDays((s) => s.includes(i) ? s.filter((x) => x !== i) : [...s, i])}>
@@ -453,7 +452,7 @@ function FillPattern({ people, patterns, from, onClose, onDone }: {
           </Field>
         ) : (
           <Field label="Shifts in the rotation" hint="Each person starts on a different one.">
-            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+            <div className="row gap-3">
               {patterns.map((p) => (
                 <button key={p.id} className={`btn sm ${rotation.includes(p.id) ? 'on' : ''}`}
                         onClick={() => setRotation((s) => s.includes(p.id)

@@ -37,17 +37,17 @@ export function Login() {
     return (
       <div className="center">
         <div className="panel-form">
-          <div className="brand" style={{ padding: 0, border: 0, marginBottom: 18 }}>
+          <div className="brand p-0 mb-7 no-border">
             <LogoTile size={34} />
             <span><b>FacilityFlow</b><small>Maintenance &amp; FM</small></span>
           </div>
           <div className="note">
             <b>This installation is not configured yet.</b>
-            <div style={{ marginTop: 6 }}>
+            <div className="mt-3">
               Run the first-run setup to create the property and its first administrator.
             </div>
           </div>
-          <button className="btn pri" style={{ width: '100%', marginTop: 16 }}
+          <button className="btn pri full mt-6"
                   onClick={() => navigate('/setup')}>
             Set up FacilityFlow
           </button>
@@ -61,7 +61,7 @@ export function Login() {
   return (
     <div className="center">
       <form className="panel-form" onSubmit={(e) => { e.preventDefault(); signIn.mutate(); }}>
-        <div className="brand" style={{ padding: 0, border: 0, marginBottom: 20 }}>
+        <div className="brand p-0 mb-7 no-border">
           <LogoTile size={34} />
           <span><b>FacilityFlow</b><small>Maintenance &amp; FM</small></span>
         </div>
@@ -78,17 +78,17 @@ export function Login() {
         </div>
 
         {err && (
-          <div className={`note ${err.status === 423 ? 'warn' : 'crit'}`} style={{ marginBottom: 14 }} role="alert">
+          <div className={`note ${err.status === 423 ? 'warn' : 'crit'} mb-6`} role="alert">
             {err.message}
           </div>
         )}
 
-        <button className="btn pri" style={{ width: '100%' }} type="submit"
+        <button className="btn pri full" type="submit"
                 disabled={signIn.isPending || !username || !password}>
           {signIn.isPending ? 'Signing in…' : 'Sign in'}
         </button>
 
-        <p style={{ marginTop: 16, marginBottom: 0, fontSize: '0.75rem', color: 'var(--text-3)', textAlign: 'center' }}>
+        <p className="mt-6 mb-0 t-sm c-3 tac">
           Named accounts only. Shared logins make the audit trail worthless.
         </p>
       </form>

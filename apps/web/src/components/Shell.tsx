@@ -282,33 +282,46 @@ export function Shell() {
             </>
           )}
         </nav>
+        {/*
+          * Two rows, not one.
+          *
+          * Four controls at a usable size beside a name in a 236px column leaves the
+          * name about 24px, and "System Administrator" renders as "Sys / Adm". The
+          * identity gets the full width; the controls get their own line under it,
+          * which is also the only way they can be a comfortable size.
+          */}
         <div className="who">
-          <span className="av">{initials(me?.user.displayName ?? '?')}</span>
-          <span style={{ minWidth: 0 }}>
-            <span className="nm" title={me?.user.displayName}>{me?.user.displayName}</span>
-            {/* The role's own name. This printed "hod" at the head of department. */}
-            <span className="rl" title={me?.user.roleDescription}>{me?.user.roleName}</span>
-          </span>
-          {/* Until this existed, changing your own password meant asking an administrator
-              to reset it — which hands your new password to a third person. */}
-          <button className="icobtn" style={{ marginLeft: 'auto' }} title="Ring my phone"
-                  onClick={() => setPairing(true)} aria-label="Pair a phone for alerts">
-            <Icon name="bell" />
-          </button>
-          {can('duty.device.manage') && (
-            <button className="icobtn" title="Make this the duty screen"
-                    onClick={() => setDuty(true)} aria-label="Duty screen">
-              <Icon name="shield" />
+          <div className="whoid">
+            <span className="av">{initials(me?.user.displayName ?? '?')}</span>
+            <span className="fill">
+              <span className="nm" title={me?.user.displayName}>{me?.user.displayName}</span>
+              {/* The role's own name. This printed "hod" at the head of department. */}
+              <span className="rl" title={me?.user.roleDescription}>{me?.user.roleName}</span>
+            </span>
+          </div>
+          <div className="whoacts">
+            {/* Until this existed, changing your own password meant asking an
+                administrator to reset it — which hands your new password to a
+                third person. */}
+            <button className="icobtn" title="Ring my phone"
+                    onClick={() => setPairing(true)} aria-label="Ring my phone">
+              <Icon name="ring" />
             </button>
-          )}
-          <button className="icobtn" title="Change your password"
-                  onClick={() => setPw(true)} aria-label="Change your password">
-            <Icon name="lock" />
-          </button>
-          <button className="icobtn" title="Sign out"
-                  onClick={() => logout.mutate()} aria-label="Sign out">
-            <Icon name="out" />
-          </button>
+            {can('duty.device.manage') && (
+              <button className="icobtn" title="Make this the duty screen"
+                      onClick={() => setDuty(true)} aria-label="Duty screen">
+                <Icon name="shield" />
+              </button>
+            )}
+            <button className="icobtn" title="Change your password"
+                    onClick={() => setPw(true)} aria-label="Change your password">
+              <Icon name="lock" />
+            </button>
+            <button className="icobtn ml-auto" title="Sign out"
+                    onClick={() => logout.mutate()} aria-label="Sign out">
+              <Icon name="out" />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -336,7 +349,7 @@ export function Shell() {
           {can('alerts.ring') && (
             <button className="icobtn" onClick={() => setRinging(true)}
                     title="Ring somebody's device" aria-label="Ring somebody's device">
-              <Icon name="bell" />
+              <Icon name="ring" />
             </button>
           )}
           {can('alerts.emergency') && (
@@ -428,15 +441,25 @@ export function Shell() {
               <span className="lockpip" aria-hidden="true"><Icon name="lock" size={9} /></span>
             )}
           </button>
-          {/* Cycles rather than opening a menu: one thumb, three states, and the effect
-              is visible the instant it is pressed. */}
-          <button className="icobtn" onClick={bumpSize}
+          {/*
+            * Cycles rather than opening a menu: one thumb, three states, and the effect
+            * is visible the instant it is pressed.
+            *
+            * Both of these are desk-only. On a 390px screen the bar was carrying a
+            * property name, five identical grey icons and a red Emergency button, and
+            * it ran 25px off the right edge — with the demo property's short name. A
+            * real one ("Smart Residences Limited") broke it further. Text size and
+            * theme are settings, not shift work, so on a phone they live together in
+            * More, which is where somebody looks for a setting anyway.
+            */}
+          <button className="icobtn desk-only" onClick={bumpSize}
                   aria-label={`Text size: ${LABEL[size]}. Press to change.`}
                   title={`Text size — ${LABEL[size]}`}>
             <Icon name="text" />
             {size !== 'normal' && <span className="dot acc" />}
           </button>
-          <button className="icobtn" onClick={toggleTheme} aria-label="Switch light and dark">
+          <button className="icobtn desk-only" onClick={toggleTheme}
+                  aria-label="Switch light and dark">
             <Icon name="theme" />
           </button>
         </header>
@@ -505,7 +528,7 @@ export function Shell() {
 
               <div className="sfoot">
                 <button onClick={() => { setSheet(false); setPairing(true); }}>
-                  <Icon name="bell" size={15} />Ring my phone
+                  <Icon name="ring" size={15} />Ring my phone
                 </button>
                 {can('duty.device.manage') && (
                   <button onClick={() => { setSheet(false); setDuty(true); }}>
@@ -514,6 +537,9 @@ export function Shell() {
                 )}
                 <button onClick={bumpSize}>
                   <Icon name="text" size={15} />Text size — {LABEL[size]}
+                </button>
+                <button onClick={toggleTheme}>
+                  <Icon name="theme" size={15} />Switch light and dark
                 </button>
                 <button onClick={() => { setSheet(false); setPw(true); }}>
                   <Icon name="lock" size={15} />Change password

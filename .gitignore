@@ -5,3 +5,6 @@ backups/
 *.log
 .env
 .DS_Store
+
+# Written on every build; tracking it makes the tree dirty after any `npm run build`.
+apps/web/tsconfig.tsbuildinfo

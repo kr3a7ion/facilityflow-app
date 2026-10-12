@@ -174,7 +174,7 @@ export function Alarm({ live }: { live: boolean }) {
     <div className="alarm ringing" role="alertdialog" aria-live="assertive"
          aria-label="Somebody is ringing your device">
       <div className="alarmcard">
-        <p className="kind"><Icon name="bell" size={18} /> Someone needs you</p>
+        <p className="kind"><Icon name="ring" size={18} /> Someone needs you</p>
         <h1>{ring.rung_by_name} is ringing your device</h1>
         {ring.reason && <p className="why">“{ring.reason}”</p>}
         <p className="by">{when(ring.at)}</p>

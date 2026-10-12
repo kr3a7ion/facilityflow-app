@@ -113,7 +113,7 @@ export function Ppm() {
 
       <Flash msg={msg} />
 
-      <div className="grid g4" style={{ marginBottom: 16 }}>
+      <div className="grid g4 mb-6">
         {/* Nothing judged yet is not the same as nothing done well — show a dash, not a zero. */}
         <Tile label="Compliance · 90 days"
               value={compliance.data?.compliancePct == null ? '—' : `${compliance.data.compliancePct}`}
@@ -135,9 +135,9 @@ export function Ppm() {
       </div>
 
       {overdue.length > 0 && (
-        <div className="note crit" style={{ marginBottom: 14 }}>
+        <div className="note crit mb-6">
           <b>{overdue.length} schedule{overdue.length === 1 ? ' is' : 's are'} past due</b>
-          <div style={{ marginTop: 6 }}>
+          <div className="mt-3">
             {overdue.slice(0, 4).map((s) => s.name).join(' · ')}
             {overdue.length > 4 ? ` and ${overdue.length - 4} more` : ''}
             {can('ppm.manage') ? ' — press Generate due now to raise the jobs.' : ''}
@@ -153,7 +153,7 @@ export function Ppm() {
       {tab === 'schedules' ? (
         <Card flush title="Every recurring job in the building">
           {schedules.isLoading ? <Loading rows={5} />
-            : schedules.isError ? <div style={{ padding: 15 }}><ErrorNote error={schedules.error} /></div>
+            : schedules.isError ? <div className="p-6"><ErrorNote error={schedules.error} /></div>
             : rows.length === 0
               ? <Empty title="No schedules yet"
                        hint="Add one per asset, category or location — a genset service, a monthly AC filter clean, a quarterly pump check." />
@@ -211,12 +211,12 @@ function ChecklistPanel({ q }: { q: ReturnType<typeof useQuery<{ templates: Temp
         <Card key={t.id} title={t.name}
               right={<Chip>{t.item_count} step{t.item_count === 1 ? '' : 's'}</Chip>}>
           {t.category_name && (
-            <p style={{ margin: '0 0 10px', fontSize: '0.7812rem', color: 'var(--text-3)' }}>
+            <p className="mt-0 mb-5 t-ui c-3">
               Applies to {t.category_name}</p>
           )}
-          <ol style={{ margin: 0, paddingLeft: 18, fontSize: '0.8125rem', color: 'var(--text-2)' }}>
+          <ol className="m-0 t-ui c-2 pl-7">
             {(open === t.id ? t.items : t.items.slice(0, 5)).map((i) => (
-              <li key={i.id} style={{ marginBottom: 6 }}>
+              <li className="mb-3" key={i.id}>
                 {i.task}
                 {i.is_critical ? <Chip tone="crit">critical</Chip> : null}
                 {i.requires_reading ? <Chip tone="acc">reading</Chip> : null}
@@ -227,7 +227,7 @@ function ChecklistPanel({ q }: { q: ReturnType<typeof useQuery<{ templates: Temp
             ))}
           </ol>
           {t.items.length > 5 && (
-            <Btn size="sm" style={{ marginTop: 10 }}
+            <Btn className="mt-5" size="sm"
                  onClick={() => setOpen(open === t.id ? null : t.id)}>
               {open === t.id ? 'Show less' : `Show all ${t.items.length}`}
             </Btn>
@@ -300,7 +300,7 @@ function NewSchedule({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
 
   return (
     <Modal title="New maintenance schedule" onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
 
       <Field label="What is this job called">
         <input className="inp" value={f.name} autoFocus onChange={(e) => set('name')(e.target.value)}
@@ -431,7 +431,7 @@ function NewChecklist({ onClose, onDone }: { onClose: () => void; onDone: (msg: 
 
   return (
     <Modal title="New checklist" onClose={onClose} wide>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
       <div className="grid g2">
         <Field label="Checklist name">
           <input className="inp" value={name} autoFocus onChange={(e) => setName(e.target.value)}
@@ -445,8 +445,7 @@ function NewChecklist({ onClose, onDone }: { onClose: () => void; onDone: (msg: 
         </Field>
       </div>
 
-      <p style={{ fontFamily: 'var(--mono)', fontSize: '0.5938rem', letterSpacing: '.12em',
-                  textTransform: 'uppercase', color: 'var(--text-3)', margin: '4px 0 8px' }}>
+      <p className="f-mono t-micro c-3 mt-2 mb-4 caps">
         Steps</p>
       <div className="tw">
         <table className="wide">
@@ -490,10 +489,10 @@ function NewChecklist({ onClose, onDone }: { onClose: () => void; onDone: (msg: 
           </tbody>
         </table>
       </div>
-      <Btn size="sm" icon="plus" style={{ marginTop: 10 }}
+      <Btn className="mt-5" size="sm" icon="plus"
            onClick={() => setItems((s) => [...s, { ...BLANK }])}>Add a step</Btn>
 
-      <div className="note" style={{ marginTop: 14 }}>
+      <div className="note mt-6">
         <b>Critical</b> steps are the ones that stop the job. A failed critical step is worth a
         follow-up job on its own rather than a note in the comments.
       </div>

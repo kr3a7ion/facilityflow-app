@@ -117,7 +117,7 @@ export function Stores() {
 
       <Flash msg={msg} />
 
-      <div className="grid g4" style={{ marginBottom: 16 }}>
+      <div className="grid g4 mb-6">
         <Tile label="Lines held" value={items.length} sub="Active catalogue items" />
         {money && (
           <Tile label="Value on the shelf" value={naira(stockValue, { compact: true })}
@@ -134,9 +134,9 @@ export function Stores() {
       </div>
 
       {low.length > 0 && (
-        <div className="note warn" style={{ marginBottom: 14 }}>
+        <div className="note warn mb-6">
           <b>At or below minimum</b>
-          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+          <ul className="mt-3 mb-0 pl-7">
             {low.map((i) => (
               <li key={i.id}>{i.name} — {i.current_qty} {i.unit} left, minimum {i.min_level}
                 {i.reorder_qty > 0 ? `, reorder ${i.reorder_qty}` : ''}</li>
@@ -154,7 +154,7 @@ export function Stores() {
       {tab === 'catalogue' ? (
         <Card flush title="Catalogue">
           {stock.isLoading ? <Loading rows={5} />
-            : stock.isError ? <div style={{ padding: 15 }}><ErrorNote error={stock.error} /></div>
+            : stock.isError ? <div className="p-6"><ErrorNote error={stock.error} /></div>
             : items.length === 0 ? <Empty title="Nothing in the store yet"
                                          hint="Add the items you actually keep on the shelf, then receive stock against them." />
             : (
@@ -183,13 +183,13 @@ export function Stores() {
                               <td className="num">{naira(i.current_qty * (i.avg_cost_kobo ?? 0))}</td>
                             </>
                           )}
-                          <td className="num" style={{ whiteSpace: 'nowrap' }}>
+                          <td className="num nw">
                             <Btn size="sm" onClick={() => setHistory(i)}>History</Btn>
                             {can('stock.receive') && (
                               <>
-                                <Btn size="sm" style={{ marginLeft: 6 }}
+                                <Btn className="ml-3" size="sm"
                                      onClick={() => setReceiving(i)}>Receive</Btn>
-                                <span style={{ marginLeft: 6 }}>
+                                <span className="ml-3">
                                   <RetireBtn kind="stock-item" id={i.id} label={i.name}
                                              onDone={(m) => { setMsg({ text: m }); void qc.invalidateQueries({ queryKey: qk.stock }); }} />
                                 </span>
@@ -210,7 +210,7 @@ export function Stores() {
                 <Btn size="sm" icon="plus" disabled={startCount.isPending}
                      onClick={() => startCount.mutate()}>Start a count</Btn>)}>
           {counts.isLoading ? <Loading rows={3} />
-            : counts.isError ? <div style={{ padding: 15 }}><ErrorNote error={counts.error} /></div>
+            : counts.isError ? <div className="p-6"><ErrorNote error={counts.error} /></div>
             : (counts.data?.counts.length ?? 0) === 0
               ? <Empty title="No counts yet"
                        hint="A count freezes what the system thinks is on the shelf, then you walk the store and record what is really there." />
@@ -246,7 +246,7 @@ export function Stores() {
                 </div>
               )}
           {openCount && (
-            <div className="note warn" style={{ margin: 15 }}>
+            <div className="note warn m-6">
               A count is open. The store keeps moving while it is, so post it as soon as the
               walk is finished — the longer it stays open the less the numbers mean.
             </div>
@@ -255,7 +255,7 @@ export function Stores() {
       ) : (
         <Card flush title={reqs.data?.scope === 'own' ? 'My requisitions' : 'Requisitions'}>
           {reqs.isLoading ? <Loading rows={4} />
-            : reqs.isError ? <div style={{ padding: 15 }}><ErrorNote error={reqs.error} /></div>
+            : reqs.isError ? <div className="p-6"><ErrorNote error={reqs.error} /></div>
             : rows.length === 0
               ? <Empty title="No requisitions raised"
                        hint="A requisition is how a technician asks for something the store does not hold." />
@@ -329,7 +329,7 @@ function NewItem({ onClose, onDone }: { onClose: () => void; onDone: (msg: strin
 
   return (
     <Modal title="New stock item" onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
       <div className="grid g2">
         <Field label="Item code" hint="Short and unique — it goes on the bin label.">
           <input className="inp" value={f.code} autoFocus placeholder="e.g. PLB-SEAL-15"
@@ -403,8 +403,8 @@ function Receive({ item, onClose, onDone }: {
 
   return (
     <Modal title={`${item.code} · ${item.name}`} onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
-      <dl className="kv" style={{ marginBottom: 16 }}>
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
+      <dl className="kv mb-6">
         <dt>On hand</dt><dd>{item.current_qty} {item.unit}</dd>
         {item.avg_cost_kobo !== undefined && (
           <><dt>Average cost</dt><dd>{naira(item.avg_cost_kobo)} per {item.unit}</dd></>)}
@@ -518,7 +518,7 @@ function History({ item, onClose }: { item: Item; onClose: () => void }) {
               </table>
             </div>
           )}
-      <div className="note" style={{ marginTop: 14 }}>
+      <div className="note mt-6">
         This ledger is append-only at the database level — a movement can be corrected with
         another movement, never erased.
       </div>
@@ -570,7 +570,7 @@ function NewRequisition({ items, onClose, onDone }: {
 
   return (
     <Modal title="Raise a requisition" onClose={onClose} wide>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
       <div className="grid g2">
         <Field label="What is it for">
           <input className="inp" value={purpose} autoFocus
@@ -586,7 +586,7 @@ function NewRequisition({ items, onClose, onDone }: {
         </Field>
       </div>
 
-      <p className="eyebrow" style={{ marginBottom: 8 }}>Lines</p>
+      <p className="eyebrow mb-4">Lines</p>
       <div className="tw">
         <table className="wide">
           <thead><tr><th style={{ width: '30%' }}>Known item</th><th>Description</th>
@@ -633,12 +633,12 @@ function NewRequisition({ items, onClose, onDone }: {
           </tbody>
         </table>
       </div>
-      <Btn size="sm" icon="plus" style={{ marginTop: 10 }}
+      <Btn className="mt-5" size="sm" icon="plus"
            onClick={() => setLines((s) => [...s, { itemId: '', description: '', qty: '1', estimate: '' }])}>
         Add a line
       </Btn>
 
-      <div className="note" style={{ marginTop: 14 }}>
+      <div className="note mt-6">
         Estimated total <b>{naira(total)}</b> across {filled.length} line{filled.length === 1 ? '' : 's'}.
         You cannot approve your own requisition.
       </div>
@@ -672,8 +672,8 @@ function Decide({ req, onClose, onDone }: {
 
   return (
     <Modal title={`${req.ref} · decide`} onClose={onClose}>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
-      <dl className="kv" style={{ marginBottom: 16 }}>
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
+      <dl className="kv mb-6">
         <dt>Purpose</dt><dd>{req.purpose ?? '—'}</dd>
         <dt>Raised by</dt><dd>{req.raised_by_name ?? '—'} · {when(req.created_at)}</dd>
         {req.wo_ref && <><dt>Job</dt><dd className="mono">{req.wo_ref}</dd></>}
@@ -778,13 +778,13 @@ function CountSheet({ countId, onClose, onDone }: {
   return (
     <Modal title={`Stock count · ${q.data ? when(q.data.count.counted_at) : ''}`}
            onClose={onClose} wide>
-      {err && <div className="note crit" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+      {err && <div className="note crit mb-6" role="alert">{err}</div>}
 
       {q.isLoading ? <Loading rows={6} />
         : q.isError ? <ErrorNote error={q.error} />
         : (
           <>
-            <div className="grid g3" style={{ marginBottom: 14 }}>
+            <div className="grid g3 mb-6">
               <Tile label="Lines" value={q.data!.lines.length} sub="Every active catalogue item" />
               <Tile label="Variances" value={varianceCount}
                     tone={varianceCount ? 'warn' : 'ok'}
@@ -794,7 +794,7 @@ function CountSheet({ countId, onClose, onDone }: {
                     sub={varianceKobo < 0 ? 'Stock missing against the book' : 'At average cost'} />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+            <div className="row gap-4 mb-5">
               <button className={`btn sm ${onlyVariances ? 'on' : ''}`}
                       onClick={() => setOnlyVariances(!onlyVariances)}>
                 Only lines that differ
@@ -820,8 +820,7 @@ function CountSheet({ countId, onClose, onDone }: {
                       <td className="num mono">{line.system_qty} {line.unit}</td>
                       <td className="num">
                         {editable
-                          ? <input className="inp" inputMode="decimal"
-                                   style={{ minHeight: 32, padding: '5px 8px', textAlign: 'right' }}
+                          ? <input className="inp py-2 px-4 tar compact" inputMode="decimal"
                                    aria-label={`Counted quantity for ${line.name}`}
                                    value={draft[line.id]?.qty ?? String(counted)}
                                    onChange={(e) => setDraft((d) => ({
@@ -836,7 +835,7 @@ function CountSheet({ countId, onClose, onDone }: {
                       <td>
                         {Math.abs(variance) > 0.0001 && (
                           editable
-                            ? <input className="inp" style={{ minHeight: 32, padding: '5px 8px' }}
+                            ? <input className="inp py-2 px-4 compact"
                                      placeholder="Broken, miscount, issued off-system…"
                                      aria-label={`Reason for ${line.name}`}
                                      value={reason}
@@ -852,7 +851,7 @@ function CountSheet({ countId, onClose, onDone }: {
             </div>
 
             {open && (
-              <div className="note" style={{ marginTop: 14 }}>
+              <div className="note mt-6">
                 Posting writes one <b>count movement per line that differs</b> — the balance moves
                 because the ledger says so, never by a direct edit, so it can always be rebuilt.
                 Lines you never touched post nothing.

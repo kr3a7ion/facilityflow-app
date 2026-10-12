@@ -47,11 +47,11 @@ export function RingSomebody({ onClose }: { onClose: () => void }) {
     return (
       <Modal title="Ringing" onClose={onClose}>
         {/* Reached nothing is the outcome worth shouting about: it means go and find them. */}
-        <div className={`note ${result.reached === 0 ? 'warn' : ''}`} style={{ marginBottom: 14 }}>
+        <div className={`note ${result.reached === 0 ? 'warn' : ''} mb-6`}>
           {result.text}
         </div>
         {result.reached === 0 && (
-          <p style={{ margin: '0 0 14px', fontSize: '0.8438rem', lineHeight: 1.55 }}>
+          <p className="mt-0 mb-6 t-ui lh">
             Their phone app is not connected and they have no browser open. The ring is
             recorded either way, so it is on the record that you tried.
           </p>
@@ -74,7 +74,7 @@ export function RingSomebody({ onClose }: { onClose: () => void }) {
             : (
               <>
                 {people.data?.scope === 'team' && (
-                  <div className="note" style={{ marginBottom: 12 }}>
+                  <div className="note mb-5">
                     You can ring the people in your own team. Ask a supervisor for anybody else.
                   </div>
                 )}
@@ -82,7 +82,7 @@ export function RingSomebody({ onClose }: { onClose: () => void }) {
                   <input className="inp" autoFocus value={q} placeholder="Type a name"
                          onChange={(e) => setQ(e.target.value)} />
                 </Field>
-                <div style={{ maxHeight: 300, overflow: 'auto' }}>
+                <div className="scrollbox">
                   {list.map((p) => (
                     <div className="ringrow" key={p.id}>
                       <span className="who">
@@ -93,7 +93,7 @@ export function RingSomebody({ onClose }: { onClose: () => void }) {
                     </div>
                   ))}
                   {list.length === 0 && (
-                    <p style={{ padding: '14px 2px', color: 'var(--text-3)', fontSize: '0.8438rem' }}>
+                    <p className="py-6 px-1 c-3 t-ui">
                       Nobody matches “{q}”.
                     </p>
                   )}
@@ -102,7 +102,7 @@ export function RingSomebody({ onClose }: { onClose: () => void }) {
             )
       ) : (
         <>
-          <div className="note" style={{ marginBottom: 14 }}>
+          <div className="note mb-6">
             Their device sounds on the alarm volume and keeps asking until they answer —
             whatever their notification sound is set to. Use it when you need them now.
           </div>
@@ -112,7 +112,7 @@ export function RingSomebody({ onClose }: { onClose: () => void }) {
                    onChange={(e) => setReason(e.target.value)} />
           </Field>
           {err && (
-            <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>
+            <div className="note crit mb-5" role="alert">{err.message}</div>
           )}
           <div className="modal-foot">
             <Btn onClick={() => setPicked(null)}>Back</Btn>
@@ -120,9 +120,9 @@ export function RingSomebody({ onClose }: { onClose: () => void }) {
               {ring.isPending ? 'Ringing…' : `Ring ${picked.display_name}`}
             </Btn>
           </div>
-          <p style={{ marginTop: 12, marginBottom: 0 }}>
+          <p className="mt-5 mb-0">
             <Chip>Recorded</Chip>{' '}
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>
+            <span className="t-sm c-3">
               Who you rang and whether they answered goes in the log.
             </span>
           </p>

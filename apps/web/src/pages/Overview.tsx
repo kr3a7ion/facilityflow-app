@@ -76,12 +76,12 @@ export function Overview() {
         </div>
         <div className="acts">
           <div className="vtoggle" role="group" aria-label="Which period the figures cover">
-            <button className={scope === 'rolling' ? 'on' : ''} onClick={() => setScope('rolling')}
-                    aria-pressed={scope === 'rolling'}
-                    style={{ padding: '7px 12px', fontSize: '0.7812rem' }}>Last 30 days</button>
-            <button className={scope === 'month' ? 'on' : ''} onClick={() => setScope('month')}
-                    aria-pressed={scope === 'month'}
-                    style={{ padding: '7px 12px', fontSize: '0.7812rem' }}>By month</button>
+            <button className={`py-3 px-5 t-ui ${scope === 'rolling' ? 'on' : ''}`}
+                    onClick={() => setScope('rolling')}
+                    aria-pressed={scope === 'rolling'}>Last 30 days</button>
+            <button className={`py-3 px-5 t-ui ${scope === 'month' ? 'on' : ''}`}
+                    onClick={() => setScope('month')}
+                    aria-pressed={scope === 'month'}>By month</button>
           </div>
           {can('wo.create') && <Link className="btn pri" to="/jobs?new=1">Raise job</Link>}
         </div>
@@ -97,7 +97,7 @@ export function Overview() {
 
       {dash.isError && <ErrorNote error={dash.error} hint="The rest of the page may be incomplete." />}
 
-      <div className="grid g4" style={{ marginBottom: 14 }}>
+      <div className="grid g4 mb-6">
         <Tile label="Open jobs" value={d?.openJobs.total ?? '—'}
               sub={d ? `${d.aging.under24h} raised in the last 24 h` : ''} />
         <Tile label="Breaching SLA" value={d?.openJobs.breached ?? '—'}
@@ -113,7 +113,7 @@ export function Overview() {
               sub={d ? `${d.workMix.total} jobs in the period` : ''} />
       </div>
 
-      <div className="grid g21" style={{ marginBottom: 14 }}>
+      <div className="grid g21 mb-6">
         <Card title="Needs you now" flush
               right={<><Chip>Sorted by breach</Chip><Link className="btn sm" to="/jobs">All jobs</Link></>}>
           {jobs.isLoading ? <Loading rows={5} />
@@ -127,7 +127,7 @@ export function Overview() {
                       {needsYou.map((j) => (
                         <tr key={j.id}>
                           <td className={`pri-cell ${j.priority}`}>
-                            <Link to={`/jobs/${j.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                            <Link className="plain-link" to={`/jobs/${j.id}`}>
                               <span className="ttl">{j.title}</span>
                               <span className="sub">{j.ref} · {j.unit_no ?? 'site'} · {j.priority}</span>
                             </Link>
@@ -154,7 +154,7 @@ export function Overview() {
                      ask="Ask an administrator to add the tanks and generators." />
             ) : (
             <>
-            <div className="tanks" style={{ marginBottom: 16 }}>
+            <div className="tanks mb-6">
               {(plant.data?.tanks ?? []).map((t) => (
                 <Gauge key={t.id} name={t.name} litres={t.litres} capacity={t.capacity}
                        minLevel={t.minLevel || undefined} />
@@ -164,7 +164,7 @@ export function Overview() {
               <tbody>
                 {(plant.data?.gensets ?? []).map((g) => (
                   <tr key={g.tag}>
-                    <td style={{ paddingLeft: 0 }}>
+                    <td className="pl-0">
                       <span className="ttl">{g.tag}</span><span className="sub">{g.name}</span>
                     </td>
                     <td><Chip lamp tone={g.status === 'in_service' ? 'ok' : g.status === 'faulty' ? 'crit' : ''}>
@@ -192,14 +192,14 @@ export function Overview() {
                 ))}
               </div>
               <div className="legend">
-                <span><i style={{ background: 'var(--ok)' }} />On time — inside SLA</span>
-                <span><i style={{ background: 'var(--warn)' }} />Due soon — under 2 h left</span>
-                <span><i style={{ background: 'var(--crit)' }} />Breached — past due</span>
-                <span><i style={{ background: 'var(--idle)' }} />On hold — clock paused</span>
+                <span><i className="bg-ok" />On time — inside SLA</span>
+                <span><i className="bg-warn" />Due soon — under 2 h left</span>
+                <span><i className="bg-crit" />Breached — past due</span>
+                <span><i className="bg-idle" />On hold — clock paused</span>
               </div>
             </>
           )}
-          <div className="note" style={{ marginTop: 14 }}>
+          <div className="note mt-6">
             Breached jobs escalate on their own: past the response deadline to the team lead,
             past resolve to the supervisor, and a P1 at twice its deadline to the HOD.
             <b> Nobody has to remember to check.</b>
@@ -240,9 +240,9 @@ export function Overview() {
           </dl>
 
           {(d?.contractsExpiring.length ?? 0) > 0 && (
-            <div className="note warn" style={{ marginTop: 14 }}>
+            <div className="note warn mt-6">
               <b>Contracts expiring inside 60 days</b>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              <ul className="mt-3 mb-0 pl-7">
                 {d!.contractsExpiring.map((c) => (
                   <li key={c.id}>{c.title} — {c.vendor}, ends {c.end_date}</li>
                 ))}
@@ -250,9 +250,9 @@ export function Overview() {
             </div>
           )}
           {(d?.lowStock?.length ?? 0) > 0 && (
-            <div className="note warn" style={{ marginTop: 12 }}>
+            <div className="note warn mt-5">
               <b>At or below minimum stock</b>
-              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              <ul className="mt-3 mb-0 pl-7">
                 {d!.lowStock!.map((s) => (
                   <li key={s.id}>{s.name} — {s.current_qty} {s.unit} left, minimum {s.min_level}</li>
                 ))}

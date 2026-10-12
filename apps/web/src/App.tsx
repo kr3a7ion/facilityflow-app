@@ -47,14 +47,11 @@ function Home() {
 function Booting() {
   return (
     <div className="center">
-      <div style={{ textAlign: 'center', color: 'var(--text-3)' }}>
-        <div style={{ width: 38, height: 38, borderRadius: 9, background: 'var(--accent)',
-                      display: 'grid', placeItems: 'center', margin: '0 auto 14px',
-                      color: 'var(--on-accent)' }}>
+      <div className="tac c-3">
+        <div className="grid c-on-acc bg-acc" style={{ width: 38, height: 38, borderRadius: 9, placeItems: 'center', margin: '0 auto 14px' }}>
           <Icon name="bolt" size={20} />
         </div>
-        <div style={{ fontFamily: 'var(--mono)', fontSize: '0.6875rem', letterSpacing: '.16em',
-                      textTransform: 'uppercase' }}>Connecting to the host…</div>
+        <div className="f-mono t-sm caps-wide caps">Connecting to the host…</div>
       </div>
     </div>
   );
@@ -75,11 +72,11 @@ function Private() {
         <div className="panel-form">
           <div className="note crit err" role="alert">
             <b>{err.message}</b>
-            <div style={{ marginTop: 8 }}>
+            <div className="mt-4">
               The host PC may be switched off, or this device may be on a different network from it.
             </div>
           </div>
-          <button className="btn" style={{ width: '100%', marginTop: 14 }}
+          <button className="btn full mt-6"
                   onClick={() => query.refetch()}>Try again</button>
         </div>
       </div>

@@ -4,7 +4,7 @@ export type IconName =
   | 'gauge' | 'clip' | 'cal' | 'fuel' | 'bldg' | 'swap' | 'box' | 'search' | 'bell' | 'theme'
   | 'plus' | 'check' | 'back' | 'cam' | 'alert' | 'user' | 'wrench' | 'clock' | 'bolt' | 'out'
   | 'money' | 'shield' | 'repeat' | 'tag' | 'doc' | 'lock' | 'x' | 'sound' | 'muted'
-  | 'left' | 'right' | 'grid' | 'rows' | 'amp' | 'text';
+  | 'left' | 'right' | 'grid' | 'rows' | 'amp' | 'text' | 'ring';
 
 const P: Record<IconName, ReactElement> = {
   gauge: <><path d="M3 13a9 9 0 0 1 18 0"/><path d="M12 13l4-3"/><path d="M3 19h18"/></>,
@@ -16,6 +16,13 @@ const P: Record<IconName, ReactElement> = {
   box: <><path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M3 8l9 4 9-4M12 12v8"/></>,
   search: <><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></>,
   bell: <><path d="M18 15V10a6 6 0 1 0-12 0v5l-2 3h16z"/><path d="M10 21h4"/></>,
+  /*
+   * Ringing somebody's handset, which is not the same thing as the notification bell
+   * and must not look like it. Both sat in the phone top bar as identical bells,
+   * three slots apart: one opens a list of what happened while you were away, the
+   * other makes a technician's phone sound in a plant room. A handset with waves.
+   */
+  ring: <><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M10.5 18.5h3"/><path d="M3.2 8.5a5 5 0 0 1 0 7"/><path d="M20.8 8.5a5 5 0 0 1 0 7"/></>,
   theme: <><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></>,
   plus: <><path d="M12 5v14M5 12h14"/></>,
   check: <><path d="M4 12.5l5 5L20 6.5"/></>,

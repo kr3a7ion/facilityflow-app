@@ -92,10 +92,10 @@ export function Assets() {
         </div>
       </div>
 
-      {msg && <div className="note" style={{ marginBottom: 14 }} role="status">{msg}</div>}
+      {msg && <div className="note mb-6" role="status">{msg}</div>}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' }}>
-        <input className="inp" style={{ width: 260, minHeight: 34 }} value={q}
+      <div className="row gap-4 mb-6">
+        <input className="inp compact w-lg" value={q}
                placeholder="Tag, name or serial…" onChange={(e) => setQ(e.target.value)} />
         <button className={`btn sm ${status === '' ? 'on' : ''}`} onClick={() => setStatus('')}>
           All · {list.data?.assets.length ?? 0}
@@ -108,7 +108,7 @@ export function Assets() {
 
       <Card flush>
         {list.isLoading ? <Loading rows={5} />
-          : list.isError ? <div style={{ padding: 15 }}><ErrorNote error={list.error} /></div>
+          : list.isError ? <div className="p-6"><ErrorNote error={list.error} /></div>
           : rows.length === 0
             ? <Empty title="No assets match"
                      hint={list.data?.assets.length ? 'Try another filter.' : 'Add the plant first — gensets, pumps, lifts — then the units.'} />
@@ -139,7 +139,7 @@ export function Assets() {
             )}
       </Card>
 
-      <div className="note" style={{ marginTop: 14 }}>
+      <div className="note mt-6">
         <b>Print the tag as a QR sticker.</b> Scanning it on a phone opens the asset's full job
         history — no searching, no typing a unit number with oily hands. It is the cheapest
         high-value feature in the product.
@@ -189,7 +189,7 @@ function AssetDetail({ id, onClose, onChange }:
       {/* A technician scans a tag to read the machine's service history. Repair-or-replace
           is a different conversation, held by the people who hold the budget, so the two
           money tiles are simply not here for them — and the third fills the row. */}
-      <div className={`grid ${money ? 'g3' : 'g1'}`} style={{ marginBottom: 14 }}>
+      <div className={`grid ${money ? 'g3' : 'g1'} mb-6`}>
         {money && (
           <>
             <Tile label="Lifetime cost" value={naira(d.lifetimeCostKobo ?? 0, { compact: true })}
@@ -205,13 +205,13 @@ function AssetDetail({ id, onClose, onChange }:
       </div>
 
       {d.pctOfReplacement != null && d.pctOfReplacement > 50 && (
-        <div className="note warn" style={{ marginBottom: 14 }}>
+        <div className="note warn mb-6">
           This asset has cost <b>{d.pctOfReplacement}% of what it costs to replace</b>. Past roughly
           half, the repair-or-replace argument writes itself.
         </div>
       )}
 
-      <dl className="kv" style={{ marginBottom: 16 }}>
+      <dl className="kv mb-6">
         <dt>Status</dt><dd><Chip tone={STATUS_TONE[a.status] ?? ''} lamp>{titleCase(a.status)}</Chip></dd>
         <dt>Where</dt><dd>{a.unit_no ?? a.location_name ?? '—'}</dd>
         <dt>Make</dt><dd>{[a.manufacturer, a.model, a.capacity].filter(Boolean).join(' · ') || '—'}</dd>
@@ -224,15 +224,15 @@ function AssetDetail({ id, onClose, onChange }:
       </dl>
 
       {can('asset.manage') && a.meter_type !== 'none' && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
-          <div className="fld" style={{ marginBottom: 0, width: 160 }}>
+        <div className="row gap-4 mb-6 bottom">
+          <div className="fld mb-0 w-md">
             <label>New meter reading</label>
             <input className="inp" inputMode="decimal" value={reading}
                    onChange={(e) => setReading(e.target.value)} />
           </div>
           <Btn tone="pri" disabled={!reading || addReading.isPending}
                onClick={() => addReading.mutate()}>Record</Btn>
-          {err && <span className="sub" style={{ color: 'var(--crit)', whiteSpace: 'normal' }}>{err}</span>}
+          {err && <span className="sub c-crit wrap">{err}</span>}
         </div>
       )}
 
@@ -256,12 +256,12 @@ function AssetDetail({ id, onClose, onChange }:
         </Card>
       )}
 
-      <div style={{ marginTop: 14 }}>
+      <div className="mt-6">
         <Photos entityType="asset" entityId={a.id} canUpload={can('asset.manage')}
                 title="Nameplate and condition photos" />
       </div>
 
-      <div style={{ marginTop: 14 }}>
+      <div className="mt-6">
         <Card title="Job history" flush right={<Chip>{d.jobs.length}</Chip>}>
           {d.jobs.length === 0 ? <Empty title="No jobs yet against this asset" /> : (
             <div className="tw">
@@ -271,8 +271,7 @@ function AssetDetail({ id, onClose, onChange }:
                 <tbody>
                   {d.jobs.map((j) => (
                     <tr key={j.id}>
-                      <td><Link to={`/jobs/${j.id}`} onClick={onClose}
-                                style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <td><Link className="plain-link" to={`/jobs/${j.id}`} onClick={onClose}>
                         <span className="ttl">{j.title}</span>
                         <span className="sub">{j.ref} · {j.priority}</span></Link></td>
                       <td className="mono">{when(j.reported_at)}</td>
@@ -332,7 +331,7 @@ function GensetProfile({ id, asset, onSaved }: {
   // The nameplate is on the set. Typing it in once is what makes the load screen able to
   // answer "which one do we start" instead of listing three names.
   return (
-    <div style={{ marginTop: 14 }}>
+    <div className="mt-6">
     <Card title="Generator profile"
           right={asset.kva_rating != null
             ? <>
@@ -341,14 +340,14 @@ function GensetProfile({ id, asset, onSaved }: {
               </>
             : <Chip tone="warn" lamp>no rating yet</Chip>}>
       {!open ? (
-        <p className="sub" style={{ margin: 0 }}>
+        <p className="sub m-0">
           Rated {asset.kva_rating} kVA
           {asset.expected_lph_at_75pct ? `, about ${asset.expected_lph_at_75pct} L/h at three-quarter load` : ''}
           {asset.service_interval_hours ? `, serviced every ${asset.service_interval_hours} hours` : ''}.
         </p>
       ) : (
         <>
-          <div className="grid g2" style={{ gap: 10 }}>
+          <div className="grid g2 gap-5">
             <Field label="Rating in kVA" hint="Off the nameplate. Required.">
               <input className="inp" inputMode="decimal" value={f.kva}
                      onChange={(e) => setF({ ...f, kva: e.target.value })} />
@@ -358,10 +357,10 @@ function GensetProfile({ id, asset, onSaved }: {
                      onChange={(e) => setF({ ...f, interval: e.target.value })} />
             </Field>
           </div>
-          <p className="eyebrow" style={{ margin: '4px 0 8px' }}>
+          <p className="eyebrow mt-2 mb-4">
             Expected diesel burn · litres per hour
           </p>
-          <div className="grid g3" style={{ gap: 10 }}>
+          <div className="grid g3 gap-5">
             <Field label="At half load">
               <input className="inp" inputMode="decimal" value={f.lph50}
                      onChange={(e) => setF({ ...f, lph50: e.target.value })} />
@@ -375,14 +374,14 @@ function GensetProfile({ id, asset, onSaved }: {
                      onChange={(e) => setF({ ...f, lph100: e.target.value })} />
             </Field>
           </div>
-          <div className="note" style={{ marginBottom: 12 }}>
+          <div className="note mb-5">
             The burn figures are on the manufacturer's data sheet. With even one of them the
             system can tell a set that is drinking more than it should from one that is simply
             working hard — <b>three runs over the threshold raises a job by itself</b>. Without
             them the set still gets recommended on rating alone.
           </div>
-          {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-          <Btn tone="pri" style={{ width: '100%' }}
+          {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+          <Btn full tone="pri"
                disabled={!f.kva || Number(f.kva) <= 0 || save.isPending}
                onClick={() => save.mutate()}>
             {save.isPending ? 'Saving…' : 'Save profile'}
@@ -441,21 +440,21 @@ function NewAsset({ onClose, onDone }: { onClose: () => void; onDone: (tag: stri
 
   return (
     <Modal title="Add an asset" onClose={onClose}>
-      <div className="grid g2" style={{ gap: 12 }}>
+      <div className="grid g2 gap-5">
         <div className="fld"><label>Asset tag</label>
           <input className="inp" autoFocus value={f.assetTag} onChange={set('assetTag')}
                  placeholder="GEN-01" /></div>
         <div className="fld"><label>Name</label>
           <input className="inp" value={f.name} onChange={set('name')} placeholder="Generator 1" /></div>
       </div>
-      <div className="grid g2" style={{ gap: 12 }}>
+      <div className="grid g2 gap-5">
         <div className="fld"><label>Category</label>
           <select className="inp" value={f.categoryId} onChange={set('categoryId')}>
             <option value="">Uncategorised</option>
             {(cats.data?.categories ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-            <input className="inp" style={{ minHeight: 32, fontSize: '0.7812rem' }} value={newCat}
+          <div className="row gap-3 mt-3">
+            <input className="inp t-ui compact" value={newCat}
                    placeholder={(cats.data?.categories.length ?? 0) === 0
                      ? 'No categories yet — name the first one' : 'Or add a new one'}
                    aria-label="New category name"
@@ -474,7 +473,7 @@ function NewAsset({ onClose, onDone }: { onClose: () => void; onDone: (tag: stri
               .map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select></div>
       </div>
-      <div className="grid g3" style={{ gap: 12 }}>
+      <div className="grid g3 gap-5">
         <div className="fld"><label>Manufacturer</label>
           <input className="inp" value={f.manufacturer} onChange={set('manufacturer')} /></div>
         <div className="fld"><label>Model</label>
@@ -482,7 +481,7 @@ function NewAsset({ onClose, onDone }: { onClose: () => void; onDone: (tag: stri
         <div className="fld"><label>Capacity</label>
           <input className="inp" value={f.capacity} onChange={set('capacity')} placeholder="250 kVA" /></div>
       </div>
-      <div className="grid g3" style={{ gap: 12 }}>
+      <div className="grid g3 gap-5">
         <div className="fld"><label>Serial number</label>
           <input className="inp" value={f.serialNo} onChange={set('serialNo')} /></div>
         <div className="fld"><label>Criticality</label>
@@ -500,19 +499,19 @@ function NewAsset({ onClose, onDone }: { onClose: () => void; onDone: (tag: stri
             <option value="both">Both</option>
           </select></div>
       </div>
-      <div className="grid g2" style={{ gap: 12 }}>
+      <div className="grid g2 gap-5">
         <div className="fld"><label>Warranty expires</label>
           <input className="inp" type="date" value={f.warrantyExpiry} onChange={set('warrantyExpiry')} /></div>
         <div className="fld"><label>Replacement cost (₦)</label>
           <input className="inp" inputMode="numeric" value={f.replacementNaira}
                  onChange={set('replacementNaira')} /></div>
       </div>
-      <p className="sub" style={{ whiteSpace: 'normal', marginBottom: 12 }}>
+      <p className="sub wrap mb-5">
         Replacement cost is what makes the repair-or-replace report possible. A rough figure beats
         a blank.
       </p>
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
-      <Btn tone="pri" style={{ width: '100%' }}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <Btn full tone="pri"
            disabled={f.assetTag.length < 1 || f.name.length < 2 || create.isPending}
            onClick={() => create.mutate()}>
         {create.isPending ? 'Adding…' : 'Add to the register'}

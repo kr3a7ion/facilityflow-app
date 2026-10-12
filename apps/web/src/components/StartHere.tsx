@@ -57,10 +57,8 @@ export function StartHere({ compact }: { compact?: boolean }) {
   if (finished || compact) {
     return (
       <div className="startcard">
-        <div className="starthead" style={{ borderBottom: 0 }}>
-          <span className="tick" style={{ width: 20, height: 20, borderRadius: '50%',
-                 background: finished ? 'var(--ok)' : 'var(--accent)', color: '#fff',
-                 display: 'grid', placeItems: 'center', flex: 'none' }}>
+        <div className="starthead no-border-b">
+          <span className="tick grid" style={{ width: 20, height: 20, borderRadius: '50%', background: finished ? 'var(--ok)' : 'var(--accent)', color: '#fff', placeItems: 'center', flex: 'none' }}>
             <Icon name="check" size={12} />
           </span>
           <h2>{finished ? 'Set up and running' : 'Setting up'}</h2>
@@ -109,7 +107,7 @@ export function StartHere({ compact }: { compact?: boolean }) {
             </span>
             <span className="ttl">
               {s.title}
-              {s.detail && <span className="sub" style={{ fontWeight: 400 }}>{s.detail}</span>}
+              {s.detail && <span className="sub fw-4">{s.detail}</span>}
               {s.essential && s.state !== 'done' && <Chip tone="crit">needed</Chip>}
             </span>
             {s.state !== 'done' && <span className="why">{s.why}</span>}

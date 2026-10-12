@@ -48,13 +48,13 @@ export function RaiseEmergency({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title="Alert everybody" onClose={onClose}>
-      <div className="note warn" style={{ marginBottom: 14 }}>
+      <div className="note warn mb-6">
         This takes over the screen of <b>every person signed in</b> and every paired phone,
         sounds on repeat until it is acknowledged, and ignores anybody's sound setting. It
         stays up until somebody stands it down.
       </div>
 
-      <p className="eyebrow" style={{ marginBottom: 8 }}>What kind</p>
+      <p className="eyebrow mb-4">What kind</p>
       <div className="emgpick">
         {CATEGORIES.map((c) => (
           <button key={c.key} type="button"
@@ -81,7 +81,7 @@ export function RaiseEmergency({ onClose }: { onClose: () => void }) {
         </select>
       </Field>
 
-      {err && <div className="note crit" style={{ marginBottom: 12 }} role="alert">{err.message}</div>}
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
 
       <div className="modal-foot">
         <Btn onClick={onClose}>Cancel</Btn>
