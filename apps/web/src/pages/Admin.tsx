@@ -73,7 +73,7 @@ export function Admin() {
         </div>
       </div>
 
-      <div className="row gap-7 mb-7 top">
+      <div className="row gap-7 mb-7 start">
         {GROUPS.map((g) => {
           const mine = allowed.filter((t) => (g.keys as readonly string[]).includes(t.key));
           if (mine.length === 0) return null;
@@ -696,7 +696,7 @@ function Roles() {
               <div className="mb-6" key={module}>
                 <div className="t-lab mb-3">{module}</div>
                 {perms.map((p) => (
-                  <label className="row gap-4 top py-2 px-0 t-ui clickable" key={p.code}>
+                  <label className="row gap-4 start py-2 px-0 t-ui clickable" key={p.code}>
                     <input className="mt-1" type="checkbox" checked={codes.has(p.code)}
                            onChange={(e) => {
                              const next = new Set(codes);
@@ -2720,13 +2720,13 @@ function JoinCard({ url, port, nic }: { url: string | null; port: number; nic: N
         <Empty title="No address to hand out"
                hint="This PC has no cable or wifi connection the department could reach it on. Connect it to the office network and this fills in." />
       ) : (
-        <div className="row gap-7 top">
+        <div className="row gap-7 start">
           {svg && (
             <div className="p-4" style={{ width: 132, height: 132, flex: 'none', background: '#fff', borderRadius: 8, border: '1px solid var(--line)' }}
                  dangerouslySetInnerHTML={{ __html: svg }} />
           )}
-          <div className="fill">
-            <div className="f-mono t-body fw-5 mb-3 break-all">
+          <div className="joinaddr">
+            <div className="url f-mono t-body fw-5 mb-3">
               {primary}
             </div>
             {nic && (
@@ -2735,7 +2735,7 @@ function JoinCard({ url, port, nic }: { url: string | null; port: number; nic: N
                 {nic.kind === 'wifi' ? ' — phones must be on this same wifi' : ''}
               </p>
             )}
-            <p className="sub mt-5 mb-0">
+            <p className="t-ui mt-5 mb-0">
               Anyone on the office wifi opens this and signs in. On a phone, <b>Add to home
               screen</b> and it behaves like an app.
             </p>
