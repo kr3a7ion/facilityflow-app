@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as remote from '../services/remote.js';
 import * as slaRules from '../services/slaRules.js';
+import * as alertRouting from '../services/alertRouting.js';
 import { certPaths, caFingerprint, expiryOf, namesOf } from '../services/tls.js';
 
 const NewUser = z.object({
@@ -936,6 +937,32 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       const r = slaRules.resolve(app.db, req.principal!.propertyId, q.data.priority, q.data);
       return { ...r, rule: r.ruleId ? slaRules.describe(app.db, req.principal!.propertyId, r.ruleId) : null };
     });
+
+  // ---- who is alerted ----------------------------------------------------------
+  app.get('/api/admin/alert-routing', { preHandler: requirePermission('admin.settings.manage') }, async (req) => ({
+    events: alertRouting.allRouting(app.db, req.principal!.propertyId),
+    levels: alertRouting.LEVELS,
+  }));
+
+  app.put('/api/admin/alert-routing/:key', { preHandler: requirePermission('admin.settings.manage') },
+    async (req, reply) => {
+      const body = z.object({
+        roles: z.array(z.string().max(40)).max(30).optional(),
+        context: z.array(z.enum(['@team_lead', '@reporter', '@assignee', '@completer'])).optional(),
+        level: z.enum(['quiet', 'chime', 'good', 'urgent']).optional(),
+        off: z.boolean().optional(),
+      }).safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+      return send(reply, () => ({
+        routing: alertRouting.setRouting(app.db, ctxOf(req), (req.params as { key: string }).key, body.data),
+      }));
+    });
+
+  /** Back to the shipped default for one event. */
+  app.delete('/api/admin/alert-routing/:key', { preHandler: requirePermission('admin.settings.manage') },
+    async (req, reply) => send(reply, () => ({
+      routing: alertRouting.setRouting(app.db, ctxOf(req), (req.params as { key: string }).key, null),
+    })));
 
   // ---- backups ---------------------------------------------------------------
   app.get('/api/admin/backups', { preHandler: requirePermission('admin.backup.run') }, async () => {
