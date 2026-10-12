@@ -123,6 +123,26 @@ export function slaState(wo: WorkOrder, at: string = nowIso()): SlaState {
   };
 }
 
+/**
+ * How long a device keeps ringing the assignee about a job they have not accepted.
+ *
+ * `respond_by` is measured from when the fault was reported and is never moved, because it
+ * is what the job is judged against. Ringing only until then silenced every job handed out
+ * late: a P2 sitting unassigned past its response time, or one reassigned after somebody
+ * went home, reached the new person with its deadline already behind it, so nothing rang
+ * at all. The new assignee gets a full response window from the moment it became theirs.
+ */
+export function ringUntil(
+  db: Db, propertyId: string,
+  wo: { priority: string; sla_rule_id?: string | null; assigned_at: string | null; respond_by: string | null }
+): string | null {
+  if (!wo.respond_by) return null;
+  if (!wo.assigned_at) return wo.respond_by;
+  const respondMinutes = slaRules.forJob(db, propertyId, wo).respondMinutes;
+  const fromAssignment = new Date(new Date(wo.assigned_at).getTime() + respondMinutes * 60000).toISOString();
+  return fromAssignment > wo.respond_by ? fromAssignment : wo.respond_by;
+}
+
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
@@ -454,8 +474,8 @@ export function reopen(db: Db, ctx: Ctx, id: string, reason: string): WorkOrder 
     db.prepare(
       `UPDATE work_orders SET status = 'assigned', reopened_count = reopened_count + 1,
         completed_at = NULL, completed_by = NULL, verified_by = NULL, verified_at = NULL,
-        costs_frozen = 0, updated_at = ? WHERE id = ?`
-    ).run(at, id);
+        costs_frozen = 0, assigned_at = ?, updated_at = ? WHERE id = ?`
+    ).run(at, at, id);  // handed back now, so the phone rings for it from now (see ringUntil)
     event(db, ctx, id, 'reopened', wo.status, 'assigned', reason,
           { reopenedCount: wo.reopened_count + 1 });
     audit(db, {

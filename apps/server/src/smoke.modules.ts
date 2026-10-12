@@ -10,6 +10,7 @@ import * as tls from './services/tls.js';
 import nodeTls from 'node:tls';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { openDb } from './db/connection.js';
 import { migrate } from './db/migrate.js';
@@ -19,6 +20,7 @@ import { litresFromDip, expectedLph, type Profile } from './services/fuel.js';
 import { compute as computeLoad } from './services/load.js';
 import { buildView } from './services/network.js';
 import * as bus from './services/bus.js';
+import * as devices from './services/devices.js';
 import { monthRange, shiftMonth, currentMonth } from './lib/time.js';
 import { addInterval, compliance as ppmCompliance, remindDue } from './services/ppm.js';
 import { tick } from './services/escalation.js';
@@ -2123,6 +2125,16 @@ check('and sending it back tells the technician why, rather than the job just re
   r.statusCode === 200
   && unreadFor('chidi').some((n) => n.kind === 'wo.reopened' && (n.body ?? '').includes('rattling')),
   r.body.slice(0, 140));
+{
+  // Sent back long after its response deadline, it is handed over again now — so the
+  // phone rings for it again rather than treating it as a job whose time ran out.
+  db.prepare('UPDATE work_orders SET respond_by = ? WHERE id = ?')
+    .run(new Date(Date.now() - 3 * 3_600_000).toISOString(), notifyJob.id);
+  const w = ((await get('/api/me/outstanding', chidiSession)).json().unaccepted as
+    { id: string; ring_until: string | null }[]).find((x) => x.id === notifyJob.id);
+  check('and a job sent back rings its technician again',
+    !!w?.ring_until && w.ring_until > new Date().toISOString(), JSON.stringify(w));
+}
 
 /*
  * Signing off was silent in the direction that matters most. A technician finished a job
@@ -2352,6 +2364,36 @@ check('with the priority, so a P1 can ring harder than a P4',
   waiting.find((w) => w.id === liveJob.id)?.priority === 'P1');
 check('and the response deadline, which is where the ringing stops and a human takes over',
   !!waiting.find((w) => w.id === liveJob.id)?.respond_by);
+{
+  const w = waiting.find((x) => x.id === liveJob.id) as { respond_by: string; ring_until: string } | undefined;
+  check('with when to stop ringing, never earlier than the response deadline',
+    !!w?.ring_until && w.ring_until >= w.respond_by, JSON.stringify(w));
+}
+
+/*
+ * A job handed out after its response time has already gone. respond_by is measured from
+ * the report and is never moved, so ringing only until then meant the person it was given
+ * to was never rung at all — a job left unassigned too long, or reassigned after somebody
+ * went home, arrived in silence.
+ */
+r = await post('/api/jobs', grace, { title: 'Sat unassigned too long', locationId: siteId, priority: 'P2' });
+const lateJob = r.json().job as { id: string };
+{
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  db.prepare('UPDATE work_orders SET reported_at = ?, respond_by = ? WHERE id = ?')
+    .run(hoursAgo(6), hoursAgo(4), lateJob.id);
+}
+await post(`/api/jobs/${lateJob.id}/assign`, grace, { staffId: ifeomaStaff?.id });
+{
+  const w = ((await get('/api/me/outstanding', ifeoma)).json().unaccepted as
+    { id: string; respond_by: string; ring_until: string }[]).find((x) => x.id === lateJob.id);
+  const now = new Date().toISOString();
+  check('a job assigned after its response deadline still rings the person it went to',
+    !!w && w.respond_by < now && w.ring_until > now, JSON.stringify(w));
+  check('while the deadline it is judged against stays where it was',
+    !!w && w.respond_by < now);
+}
+await post(`/api/jobs/${lateJob.id}/accept`, ifeoma);
 
 r = await post(`/api/jobs/${liveJob.id}/accept`, ifeoma);
 check('accepting it stops the asking', r.statusCode === 200
@@ -2429,6 +2471,23 @@ check('which clears it from everything that was asking',
 r = await get('/api/me/devices', ifeoma);
 check('the phone shows up in the list on the website',
   (r.json().devices as { id: string }[]).some((d) => d.id === paired.deviceId));
+
+/*
+ * A phone that redials after a silent drop opens its new stream before the host notices
+ * the old one has gone. When that stale socket finally closes, the phone is still
+ * listening on the new one — and a supervisor told "Phone app not running" would chase
+ * somebody whose phone is fine.
+ */
+{
+  const connected = () => (db.prepare('SELECT connected_at FROM app_devices WHERE id = ?')
+    .get(paired.deviceId) as { connected_at: string | null }).connected_at !== null;
+  devices.streamOpened(db, paired.deviceId);
+  devices.streamOpened(db, paired.deviceId);
+  devices.streamClosed(db, paired.deviceId);
+  check('a phone that redialled stays connected when its old stream finally closes', connected());
+  devices.streamClosed(db, paired.deviceId);
+  check('and shows as gone only when its last stream does', !connected());
+}
 
 // Revoking is the answer to a lost or sold handset, and it has to be immediate.
 r = await app.inject({ method: 'DELETE', url: `/api/me/devices/${paired.deviceId}`, headers: ifeoma });
@@ -3075,6 +3134,29 @@ r = await app.inject({ method: 'POST', url: '/api/auth/login',
 check('a supervisor who has changed theirs signs in from outside', r.statusCode === 200,
   r.body.slice(0, 160));
 
+/*
+ * The timeout on the Host PC screen. A cookie on a laptop closed in a hotel lobby stays
+ * good for a week otherwise, from anywhere the tunnel reaches.
+ */
+{
+  const sid = r.cookies.find((c) => c.name === 'ff_sid')!.value;
+  const away = { cookie: `ff_sid=${sid}`, 'cf-connecting-ip': '102.89.1.1' };
+  const idle = (id: string) => db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?')
+    .run(new Date(Date.now() - 21 * 60_000).toISOString(), id);
+
+  check('a remote session in use carries on', (await get('/api/jobs', away)).statusCode === 200);
+  idle(sid);
+  check('one left alone past the property\u2019s timeout is signed out',
+    (await get('/api/jobs', away)).statusCode === 401);
+  check('for good, not only for that request',
+    (db.prepare('SELECT revoked_at FROM sessions WHERE id = ?').get(sid) as
+      { revoked_at: string | null }).revoked_at !== null);
+
+  idle(graceOnSite.cookie.replace('ff_sid=', ''));
+  check('a session idle as long on the property network is left alone',
+    (await get('/api/jobs', graceOnSite)).statusCode === 200);
+}
+
 // ---- the record -----------------------------------------------------------
 {
   const row = db.prepare(
@@ -3203,12 +3285,19 @@ check('and with no certificate generated, the download says so rather than 500in
 
 r = await post('/api/admin/host/https', graceOnSite, { enabled: true });
 check('a supervisor cannot turn HTTPS on', r.statusCode === 403, r.body.slice(0, 140));
-r = await post('/api/admin/host/https', admin, { enabled: true });
+r = await post('/api/admin/host/https', admin, { enabled: true, port: 4811 });
 check('an administrator can', r.statusCode === 200, r.body.slice(0, 180));
 check('and is told plainly that it takes a restart',
   /restart/.test(String(r.json().message)), String(r.json().message));
+// The file used to say so while the next start ignored it: the reader dropped both fields.
+check('and the next start actually serves HTTPS, on the port that was chosen',
+  loadConfig({ dataDir: dir }).https === true && loadConfig({ dataDir: dir }).httpsPort === 4811);
+r = await post('/api/admin/host/network', admin, { advertise: null });
+check('saving another host setting afterwards does not quietly switch it off again',
+  r.statusCode === 200 && loadConfig({ dataDir: dir }).https === true, r.body.slice(0, 160));
 r = await post('/api/admin/host/https', admin, { enabled: false });
-check('and can turn it off again', r.statusCode === 200);
+check('and can turn it off again',
+  r.statusCode === 200 && loadConfig({ dataDir: dir }).https === false);
 
 // --------------------------------------------------------------------------
 heading('The screen that covers the shift');
@@ -3797,6 +3886,61 @@ heading('Who is alerted, and the changeover');
 
   // Leave the set as the rest of the suite found it.
   db.prepare(`UPDATE assets SET status = 'in_service' WHERE id = ?`).run(gen01);
+}
+
+// --------------------------------------------------------------------------
+heading('Every call the screens make has a route behind it');
+// --------------------------------------------------------------------------
+/*
+ * Resolving the #7 merge kept one side of admin.ts and silently dropped three routes the
+ * Who-is-alerted card still called — along with the checks that would have noticed. Every
+ * other test passed, because every test was of something that still existed. This reads
+ * the paths out of the client and the routes out of the server and wants a match for each.
+ */
+{
+  const srcDir = path.dirname(fileURLToPath(import.meta.url));
+  const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
+
+  // Server: every literal route, confirmed against the router so a file that is never
+  // registered does not count.
+  const routes: { method: string; parts: string[] }[] = [];
+  for (const f of walk(path.join(srcDir, 'routes')).filter((f) => f.endsWith('.ts'))) {
+    for (const m of fs.readFileSync(f, 'utf8').matchAll(/app\.(get|post|put|patch|delete)\('([^']+)'/g)) {
+      const method = m[1]!.toUpperCase();
+      if (app.hasRoute({ method: method as 'GET', url: m[2]! })) {
+        routes.push({ method, parts: m[2]!.split('/') });
+      }
+    }
+  }
+
+  // Client: every /api/ path in a string or template, with its method when api.<verb>
+  // is right there. A ${…} segment stands for any value; query strings are not routes.
+  const VERB: Record<string, string> = { get: 'GET', post: 'POST', put: 'PUT', patch: 'PATCH', del: 'DELETE' };
+  const calls = new Map<string, { method: string | null; parts: string[]; file: string }>();
+  const webSrc = path.resolve(srcDir, '../../web/src');
+  for (const f of walk(webSrc).filter((f) => /\.tsx?$/.test(f))) {
+    const text = fs.readFileSync(f, 'utf8');
+    for (const m of text.matchAll(/(?:api\.(get|post|put|patch|del)(?:<[^>(]*>)?\(\s*)?[`'"](\/api\/[^`'"]*)/g)) {
+      let raw = m[2]!;
+      raw = raw.split('?')[0]!;
+      const q = raw.search(/[^/]\$\{/);           // /api/roster${qs}: the rest is a query
+      if (q >= 0) raw = raw.slice(0, q + 1);
+      const parts = raw.split('/').map((seg) => (seg.includes('${') ? '*' : seg));
+      const method = m[1] ? VERB[m[1]]! : null;
+      calls.set(`${method ?? 'ANY'} ${parts.join('/')}`, { method, parts, file: path.relative(webSrc, f) });
+    }
+  }
+
+  const matches = (c: { method: string | null; parts: string[] }) => routes.some((rt) =>
+    (c.method === null || rt.method === c.method)
+    && rt.parts.length === c.parts.length
+    && rt.parts.every((seg, i) => seg.startsWith(':') || c.parts[i] === '*' || c.parts[i] === seg));
+
+  const missing = [...calls.entries()].filter(([, c]) => !matches(c)).map(([k, c]) => `${k} (${c.file})`);
+  check('the client\u2019s API paths were found', calls.size > 100, String(calls.size));
+  check('and every one of them reaches a route the server registers', missing.length === 0,
+    missing.join('; '));
 }
 
 // --------------------------------------------------------------------------

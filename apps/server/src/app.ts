@@ -104,7 +104,7 @@ export async function buildApp(
 
     const sid = req.cookies?.[COOKIE];
     if (sid) {
-      req.principal = principalFromSession(db, sid);
+      req.principal = principalFromSession(db, sid, req.origin);
       if (req.principal) return;
     }
     const auth = req.headers.authorization;

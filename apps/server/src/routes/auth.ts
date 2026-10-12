@@ -149,7 +149,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const keep = req.cookies[COOKIE];
     revokeAllForUser(app.db, me.userId);
     if (keep) {
-      const s = createSession(app.db, me.userId, app.config.sessionDays, req.ip, req.headers['user-agent']);
+      // Same origin as the request, so a password changed from outside is still marked remote.
+      const s = createSession(app.db, me.userId, app.config.sessionDays, req.ip,
+                              req.headers['user-agent'], req.origin);
       reply.setCookie(COOKIE, s.id, {
         httpOnly: true, sameSite: 'lax', path: '/', secure: false, expires: new Date(s.expiresAt),
       });

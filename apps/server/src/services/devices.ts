@@ -181,6 +181,32 @@ export function setConnected(db: Db, deviceId: string, connected: boolean): void
     .run(connected ? at : null, at, deviceId);
 }
 
+/**
+ * Open event streams per device, in this process.
+ *
+ * A phone that redials after a silent drop opens its new stream before the host has
+ * noticed the old one is gone. Clearing the flag when that stale socket finally closes
+ * would mark a listening phone "not running", and it would stay wrong until the phone next
+ * reconnected — which a healthy phone has no reason to do. So the flag follows the count:
+ * connected while any stream is open, cleared only when the last one closes.
+ */
+const openStreams = new Map<string, number>();
+
+export function streamOpened(db: Db, deviceId: string): void {
+  openStreams.set(deviceId, (openStreams.get(deviceId) ?? 0) + 1);
+  setConnected(db, deviceId, true);
+}
+
+export function streamClosed(db: Db, deviceId: string): void {
+  const left = (openStreams.get(deviceId) ?? 1) - 1;
+  if (left > 0) {
+    openStreams.set(deviceId, left);
+    return;
+  }
+  openStreams.delete(deviceId);
+  setConnected(db, deviceId, false);
+}
+
 /** Every connection dropped when the host restarts, so no row may claim otherwise. */
 export function clearAllConnections(db: Db): void {
   db.prepare('UPDATE app_devices SET connected_at = NULL WHERE connected_at IS NOT NULL').run();
