@@ -17,7 +17,7 @@ import { ulid } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { HttpError } from '../lib/errors.js';
 import { audit } from '../audit.js';
-import { notifyRole } from './escalation.js';
+import { alert } from './alertRouting.js';
 
 /** Matches the shared route context, whose userId is nullable for scheduled work. */
 export interface Ctx {
@@ -232,8 +232,7 @@ export function record(
     // Anything at 'act' is a reading somebody has to see today, not at the next review.
     const urgent = findings.filter((f) => f.severity === 'act');
     if (urgent.length > 0) {
-      notifyRole(db, ctx.propertyId, 'supervisor', {
-        kind: 'genset.alarm',
+      alert(db, ctx.propertyId, 'genset.alarm', {
         title: `${asset.asset_tag} logged out of range`,
         body: urgent.map((f) => f.says).join(' '),
         entityType: 'asset', entityId: assetId, at,

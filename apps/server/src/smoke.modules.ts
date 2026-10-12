@@ -20,7 +20,7 @@ import { compute as computeLoad } from './services/load.js';
 import { buildView } from './services/network.js';
 import * as bus from './services/bus.js';
 import { monthRange, shiftMonth, currentMonth } from './lib/time.js';
-import { addInterval, compliance as ppmCompliance } from './services/ppm.js';
+import { addInterval, compliance as ppmCompliance, remindDue } from './services/ppm.js';
 import { tick } from './services/escalation.js';
 
 let passed = 0;

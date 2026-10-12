@@ -11,7 +11,7 @@ import type { Db } from '../db/connection.js';
 import { ulid } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { HttpError } from '../lib/errors.js';
-import { notifyRole } from './escalation.js';
+import { alert } from './alertRouting.js';
 
 export interface Ctx { propertyId: string; userId: string | null; displayName: string; ip?: string }
 
@@ -201,8 +201,7 @@ export function recordClamp(db: Db, ctx: Ctx, input: ClampInput): ClampResult {
     : c.imbalancePct >= IMBALANCE_WATCH_PCT ? 'watch' : 'ok';
 
   if (flag === 'act') {
-    notifyRole(db, ctx.propertyId, 'supervisor', {
-      kind: 'phase_imbalance',
+    alert(db, ctx.propertyId, 'power.load', {
       title: `${src.name} is ${c.imbalancePct}% out of balance`,
       body: `Phases read ${c.phaseAmps.join(' / ')} A. Move single-phase loads between phases ` +
             `before the heaviest one trips or a motor cooks.`,
@@ -210,8 +209,7 @@ export function recordClamp(db: Db, ctx: Ctx, input: ClampInput): ClampResult {
     });
   }
   if (overBreaker) {
-    notifyRole(db, ctx.propertyId, 'supervisor', {
-      kind: 'over_breaker',
+    alert(db, ctx.propertyId, 'power.load', {
       title: `${src.name} is drawing above its breaker rating`,
       body: `${c.maxAmps} A on the heaviest phase against a ${src.breaker_amps} A breaker.`,
       entityType: 'power_source', entityId: src.id,

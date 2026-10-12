@@ -4,7 +4,7 @@ import { nextRef } from '../lib/refs.js';
 import { nowIso } from '../lib/time.js';
 import { HttpError } from '../lib/errors.js';
 import { audit } from '../audit.js';
-import { notifyRole } from './escalation.js';
+import { alert } from './alertRouting.js';
 import { rollupCosts } from './workOrders.js';
 
 export interface Ctx { propertyId: string; userId: string | null; displayName: string; ip?: string }
@@ -62,8 +62,7 @@ export function move(
   })();
 
   if (balance <= it.min_level && it.min_level > 0) {
-    notifyRole(db, ctx.propertyId, 'storekeeper', {
-      kind: 'stock_low',
+    alert(db, ctx.propertyId, 'stock_low', {
       title: `${it.name} at or below minimum`,
       body: `${balance} ${it.unit} left, minimum is ${it.min_level}. Raise a requisition.`,
       entityType: 'stock_item', entityId: it.id,
@@ -136,12 +135,11 @@ export function raiseRequisition(
     return r;
   })();
 
-  notifyRole(db, ctx.propertyId, 'supervisor', {
-    kind: 'requisition',
+  alert(db, ctx.propertyId, 'requisition', {
     title: `${ref} awaiting approval`,
     body: `${input.lines.length} line(s) raised by ${ctx.displayName}.`,
     entityType: 'requisition', entityId: id,
-  });
+  }, { exceptUserId: ctx.userId });
   return { id, ref, estimatedKobo: estimated };
 }
 

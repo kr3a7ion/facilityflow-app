@@ -9,7 +9,8 @@ import { duration, hours, titleCase } from '../lib/format';
  */
 interface Plant {
   utility?: { state: 'on' | 'off'; since: string | null; minutes: number | null };
-  gensets: { tag: string; name: string; status: string; hours: number | null; lastLph: number | null }[];
+  gensets: { tag: string; name: string; status: string; hours: number | null; lastLph: number | null;
+             runningSince?: string | null }[];
   tanks: { id: string; name: string; kind: string; litres: number | null; capacity: number;
            pctFull: number | null; belowMinimum: boolean }[];
   openP1?: { total: number; breached: number };
@@ -18,10 +19,13 @@ interface Plant {
            worstImbalancePct: number | null };
 }
 
-const lampFor = (status: string) =>
-  status === 'in_service' ? 'ok' : status === 'faulty' || status === 'under_repair' ? 'crit' : 'idle';
-const labelFor = (status: string) =>
-  status === 'in_service' ? 'Running' : status === 'standby' ? 'Standby' : titleCase(status);
+// Availability (the asset's status) and whether it is running now are different facts. An
+// in-service set used to read "Running" all day with mains on; now it reads "Ready" until
+// somebody records it starting on the Power screen.
+const lampFor = (status: string, running: boolean) =>
+  running ? 'ok' : status === 'faulty' || status === 'under_repair' ? 'crit' : 'idle';
+const labelFor = (status: string, running: boolean) =>
+  running ? 'Running' : status === 'in_service' ? 'Ready' : status === 'standby' ? 'Standby' : titleCase(status);
 
 /**
  * The status strip. It sits above every screen, the way a mimic panel sits above a
@@ -59,8 +63,8 @@ export function Mimic() {
         <div className="mcell" key={g.tag}>
           <span className="mlab">{g.tag}</span>
           <span className="mval">
-            <i className={`lamp ${lampFor(g.status)} ${g.status === 'in_service' && utilityOff ? 'live' : ''}`} />
-            {labelFor(g.status)}
+            <i className={`lamp ${lampFor(g.status, !!g.runningSince)} ${g.runningSince ? 'live' : ''}`} />
+            {labelFor(g.status, !!g.runningSince)}
           </span>
           <span className="msub">
             {hours(g.hours)}{g.lastLph != null ? ` · ${g.lastLph} L/h` : ''}

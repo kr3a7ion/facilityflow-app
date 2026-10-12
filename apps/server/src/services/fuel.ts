@@ -5,7 +5,7 @@ import { nowIso } from '../lib/time.js';
 import { HttpError } from '../lib/errors.js';
 import { audit } from '../audit.js';
 import { fuelTolerancePct } from './settings.js';
-import { notifyRole } from './escalation.js';
+import { alert } from './alertRouting.js';
 import * as workOrders from './workOrders.js';
 
 export interface Ctx { propertyId: string; userId: string | null; displayName: string; ip?: string }
@@ -79,8 +79,7 @@ export function logDip(
 
   const belowMinimum = litres < t.min_level_l;
   if (belowMinimum) {
-    notifyRole(db, ctx.propertyId, 'supervisor', {
-      kind: 'fuel_low',
+    alert(db, ctx.propertyId, 'fuel_low', {
       title: `${t.name} below minimum`,
       body: `${Math.round(litres)} L against a minimum of ${Math.round(t.min_level_l)} L. Order diesel.`,
       entityType: 'fuel_tank', entityId: tankId,
@@ -147,9 +146,14 @@ export function recordDelivery(db: Db, ctx: Ctx, input: DeliveryInput) {
     return r;
   })();
 
+  alert(db, ctx.propertyId, 'fuel_delivered', {
+    title: `Diesel delivered: ${Math.round(received)} L into ${t.name}`,
+    body: `${ref} · invoiced ${input.invoicedL} L. ${t.name} now holds ${Math.round(input.dipAfterL)} L.`,
+    entityType: 'fuel_delivery', entityId: id,
+  }, { exceptUserId: ctx.userId });
+
   if (flagged) {
-    notifyRole(db, ctx.propertyId, 'hod', {
-      kind: 'fuel_variance',
+    alert(db, ctx.propertyId, 'fuel_variance', {
       title: `Delivery ${ref} is ${variancePct > 0 ? 'over' : 'short'} by ${Math.abs(variance)} L`,
       body: `Invoiced ${input.invoicedL} L, received ${received} L (${variancePct}%). Tolerance is ${tolerance}%.`,
       entityType: 'fuel_delivery', entityId: id,
@@ -296,8 +300,7 @@ export function recordRun(db: Db, ctx: Ctx, input: RunInput) {
       raisedJob = job.ref;
       db.prepare('UPDATE genset_profiles SET consecutive_deviations = 0 WHERE asset_id = ?')
         .run(input.gensetAssetId);
-      notifyRole(db, ctx.propertyId, 'supervisor', {
-        kind: 'genset_efficiency',
+      alert(db, ctx.propertyId, 'genset_efficiency', {
         title: `${job.ref} raised — ${asset?.name ?? 'genset'} burning ${deviation}% over`,
         body: 'Three consecutive runs above threshold. Job raised automatically.',
         entityType: 'work_order', entityId: job.id,

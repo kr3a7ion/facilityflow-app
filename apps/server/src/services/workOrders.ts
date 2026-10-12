@@ -7,8 +7,9 @@ import { audit } from '../audit.js';
 import { labourRateKobo } from './settings.js';
 import * as slaRules from './slaRules.js';
 import { isAvailable, propertyTimezone } from './roster.js';
-import { notifyUser, notifyRole, notifyTeamLeadOf } from './escalation.js';
+import { notifyUser } from './escalation.js';
 import * as bus from './bus.js';
+import { alert } from './alertRouting.js';
 import { localDate } from '../lib/time.js';
 
 export interface Ctx { propertyId: string; userId: string | null; displayName: string; ip?: string }
@@ -30,6 +31,7 @@ export interface WorkOrder {
   sla_rule_id: string | null;
   labour_minutes: number; cost_labour_kobo: number; cost_parts_kobo: number; cost_vendor_kobo: number;
   ppm_schedule_id: string | null; hold_reason: string | null; resolution_notes: string | null;
+  request_id: string | null; created_by: string | null;
 }
 
 /** Transitions the lifecycle allows. Anything not listed here is refused with a reason. */
@@ -133,6 +135,19 @@ export interface CreateInput {
   requestId?: string | null; ppmScheduleId?: string | null;
   chargeTo?: 'house' | 'owner' | 'tenant' | 'department';
   reportedAt?: string; dueAt?: string;
+}
+
+/**
+ * The person who reported the fault: whoever filed the request it came from, otherwise
+ * whoever raised the job. A job the system raised itself (planned work) has nobody.
+ */
+export function reporterOf(db: Db, wo: { request_id?: string | null; created_by?: string | null }): string | null {
+  if (wo.request_id) {
+    const r = db.prepare('SELECT reported_by FROM job_requests WHERE id = ?').get(wo.request_id) as
+      { reported_by: string | null } | undefined;
+    if (r?.reported_by) return r.reported_by;
+  }
+  return wo.created_by ?? null;
 }
 
 export function create(db: Db, ctx: Ctx, input: CreateInput): WorkOrder {
@@ -358,16 +373,19 @@ export function complete(db: Db, ctx: Ctx, id: string, input: CompleteInput): Wo
     // A completed job is not a finished one — it is a job waiting on somebody else, and
     // nobody was being told. Work sat in "awaiting verify" for days because the person
     // who could sign it off had no reason to look.
-    const ready = {
-      kind: 'wo.completed', title: `${wo.ref} is ready to verify`,
+    // By default the supervisor, the team lead over whoever did it (they hold wo.verify
+    // over their own team and were never told there was anything to sign), and whoever
+    // reported the fault — who otherwise only found out by walking past. Admin can change
+    // who hears it under Settings → Who is alerted.
+    alert(db, ctx.propertyId, 'wo.completed', {
+      title: `${wo.ref} is ready to verify`,
       body: `${wo.title} — completed by ${ctx.displayName}.`,
       entityType: 'work_order', entityId: id, at,
-    };
-    notifyRole(db, ctx.propertyId, 'supervisor', ready);
-    // And the team lead, who holds wo.verify over their own team and is usually standing
-    // closest to the work. They were left out: the permission said it was theirs to sign
-    // off and nothing ever told them there was anything to sign.
-    notifyTeamLeadOf(db, ctx.propertyId, wo.assigned_to_staff_id, ready, ctx.userId);
+    }, {
+      teamLeadOfStaffId: wo.assigned_to_staff_id,
+      reporterUserId: reporterOf(db, wo),
+      exceptUserId: ctx.userId,
+    });
   })();
   return get(db, ctx.propertyId, id);
 }
@@ -396,14 +414,14 @@ export function verify(db: Db, ctx: Ctx, id: string, note?: string): WorkOrder {
      * accepted?" was a question for the corridor. One line closes the loop, and it is the
      * only notification in the system that is purely good news.
      */
-    if (wo.completed_by && wo.completed_by !== ctx.userId) {
-      notifyUser(db, ctx.propertyId, wo.completed_by, {
-        kind: 'wo.verified', title: `${wo.ref} was signed off`,
+    {
+      alert(db, ctx.propertyId, 'wo.verified', {
+        title: `${wo.ref} was signed off`,
         body: note?.trim()
           ? `${wo.title} — verified by ${ctx.displayName}: ${note.trim()}`
           : `${wo.title} — verified by ${ctx.displayName}. Nothing further needed from you.`,
         entityType: 'work_order', entityId: id, at,
-      });
+      }, { completerUserId: wo.completed_by, reporterUserId: reporterOf(db, wo), exceptUserId: ctx.userId });
     }
     audit(db, {
       propertyId: ctx.propertyId, userId: ctx.userId, actorName: ctx.displayName,

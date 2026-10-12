@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Db } from '../db/connection.js';
 import { nowIso } from '../lib/time.js';
 import { tick } from './escalation.js';
-import { generateDue } from './ppm.js';
+import { generateDue, remindDue } from './ppm.js';
 import { pruneSessions } from '../auth/sessions.js';
 import { runBackup } from '../db/backup.js';
 import type { Config } from '../config.js';
@@ -51,6 +51,9 @@ export function runPpmGeneration(db: Db, log: (msg: string) => void = () => {}):
   for (const propertyId of properties(db)) {
     const r = generateDue(db, systemCtx(propertyId));
     total += r.created.length;
+    // Then anything planned that is due today, or slipped past while the host was off.
+    const reminded = remindDue(db, propertyId);
+    if (reminded) log(`[ppm] reminded about ${reminded} planned job(s) due`);
     if (r.created.length) {
       log(`[ppm] generated ${r.created.length} job(s): ${r.created.map((c) => c.ref).join(', ')}`);
     }
