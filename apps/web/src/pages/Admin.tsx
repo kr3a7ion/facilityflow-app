@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { StartHere } from '../components/StartHere';
 import QRCode from 'qrcode';
@@ -7,6 +7,7 @@ import { api, ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
 import { titleCase, when } from '../lib/format';
 import { humanBytes } from '../lib/image';
+import { preview } from '../lib/sound';
 import { useMonth } from '../lib/month';
 import { Card, Chip, Tile, Loading, Empty, ErrorNote, Btn, DownloadLink,
          Modal, Field, MonthBar, Flash, RetireBtn, DeleteBtn } from '../components/Bits';
@@ -953,7 +954,172 @@ function Settings() {
           </p>
         </div>
       </Card>
+
+      <AlertRoutingCard />
     </>
+  );
+}
+
+/* ------------------------------------------------------------- who is alerted -- */
+type AlertLevel = 'quiet' | 'chime' | 'good' | 'urgent';
+interface AlertEvent {
+  key: string; group: string; label: string; when: string;
+  contextLabels: { key: string; label: string }[];
+  routing: { roles: string[]; context: string[]; level: AlertLevel; off: boolean };
+  isDefault: boolean;
+}
+const LEVEL_WORDS: Record<AlertLevel, string> = {
+  quiet: 'Bell only', chime: 'Chime', good: 'Good-news chime', urgent: 'Urgent tone',
+};
+const LEVEL_TONE: Record<AlertLevel, 'crit' | 'ok' | 'acc' | ''> = {
+  quiet: '', chime: 'acc', good: 'ok', urgent: 'crit',
+};
+
+function AlertRoutingCard() {
+  const [editing, setEditing] = useState<AlertEvent | null>(null);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const q = useQuery<{ events: AlertEvent[] }>({
+    queryKey: ['alert-routing'], queryFn: () => api.get('/api/admin/alert-routing'),
+  });
+  const roles = useQuery<{ roles: { key: string; name: string }[] }>({
+    queryKey: ['admin-roles-brief'], queryFn: () => api.get('/api/admin/roles'), retry: false,
+  });
+  const roleName = (k: string) => roles.data?.roles.find((r) => r.key === k)?.name ?? titleCase(k);
+  const groups = new Map<string, AlertEvent[]>();
+  for (const e of q.data?.events ?? []) (groups.get(e.group) ?? groups.set(e.group, []).get(e.group)!).push(e);
+
+  return (
+    <div className="mt-6">
+      <Flash msg={msg} />
+      <Card title="Who is alerted" flush right={<Chip>Bell and browser sound</Chip>}>
+        {q.isLoading ? <div className="p-6"><Loading rows={4} /></div>
+          : q.isError ? <div className="p-6"><ErrorNote error={q.error} /></div>
+          : (
+            <div className="tw">
+              <table className="wide">
+                <thead><tr><th>Event</th><th>Who is told</th><th>How loud</th><th /></tr></thead>
+                <tbody>
+                  {[...groups.entries()].map(([group, events]) => (
+                    <Fragment key={group}>
+                      <tr className="grouprow"><td colSpan={4} className="eyebrow">{group}</td></tr>
+                      {events.map((e) => {
+                        const who = [...e.routing.roles.map(roleName),
+                          ...e.routing.context.map((c) => e.contextLabels.find((x) => x.key === c)?.label ?? c)];
+                        return (
+                          <tr key={e.key}>
+                            <td><b>{e.label}</b><span className="sub wrap">{e.when}</span></td>
+                            <td>{e.routing.off ? <span className="c-3">Switched off</span>
+                                 : <span className="row gap-2">{who.map((w) => <Chip key={w}>{w}</Chip>)}</span>}</td>
+                            <td>{!e.routing.off && <Chip tone={LEVEL_TONE[e.routing.level]}>{LEVEL_WORDS[e.routing.level]}</Chip>}</td>
+                            <td className="tar">
+                              {!e.isDefault && <><Chip tone="warn">Changed</Chip>{' '}</>}
+                              <Btn size="sm" onClick={() => setEditing(e)}>Edit</Btn>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+      </Card>
+      <div className="note mt-6 mb-6">
+        Nobody is told about something they did themselves. A person who has several of these roles
+        is told once.
+      </div>
+      {editing && (
+        <AlertRoutingDialog event={editing} roles={roles.data?.roles ?? []}
+                            onClose={() => setEditing(null)}
+                            onDone={(text, bad) => { setEditing(null); setMsg({ text, bad }); }} />
+      )}
+    </div>
+  );
+}
+
+function AlertRoutingDialog({ event, roles, onClose, onDone }: {
+  event: AlertEvent; roles: { key: string; name: string }[];
+  onClose: () => void; onDone: (text: string, bad?: boolean) => void;
+}) {
+  const qc = useQueryClient();
+  const [r, setR] = useState(event.routing);
+  const [err, setErr] = useState<string | null>(null);
+  const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  const save = useMutation({
+    mutationFn: () => api.put(`/api/admin/alert-routing/${encodeURIComponent(event.key)}`, r),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['alert-routing'] });
+      onDone(`“${event.label}” saved.`);
+    },
+    onError: (e) => setErr((e as ApiError).message),
+  });
+  const reset = useMutation({
+    mutationFn: () => api.del(`/api/admin/alert-routing/${encodeURIComponent(event.key)}`),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['alert-routing'] });
+      onDone(`“${event.label}” is back to its default.`);
+    },
+    onError: (e) => setErr((e as ApiError).message),
+  });
+  const nobody = !r.off && r.roles.length === 0 && r.context.length === 0;
+
+  return (
+    <Modal title={event.label} onClose={onClose}
+           actions={<>
+             {!event.isDefault && <Btn disabled={reset.isPending} onClick={() => reset.mutate()}>Reset to default</Btn>}
+             <span className="fill" />
+             <Btn onClick={onClose}>Cancel</Btn>
+             <Btn tone="pri" disabled={save.isPending || nobody} onClick={() => { setErr(null); save.mutate(); }}>
+               {save.isPending ? 'Saving…' : 'Save'}
+             </Btn>
+           </>}>
+      {err && <div className="note crit" role="alert">{err}</div>}
+      <p className="t-ui c-2 mt-0">{event.when}</p>
+      <label className="row gap-4 clickable">
+        <input type="checkbox" checked={!r.off} onChange={(e) => setR({ ...r, off: !e.target.checked })} />
+        <span>Send this alert</span>
+      </label>
+      {!r.off && (
+        <>
+          <p className="eyebrow mt-6 mb-3">Roles</p>
+          <div className="grid g2 gap-3">
+            {roles.map((x) => (
+              <label key={x.key} className="row gap-4 clickable t-ui">
+                <input type="checkbox" checked={r.roles.includes(x.key)}
+                       onChange={() => setR({ ...r, roles: toggle(r.roles, x.key) })} />
+                <span>{x.name}</span>
+              </label>
+            ))}
+          </div>
+          {event.contextLabels.length > 0 && (
+            <>
+              <p className="eyebrow mt-6 mb-3">And the people involved</p>
+              <div className="grid gap-3">
+                {event.contextLabels.map((c) => (
+                  <label key={c.key} className="row gap-4 clickable t-ui">
+                    <input type="checkbox" checked={r.context.includes(c.key)}
+                           onChange={() => setR({ ...r, context: toggle(r.context, c.key) })} />
+                    <span>{c.label}</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+          <p className="eyebrow mt-6 mb-3">How loud</p>
+          <div className="row gap-3">
+            {(['quiet', 'chime', 'good', 'urgent'] as const).map((l) => (
+              <button key={l} type="button" className={`btn sm ${r.level === l ? 'on' : ''}`}
+                      aria-pressed={r.level === l}
+                      onClick={() => { setR({ ...r, level: l }); if (l !== 'quiet') preview(l === 'urgent' ? 'urgent' : l === 'good' ? 'done' : 'notify'); }}>
+                {LEVEL_WORDS[l]}
+              </button>
+            ))}
+          </div>
+          {nobody && <div className="note warn mt-5">This would reach nobody. Tick at least one role or person, or switch the alert off.</div>}
+        </>
+      )}
+    </Modal>
   );
 }
 

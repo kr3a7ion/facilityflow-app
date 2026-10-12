@@ -1,5 +1,7 @@
 import type { Db } from '../db/connection.js';
-import { nowIso } from '../lib/time.js';
+import { nowIso, localDate } from '../lib/time.js';
+import { alert } from './alertRouting.js';
+import { propertyTimezone } from './roster.js';
 import { HttpError } from '../lib/errors.js';
 import * as wo from './workOrders.js';
 
@@ -101,7 +103,64 @@ export function generateDue(
       created.push({ ref: job.ref, schedule: s.name, asset: asset.name });
     }
   }
+
+  // One message per sweep, not one per job: the first sweep after a schedule import can
+  // create dozens, and fifty identical chimes is how a bell gets ignored.
+  if (created.length) {
+    const one = created[0]!;
+    const rest = created.slice(1, 6).map((c) => c.ref).join(', ');
+    alert(db, ctx.propertyId, 'ppm.due_soon', {
+      title: created.length === 1
+        ? `${one.ref} — ${one.schedule} is coming due`
+        : `${created.length} planned jobs are coming due`,
+      body: created.length === 1
+        ? `${one.asset}. Assign it from the job board.`
+        : `${one.ref}${rest ? `, ${rest}` : ''}${created.length > 6 ? ` and ${created.length - 6} more` : ''}. ` +
+          'Assign them from the job board.',
+      entityType: created.length === 1 ? 'work_order' : undefined,
+      entityId: created.length === 1
+        ? (db.prepare('SELECT id FROM work_orders WHERE property_id = ? AND ref = ?')
+            .get(ctx.propertyId, one.ref) as { id: string } | undefined)?.id
+        : undefined,
+      at,
+    });
+  }
   return { considered: schedules.length, created };
+}
+
+/**
+ * Planned jobs due today — or already past due — that are not done, said once per job.
+ *
+ * Run with the PPM sweep. The host PC is switched off some nights, so this does not
+ * look only for "due today": a job whose day passed while the host was off is caught on
+ * the next run and worded as overdue, rather than never being mentioned.
+ */
+export function remindDue(db: Db, propertyId: string, at: string = nowIso()): number {
+  const tz = propertyTimezone(db, propertyId);
+  const today = localDate(tz, new Date(at));
+  const jobs = db.prepare(
+    `SELECT w.id, w.ref, w.title, w.due_at, w.assigned_to_staff_id
+       FROM work_orders w
+      WHERE w.property_id = ? AND w.source = 'ppm' AND w.due_at IS NOT NULL
+        AND w.status IN ('open','assigned','accepted','in_progress','on_hold')
+        AND NOT EXISTS (SELECT 1 FROM notifications n
+                         WHERE n.property_id = w.property_id AND n.kind = 'ppm.due_today'
+                           AND n.entity_id = w.id)`
+  ).all(propertyId) as { id: string; ref: string; title: string; due_at: string;
+                         assigned_to_staff_id: string | null }[];
+  let told = 0;
+  for (const j of jobs) {
+    const dueDay = localDate(tz, new Date(j.due_at));
+    if (dueDay > today) continue;
+    const overdue = dueDay < today;
+    alert(db, propertyId, 'ppm.due_today', {
+      title: overdue ? `${j.ref} is overdue` : `${j.ref} is due today`,
+      body: j.assigned_to_staff_id ? j.title : `${j.title} — not assigned to anybody yet.`,
+      entityType: 'work_order', entityId: j.id, at,
+    }, { assigneeStaffId: j.assigned_to_staff_id });
+    told++;
+  }
+  return told;
 }
 
 /**

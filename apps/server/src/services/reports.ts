@@ -203,7 +203,8 @@ export function dashboard(db: Db, propertyId: string, from: string, to: string, 
 export interface PlantStatus {
   at: string;
   utility: { state: 'on' | 'off'; since: string | null; minutes: number | null };
-  gensets: { tag: string; name: string; status: string; hours: number | null; lastLph: number | null }[];
+  gensets: { tag: string; name: string; status: string; hours: number | null; lastLph: number | null;
+             runningSince: string | null }[];
   tanks: { id: string; name: string; kind: string; litres: number | null; capacity: number;
            minLevel: number; pctFull: number | null; belowMinimum: boolean }[];
   openP1: { total: number; breached: number };
@@ -223,15 +224,15 @@ export function plantStatus(db: Db, propertyId: string, today: string, at = nowI
   ).get(propertyId) as { started_at: string } | undefined;
 
   const gensets = (db.prepare(
-    `SELECT a.asset_tag, a.name, a.status, a.current_meter,
+    `SELECT a.asset_tag, a.name, a.status, a.current_meter, g.running_since,
             (SELECT actual_lph FROM generator_runs r WHERE r.genset_asset_id = a.id
               ORDER BY r.started_at DESC LIMIT 1) AS last_lph
        FROM assets a JOIN genset_profiles g ON g.asset_id = a.id
       WHERE a.property_id = ? AND a.is_active = 1 ORDER BY a.asset_tag`
-  ).all(propertyId) as { asset_tag: string; name: string; status: string;
+  ).all(propertyId) as { asset_tag: string; name: string; status: string; running_since: string | null;
                          current_meter: number | null; last_lph: number | null }[])
     .map((g) => ({ tag: g.asset_tag, name: g.name, status: g.status,
-                   hours: g.current_meter, lastLph: g.last_lph }));
+                   hours: g.current_meter, lastLph: g.last_lph, runningSince: g.running_since }));
 
   const tanks = (db.prepare(
     `SELECT id, name, kind, capacity_l, min_level_l, current_level_l FROM fuel_tanks

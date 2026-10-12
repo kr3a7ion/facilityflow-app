@@ -321,6 +321,24 @@ other — say what is happening in one line, and say where.
 - Nothing about it can be deleted or edited afterwards — the record survives even a
   direct change to the database.
 
+### Who is told about what
+
+Everything that puts something on somebody's bell is listed under **Admin → Settings →
+Who is alerted**, grouped as jobs, planned work, power, diesel and stores. Each one says
+who is told and how loud:
+
+- **Bell only** — a line on the bell, no sound. Diesel delivered, by default.
+- **Chime** — the ordinary two notes. Most things.
+- **Good-news chime** — nothing to do. A job you did being signed off.
+- **Urgent tone** — stop and look. Mains failing, a generator fault, a tank below minimum,
+  a generator log out of range, and every escalation.
+
+**Edit** changes the roles told, and for some events the people involved — the team lead
+of whoever did a job, whoever reported it, whoever a planned job is assigned to. An event
+can be switched off, but not routed to nobody; **Reset to default** puts it back. Nobody
+is told about something they did themselves, and somebody with two of the roles hears it
+once. Every change is on the audit log.
+
 ---
 
 ## Technician
@@ -383,6 +401,23 @@ leak or an empty day tank is found on that round rather than during the outage:
 four honest numbers than six invented ones. When you save, it tells you immediately if
 anything is out of range for that set, and what to check. A reading that needs acting on
 also notifies the supervisor without anybody being asked to look.
+
+### Mains and generators — as it happens
+
+The first card on **Power & Diesel**. When mains goes, press **Mains failed**; when a set
+starts, press its **Start**; when mains is back, **Mains restored**; and **Stop** the set
+once the load is back on mains. A set that trips gets **Report fault**, with one line on
+what happened — it is taken out of service until somebody puts it back on its asset
+record.
+
+Each button asks once before it goes, because each one tells people — mains failing rings
+the whole team with the urgent tone. If you are recording it a few minutes late, say so in
+**When**. The strip across the top of every screen reads from here: a set says
+**Running** only while it is recorded running, and **Ready** when it is in service and
+stopped.
+
+Stopping a set says how long it ran. Write the run up under the generator runs as before
+— that is what the diesel book is reconciled from.
 
 ### Clamp readings
 

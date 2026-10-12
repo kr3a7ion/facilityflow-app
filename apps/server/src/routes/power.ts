@@ -6,6 +6,7 @@ import { nowIso } from '../lib/time.js';
 import * as fuel from '../services/fuel.js';
 import * as load from '../services/load.js';
 import * as gensetLog from '../services/gensetLog.js';
+import * as changeover from '../services/changeover.js';
 import { propertyTimezone } from '../services/roster.js';
 import { localDate } from '../lib/time.js';
 import { ctxOf, monthOf, send, seesMoney, withoutMoney } from './_helpers.js';
@@ -175,6 +176,23 @@ export async function powerRoutes(app: FastifyInstance): Promise<void> {
       ).all(req.principal!.propertyId, q.assetId ?? null, q.assetId ?? null,
             period?.from ?? null, period?.from ?? null, period?.to ?? null, limit),
     };
+  });
+
+  // ---- changeover: mains and generators as they change ------------------------
+  app.get('/api/power/now', { preHandler: requirePermission('fuel.read') }, async (req) => {
+    const me = req.principal!;
+    return { ...changeover.now(app.db, me.propertyId), history: changeover.history(app.db, me.propertyId, 15) };
+  });
+
+  app.post('/api/power/changeover', { preHandler: requirePermission('genset.run.log') }, async (req, reply) => {
+    const body = z.object({
+      event: z.enum(['mains_off', 'mains_on', 'genset_start', 'genset_stop', 'genset_fault']),
+      gensetAssetId: z.string().max(40).optional(),
+      at: z.string().max(40).optional(),
+      note: z.string().max(300).optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+    return send(reply, () => changeover.record(app.db, ctxOf(req), body.data), 201);
   });
 
   app.post('/api/outages', { preHandler: requirePermission('genset.run.log') }, async (req, reply) => {

@@ -58,6 +58,9 @@ export function tick(db: Db, propertyId: string, at: string = nowIso()): Escalat
       notifyRole(db, propertyId, role, {
         kind: 'escalation',
         title: `${wo.ref} · ${wo.priority} escalated`,
+        // The most urgent message the system sends. It used to play the ordinary chime,
+        // because the browser listened for kind names nothing ever sent.
+        level: 'urgent',
         body: `${wo.title} — ${level === 1 ? 'nobody has accepted it' : 'past its deadline'}.`,
         entityType: 'work_order',
         entityId: wo.id,
@@ -74,6 +77,8 @@ export function tick(db: Db, propertyId: string, at: string = nowIso()): Escalat
 export interface Notice {
   kind: string; title: string; body?: string;
   entityType?: string; entityId?: string; at?: string;
+  /** How loud: see alertRouting. Left empty, the browser falls back to its old guess. */
+  level?: 'quiet' | 'chime' | 'good' | 'urgent';
 }
 
 /** In-app bell only — there is no mail server on this network, and none is needed. */
@@ -84,12 +89,12 @@ export function notifyRole(db: Db, propertyId: string, roleKey: string, n: Notic
   ).all(propertyId, roleKey) as { id: string }[];
   const at = n.at ?? nowIso();
   const ins = db.prepare(
-    `INSERT INTO notifications (id, property_id, user_id, kind, title, body, entity_type, entity_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO notifications (id, property_id, user_id, kind, title, body, entity_type, entity_id, created_at, level)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   for (const u of users) {
     ins.run(ulid(), propertyId, u.id, n.kind, n.title, n.body ?? null,
-            n.entityType ?? null, n.entityId ?? null, at);
+            n.entityType ?? null, n.entityId ?? null, at, n.level ?? null);
     bus.publishTo(u.id, 'notification');
   }
   return users.length;
@@ -125,10 +130,10 @@ export function notifyTeamLeadOf(
 
 export function notifyUser(db: Db, propertyId: string, userId: string, n: Notice): void {
   db.prepare(
-    `INSERT INTO notifications (id, property_id, user_id, kind, title, body, entity_type, entity_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO notifications (id, property_id, user_id, kind, title, body, entity_type, entity_id, created_at, level)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(ulid(), propertyId, userId, n.kind, n.title, n.body ?? null,
-        n.entityType ?? null, n.entityId ?? null, n.at ?? nowIso());
+        n.entityType ?? null, n.entityId ?? null, n.at ?? nowIso(), n.level ?? null);
   // Deferred until after the transaction commits — see the bus.
   bus.publishTo(userId, 'notification');
 }

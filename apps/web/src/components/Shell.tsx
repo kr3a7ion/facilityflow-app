@@ -24,6 +24,8 @@ interface Note {
   id: string; kind: string; title: string; body: string | null;
   entity_type: string | null; entity_id: string | null;
   created_at: string; read_at: string | null;
+  /** How loud, as routed under Admin → Settings → Who is alerted. Older rows have none. */
+  level?: 'quiet' | 'chime' | 'good' | 'urgent' | null;
 }
 
 const ITEMS: NavItem[] = [
@@ -118,11 +120,13 @@ export function Shell() {
     // contract renewal both used to make the same polite two-note chime, which is how a
     // department learns to stop hearing it.
     const newest = notes.notifications.find((n) => !n.read_at);
-    const urgent = !!newest && (/^P1\b/.test(newest.body ?? '')
-      || newest.kind === 'wo.breached' || newest.kind === 'wo.escalated');
-    // Being told your work was signed off is the one message that is not a demand, and it
-    // gets the settled chime rather than the one that means "come and look".
-    play(urgent ? 'urgent' : newest?.kind === 'wo.verified' ? 'done' : 'notify');
+    // The server says how loud each one is. Rows from before that existed fall back to the
+    // old guess — a P1 in the body is urgent, a sign-off is good news.
+    const level = newest?.level ?? (
+      newest && (/^P1\b/.test(newest.body ?? '') || newest.kind === 'escalation') ? 'urgent'
+        : newest?.kind === 'wo.verified' ? 'good' : 'chime');
+    if (level === 'quiet') return;
+    play(level === 'urgent' ? 'urgent' : level === 'good' ? 'done' : 'notify');
   }, [notes?.unread, notes?.notifications]);
 
   useEffect(() => {

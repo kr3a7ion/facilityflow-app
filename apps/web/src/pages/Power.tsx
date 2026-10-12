@@ -97,7 +97,11 @@ export function Power() {
       {msg && <div className={`note ${msg.bad ? 'warn' : ''} mb-6`} role="status">
         {msg.text}</div>}
 
-      {/* Load first: during an outage it is the only thing on this screen anybody needs. */}
+      {/* What is carrying the building right now, and the buttons to change it. First,
+          because during an outage this is what somebody opened the screen for. */}
+      <Changeover canLog={can('genset.run.log')} />
+
+      {/* Then the load: during an outage it is the next thing anybody needs. */}
       <LoadPanel canLog={can('power.clamp.log')} onLog={() => setClamping(true)} />
       {clamping && <ClampDialog onClose={() => setClamping(false)} />}
 
@@ -1034,6 +1038,167 @@ function LogDialog({ set, onClose }: { set: SetToday; onClose: () => void }) {
       {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
       <Btn full tone="pri" disabled={save.isPending}
            onClick={() => save.mutate()}>{save.isPending ? 'Saving…' : 'Save to the book'}</Btn>
+    </Modal>
+  );
+}
+
+
+/* ---------------------------------------------------------------- changeover -- */
+type SwitchEvent = 'mains_off' | 'mains_on' | 'genset_start' | 'genset_stop' | 'genset_fault';
+interface PowerNow {
+  mains: 'on' | 'off'; mainsOffSince: string | null;
+  gensets: { assetId: string; tag: string; name: string; status: string; runningSince: string | null }[];
+  history: { id: string; at: string; event: SwitchEvent; ran_minutes: number | null; note: string | null;
+             asset_tag: string | null; logged_by_name: string | null }[];
+}
+
+const SWITCH_WORDS: Record<SwitchEvent, string> = {
+  mains_off: 'Mains failed', mains_on: 'Mains restored', genset_start: 'started',
+  genset_stop: 'stopped', genset_fault: 'reported faulty',
+};
+
+function sinceWords(iso: string): string {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  return `${new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${duration(m)}`;
+}
+
+/**
+ * Mains and generators as they change. Recording it here is what tells the people routed
+ * to each event — mains off reaches the whole team, urgently — so every button goes
+ * through a short confirm: a mis-tap would otherwise ring every technician on site.
+ */
+function Changeover({ canLog }: { canLog: boolean }) {
+  const now = useQuery<PowerNow>({
+    queryKey: [...qk.plant, 'now'], queryFn: () => api.get('/api/power/now'), refetchInterval: 60_000,
+  });
+  const [asking, setAsking] = useState<{ event: SwitchEvent; set?: PowerNow['gensets'][number] } | null>(null);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+
+  if (now.isLoading) return <Card title="Mains and generators now"><Loading rows={3} /></Card>;
+  if (now.isError) return <Card title="Mains and generators now"><ErrorNote error={now.error} /></Card>;
+  const d = now.data!;
+  const off = d.mains === 'off';
+  const running = d.gensets.filter((g) => g.runningSince);
+
+  return (
+    <div className="mb-6">
+      {msg && <div className={`note ${msg.bad ? 'crit' : 'ok'} mb-5`} role="status">{msg.text}</div>}
+      {off && running.length === 0 && (
+        <div className="note crit mb-5" role="alert">
+          <b>Mains is off and no generator is recorded running.</b> If a set is carrying the load,
+          record it starting so the strip and the diesel book are right.
+        </div>
+      )}
+      <Card title="Mains and generators now" flush
+            right={<Chip tone={off ? 'crit' : 'ok'} lamp>Mains {off ? 'off' : 'on'}</Chip>}>
+        <div className="switchrow">
+          <div className="who"><b>Mains</b><span className="sub">utility supply</span></div>
+          <div className="state">
+            {off ? <Chip tone="crit" lamp>Off since {sinceWords(d.mainsOffSince!)}</Chip>
+                 : <Chip tone="ok" lamp>On</Chip>}
+          </div>
+          {canLog && (
+            <div className="acts">
+              {off
+                ? <Btn size="sm" tone="pri" onClick={() => setAsking({ event: 'mains_on' })}>Mains restored</Btn>
+                : <Btn size="sm" tone="danger" onClick={() => setAsking({ event: 'mains_off' })}>Mains failed</Btn>}
+            </div>
+          )}
+        </div>
+        {d.gensets.map((g) => {
+          const usable = g.status === 'in_service' || g.status === 'standby';
+          return (
+            <div className="switchrow" key={g.assetId}>
+              <div className="who"><b>{g.tag}</b><span className="sub">{g.name}</span></div>
+              <div className="state">
+                {g.runningSince ? <Chip tone="ok" lamp>Running since {sinceWords(g.runningSince)}</Chip>
+                  : g.status === 'faulty' || g.status === 'under_repair'
+                    ? <Chip tone="crit" lamp>{titleCase(g.status)}</Chip>
+                    : <Chip>{g.status === 'in_service' ? 'Ready' : titleCase(g.status)}</Chip>}
+              </div>
+              {canLog && (g.runningSince || usable || g.status !== 'faulty') && (
+                <div className="acts">
+                  {g.runningSince
+                    ? <Btn size="sm" onClick={() => setAsking({ event: 'genset_stop', set: g })}>Stop</Btn>
+                    : usable && <Btn size="sm" tone="pri" onClick={() => setAsking({ event: 'genset_start', set: g })}>Start</Btn>}
+                  {g.status !== 'faulty' && (
+                    <Btn size="sm" onClick={() => setAsking({ event: 'genset_fault', set: g })}>Report fault</Btn>)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {d.history.length > 0 && (
+          <div className="p-6">
+            <p className="eyebrow mb-4">Latest changeovers</p>
+            <div>
+              {d.history.slice(0, 6).map((h) => (
+                <div key={h.id} className="t-ui mb-2">
+                  <span className="mono c-3">{when(h.at)}</span>{' · '}
+                  {h.asset_tag ? <><b>{h.asset_tag}</b> {SWITCH_WORDS[h.event]}</> : <b>{SWITCH_WORDS[h.event]}</b>}
+                  {h.ran_minutes != null && ` after ${duration(h.ran_minutes)}`}
+                  {h.note && <span className="c-2"> — {h.note}</span>}
+                  {h.logged_by_name && <span className="c-3"> · {h.logged_by_name}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+      {asking && <SwitchDialog ask={asking} onClose={() => setAsking(null)}
+                               onDone={(text) => { setAsking(null); setMsg({ text }); }} />}
+    </div>
+  );
+}
+
+function SwitchDialog({ ask, onClose, onDone }: {
+  ask: { event: SwitchEvent; set?: { assetId: string; tag: string } };
+  onClose: () => void; onDone: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [ago, setAgo] = useState('0');
+  const [note, setNote] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const what = ask.set ? `${ask.set.tag} ${SWITCH_WORDS[ask.event]}` : SWITCH_WORDS[ask.event];
+  const fault = ask.event === 'genset_fault';
+  const save = useMutation({
+    mutationFn: () => api.post('/api/power/changeover', {
+      event: ask.event, gensetAssetId: ask.set?.assetId, note: note.trim() || undefined,
+      at: ago === '0' ? undefined : new Date(Date.now() - Number(ago) * 60_000).toISOString(),
+    }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: qk.plant });
+      onDone(`${what} — recorded, and the people routed to it have been told.`);
+    },
+    onError: (e) => setErr((e as ApiError).message),
+  });
+  return (
+    <Modal title={`Record: ${what}`} onClose={onClose}
+           actions={<>
+             <Btn onClick={onClose}>Cancel</Btn>
+             <Btn tone={ask.event === 'mains_off' || fault ? 'danger' : 'pri'}
+                  disabled={save.isPending || (fault && note.trim().length < 3)}
+                  onClick={() => { setErr(null); save.mutate(); }}>
+               {save.isPending ? 'Recording…' : 'Record it'}
+             </Btn>
+           </>}>
+      {err && <div className="note crit" role="alert">{err}</div>}
+      <Field label="When">
+        <select className="inp" value={ago} onChange={(e) => setAgo(e.target.value)}>
+          <option value="0">Just now</option>
+          {[5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>{m} minutes ago</option>)}
+        </select>
+      </Field>
+      <Field label={fault ? 'What happened' : 'Note (optional)'}
+             hint={fault ? 'It goes to everyone told about the fault, and the set is taken out of service.' : undefined}>
+        <input className="inp" value={note} maxLength={300} autoFocus={fault}
+               placeholder={fault ? 'e.g. tripped on low oil pressure' : ''} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+      <div className="note">
+        {ask.event === 'mains_off'
+          ? 'Everybody routed to “Mains failed” is told now, with the urgent tone.'
+          : 'The people routed to this under Admin → Settings → Who is alerted are told now.'}
+      </div>
     </Modal>
   );
 }
