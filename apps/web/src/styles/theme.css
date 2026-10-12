@@ -173,6 +173,8 @@ a{color:var(--accent-hi);text-underline-offset:3px}
 
 /* ---------------- page ---------------- */
 .view{padding:var(--s-7) var(--s-7) var(--view-foot)}
+/* Cards stacked straight onto a page (the block cards on Apartments) touched edge to edge. */
+.view>.card+.card{margin-top:var(--s-6)}
 .vhead{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--s-6);margin-bottom:var(--s-7)}
 .vhead h1{font-family:var(--cond);font-size:var(--fs-title);font-weight:700;text-transform:uppercase;letter-spacing:.015em;margin:0;line-height:1}
 .vhead p{margin:var(--s-2) 0 0;color:var(--text-2);font-size:var(--fs-ui);max-width:62ch}
@@ -479,6 +481,11 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono
 
 /* ---------------- units ---------------- */
 .units{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:var(--s-4)}
+/* A block card holds one section per floor, lowest first; the heading carries its count. */
+.floorgroup+.floorgroup{margin-top:var(--s-7);padding-top:var(--s-6);border-top:1px solid var(--line)}
+.floorhead{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--s-2) var(--s-5);margin-bottom:var(--s-5)}
+.floorhead h3{margin:0;font-family:var(--cond);font-size:var(--fs-body);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.floorhead .btn{margin-left:auto}
 .unit{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:var(--s-4) var(--s-5);text-align:left;position:relative;overflow:hidden}
 .unit::after{content:"";position:absolute;top:0;right:0;bottom:0;width:3px;background:var(--idle)}
 .unit.occupied::after{background:var(--ok)}
