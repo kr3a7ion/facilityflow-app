@@ -3646,6 +3646,160 @@ heading('Specific response and resolve targets');
 }
 
 // --------------------------------------------------------------------------
+heading('Who is alerted, and the changeover');
+// --------------------------------------------------------------------------
+{
+  // Grace changed her password earlier in the suite, which ended her old session.
+  const grace = await login('grace', GRACE_PW);
+  const userOf = (u: string) => (db.prepare('SELECT id FROM users WHERE username = ?').get(u) as { id: string }).id;
+  const latest = (u: string, kind: string) => db.prepare(
+    `SELECT kind, title, body, level FROM notifications WHERE user_id = ? AND kind = ?
+      ORDER BY created_at DESC, rowid DESC LIMIT 1`
+  ).get(userOf(u), kind) as { kind: string; title: string; body: string | null; level: string | null } | undefined;
+  const count = (u: string, kind: string) => (db.prepare(
+    'SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND kind = ?'
+  ).get(userOf(u), kind) as { n: number }).n;
+
+  // ---- the catalogue and its settings
+  r = await get('/api/admin/alert-routing', ifeoma);
+  check('a technician cannot see or change alert routing', r.statusCode === 403);
+  r = await get('/api/admin/alert-routing', admin);
+  const events = r.json().events as { key: string; routing: { roles: string[]; level: string } }[];
+  for (const k of ['wo.completed', 'ppm.due_soon', 'ppm.due_today', 'power.mains_off', 'power.genset_fault',
+                   'fuel_low', 'fuel_delivered', 'stock_low']) {
+    check(`the catalogue lists ${k}`, events.some((e) => e.key === k));
+  }
+  check('mains failing is urgent by default',
+    events.find((e) => e.key === 'power.mains_off')?.routing.level === 'urgent');
+  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_off', headers: admin,
+                         payload: { roles: ['nobody'] } });
+  check('routing to a role that does not exist is refused', r.statusCode === 400 && r.json().error === 'unknown_role');
+  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_off', headers: admin,
+                         payload: { roles: [], context: [] } });
+  check('routing an event to nobody is refused', r.statusCode === 400 && r.json().error === 'nobody');
+  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_off', headers: admin,
+                         payload: { context: ['@reporter'] } });
+  check('a person an event cannot reach is refused', r.statusCode === 400 && r.json().error === 'bad_context');
+  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/no.such', headers: admin, payload: {} });
+  check('an unknown event is a 404', r.statusCode === 404);
+
+  // ---- completion reaches whoever reported it; sign-off is good news
+  r = await post('/api/jobs', admin, { title: 'Alerts: reported by the admin', trade: 'general',
+                                       locationId: siteId, priority: 'P3' });
+  const reported = r.json().job as { id: string; ref: string };
+  r = await post(`/api/jobs/${reported.id}/assign`, grace, { staffId: staffIds['ifeoma']! });
+  await post(`/api/jobs/${reported.id}/accept`, ifeoma);
+  await post(`/api/jobs/${reported.id}/start`, ifeoma);
+  r = await post(`/api/jobs/${reported.id}/complete`, ifeoma, { resolutionNotes: 'Done and tested.' });
+  check('the job completes', r.statusCode === 200, r.body.slice(0, 160));
+  check('whoever reported it is told it is done', latest('admin', 'wo.completed')?.title === `${reported.ref} is ready to verify`);
+  check('and the supervisor still is', latest('grace', 'wo.completed')?.title === `${reported.ref} is ready to verify`);
+  check('at the routed loudness', latest('grace', 'wo.completed')?.level === 'chime');
+  check('the person who did it is not told about their own work',
+    latest('ifeoma', 'wo.completed')?.title !== `${reported.ref} is ready to verify`);
+  await post(`/api/jobs/${reported.id}/verify`, grace);
+  check('sign-off reaches whoever did the work as good news', latest('ifeoma', 'wo.verified')?.level === 'good');
+
+  // ---- escalations are finally loud
+  check('escalations are stored as urgent',
+    (db.prepare(`SELECT COUNT(*) n FROM notifications WHERE kind = 'escalation' AND level = 'urgent'`).get() as { n: number }).n > 0);
+
+  // ---- diesel delivered
+  check('a diesel delivery puts a quiet line on the supervisor\'s bell',
+    (db.prepare(`SELECT COUNT(*) n FROM notifications WHERE kind = 'fuel_delivered' AND level = 'quiet'`).get() as { n: number }).n > 0);
+
+  // ---- planned work coming due, then due today
+  r = await post('/api/ppm/schedules', grace, {
+    name: 'Alerts: weekly changeover test', scopeType: 'asset', assetId: gen01,
+    triggerType: 'calendar', intervalValue: 7, intervalUnit: 'day', firstDueAt: iso(0), priority: 'P4',
+  });
+  const before = count('musa', 'ppm.due_soon');
+  r = await post('/api/ppm/generate', grace);
+  check('planned work coming due is generated', r.json().created.length >= 1, r.body.slice(0, 160));
+  check('and the team lead is told it is coming', count('musa', 'ppm.due_soon') === before + 1);
+  const dueToday = (db.prepare(
+    `SELECT id, ref FROM work_orders WHERE source = 'ppm' AND title LIKE 'Alerts: weekly changeover test%'`
+  ).get() as { id: string; ref: string });
+  const n1 = remindDue(db, propertyId);
+  check('a planned job due today is reminded about', n1 >= 1 && latest('grace', 'ppm.due_today') !== undefined, String(n1));
+  check('naming the job', (db.prepare(
+    `SELECT COUNT(*) n FROM notifications WHERE kind = 'ppm.due_today' AND entity_id = ?`).get(dueToday.id) as { n: number }).n > 0);
+  check('and only once', remindDue(db, propertyId) === 0);
+
+  // ---- the changeover
+  r = await post('/api/power/changeover', grace, { event: 'mains_on' });
+  check('mains cannot be restored while it is on', r.statusCode === 409 && r.json().error === 'already_on');
+  r = await post('/api/power/changeover', grace, { event: 'mains_off', note: 'PHCN gone' });
+  check('mains failing is recorded', r.statusCode === 201 && r.json().mains === 'off', r.body.slice(0, 200));
+  check('technicians are told, urgently', latest('ifeoma', 'power.mains_off')?.level === 'urgent');
+  check('with the time on the property\'s clock', /^Mains failed at \d\d:\d\d$/.test(latest('ifeoma', 'power.mains_off')?.title ?? ''));
+  check('the person who recorded it is not told', latest('grace', 'power.mains_off') === undefined);
+  r = await get('/api/status/plant', grace);
+  check('the status strip shows mains off', r.json().utility.state === 'off');
+  r = await post('/api/power/changeover', ifeoma, { event: 'mains_off' });
+  check('mains cannot fail twice', r.statusCode === 409 && r.json().error === 'already_off');
+
+  r = await post('/api/power/changeover', ifeoma, { event: 'genset_start' });
+  check('a generator event has to say which set', r.statusCode === 400 && r.json().error === 'unknown_genset');
+  r = await post('/api/power/changeover', ifeoma, { event: 'genset_start', gensetAssetId: gen01 });
+  check('a technician records a set starting', r.statusCode === 201, r.body.slice(0, 200));
+  r = await get('/api/status/plant', grace);
+  const g01 = (r.json().gensets as { runningSince: string | null; tag: string }[]).find((g) => g.runningSince);
+  check('the status strip knows it is running', !!g01);
+  check('the team lead is told', /started$/.test(latest('musa', 'power.genset_start')?.title ?? ''));
+  r = await post('/api/power/changeover', ifeoma, { event: 'genset_start', gensetAssetId: gen01 });
+  check('a running set cannot start again', r.statusCode === 409 && r.json().error === 'already_running');
+
+  r = await post('/api/power/changeover', grace, { event: 'mains_on' });
+  check('mains is restored', r.statusCode === 201 && r.json().mains === 'on');
+  check('and the message says the set is still running',
+    /still running/.test(latest('musa', 'power.mains_on')?.body ?? ''), latest('musa', 'power.mains_on')?.body ?? '');
+  r = await post('/api/power/changeover', ifeoma, { event: 'genset_stop', gensetAssetId: gen01 });
+  check('the set is stopped, with how long it ran', r.statusCode === 201 && typeof r.json().ranMinutes === 'number');
+  check('and asks for the run to be logged', /Log the run/.test(latest('grace', 'power.genset_stop')?.body ?? ''));
+  r = await post('/api/power/changeover', ifeoma, { event: 'genset_stop', gensetAssetId: gen01 });
+  check('a stopped set cannot stop again', r.statusCode === 409 && r.json().error === 'not_running');
+
+  r = await post('/api/power/changeover', ifeoma, { event: 'genset_fault', gensetAssetId: gen01, note: 'Low oil pressure trip' });
+  check('a fault is recorded', r.statusCode === 201);
+  check('and takes the set out of service',
+    (db.prepare('SELECT status FROM assets WHERE id = ?').get(gen01) as { status: string }).status === 'faulty');
+  check('the head of department is told, urgently, with the reason',
+    latest('hod', 'power.genset_fault')?.level === 'urgent' && /Low oil pressure/.test(latest('hod', 'power.genset_fault')?.body ?? ''));
+  r = await post('/api/power/changeover', ifeoma, { event: 'genset_start', gensetAssetId: gen01 });
+  check('a faulty set cannot be started', r.statusCode === 409 && r.json().error === 'not_available');
+  r = await post('/api/power/changeover', ifeoma, { event: 'mains_off', at: iso(1) });
+  check('a changeover cannot be recorded in the future', r.statusCode === 400 && r.json().error === 'future');
+
+  r = await get('/api/power/now', grace);
+  check('the changeover history is kept in order', (r.json().history as { event: string }[])
+    .slice(0, 5).map((h) => h.event).join(',') === 'genset_fault,genset_stop,mains_on,genset_start,mains_off',
+    JSON.stringify((r.json().history as { event: string }[]).map((h) => h.event)));
+
+  // ---- routing changes take effect at once, and reset
+  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_off', headers: admin,
+                         payload: { roles: ['supervisor'], level: 'chime' } });
+  check('routing can be changed', r.statusCode === 200 && r.json().routing.level === 'chime');
+  const techBefore = count('ifeoma', 'power.mains_off');
+  await post('/api/power/changeover', hod, { event: 'mains_off' });
+  check('a technician taken off the routing is no longer told', count('ifeoma', 'power.mains_off') === techBefore);
+  check('and the supervisor hears it at the new loudness', latest('grace', 'power.mains_off')?.level === 'chime');
+  r = await app.inject({ method: 'PUT', url: '/api/admin/alert-routing/power.mains_on', headers: admin,
+                         payload: { off: true } });
+  const supBefore = count('grace', 'power.mains_on');
+  await post('/api/power/changeover', hod, { event: 'mains_on' });
+  check('an event switched off tells nobody', count('grace', 'power.mains_on') === supBefore);
+  r = await app.inject({ method: 'DELETE', url: '/api/admin/alert-routing/power.mains_off', headers: admin });
+  check('routing resets to the default', r.statusCode === 200 && r.json().routing.level === 'urgent'
+    && (r.json().routing.roles as string[]).includes('technician'));
+  check('routing changes are audited',
+    (db.prepare(`SELECT COUNT(*) n FROM audit_log WHERE action LIKE 'alert_routing.%'`).get() as { n: number }).n >= 3);
+
+  // Leave the set as the rest of the suite found it.
+  db.prepare(`UPDATE assets SET status = 'in_service' WHERE id = ?`).run(gen01);
+}
+
+// --------------------------------------------------------------------------
 heading('Integrity');
 // --------------------------------------------------------------------------
 check('no foreign key is left dangling', (db.pragma('foreign_key_check') as unknown[]).length === 0);
