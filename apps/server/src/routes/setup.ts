@@ -47,6 +47,12 @@ export async function setupRoutes(app: FastifyInstance): Promise<void> {
     const passwordHash = await hashPassword(admin.password);
 
     const result = app.db.transaction(() => {
+      // Asked again, inside the write. The check above runs before the password hash, and
+      // two submits racing through that await would otherwise both create a property and
+      // both mint an administrator — the one thing this route promises never to do twice.
+      const raced = app.db.prepare('SELECT COUNT(*) AS n FROM properties').get() as { n: number };
+      if (raced.n > 0) return null;
+
       const at = nowIso();
 
       const insPerm = app.db.prepare(
@@ -115,6 +121,9 @@ export async function setupRoutes(app: FastifyInstance): Promise<void> {
 
       return { propertyId, userId, roles: Object.keys(roleIds).length };
     })();
+    if (!result) {
+      return reply.code(409).send({ error: 'already_set_up', message: 'This installation is already configured.' });
+    }
 
     return reply.code(201).send({
       ok: true,

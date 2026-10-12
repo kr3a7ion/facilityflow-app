@@ -40,11 +40,28 @@ interface Row {
   role_name: string; role_description: string | null;
 }
 
-export function principalFromSession(db: Db, id: string): Principal | null {
+/**
+ * A remote request on a session that has been quiet longer than the property allows.
+ *
+ * Judged by where this request comes from, not where the session was opened: a laptop
+ * signed in at the office and opened again in a hotel is exactly the case the timeout is
+ * for. Activity means any request, so a tab left open keeps itself alive by polling; what
+ * this ends is the cookie on a closed laptop that otherwise stays good for days.
+ */
+function remoteIdleExpired(db: Db, propertyId: string, lastSeenAt: string, at: string): boolean {
+  const row = db.prepare('SELECT idle_minutes FROM remote_access_state WHERE property_id = ?')
+    .get(propertyId) as { idle_minutes: number } | undefined;
+  const minutes = row?.idle_minutes ?? 20;
+  return new Date(at).getTime() - new Date(lastSeenAt).getTime() > minutes * 60_000;
+}
+
+export function principalFromSession(
+  db: Db, id: string, origin: 'lan' | 'remote' = 'lan'
+): Principal | null {
   const row = db.prepare(
     `SELECT u.id AS user_id, u.property_id, u.username, u.display_name, u.staff_id,
             u.role_id, r.key AS role_key, r.name AS role_name,
-            r.description AS role_description, u.must_change_password
+            r.description AS role_description, u.must_change_password, s.last_seen_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        JOIN roles r ON r.id = u.role_id
@@ -52,10 +69,15 @@ export function principalFromSession(db: Db, id: string): Principal | null {
         AND s.revoked_at IS NULL
         AND s.expires_at > ?
         AND u.is_active = 1`
-  ).get(id, nowIso()) as Row | undefined;
+  ).get(id, nowIso()) as (Row & { last_seen_at: string }) | undefined;
   if (!row) return null;
 
-  db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').run(nowIso(), id);
+  const at = nowIso();
+  if (origin === 'remote' && remoteIdleExpired(db, row.property_id, row.last_seen_at, at)) {
+    revokeSession(db, id);
+    return null;
+  }
+  db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').run(at, id);
 
   const grants = db.prepare(
     'SELECT permission_code, scope FROM role_permissions WHERE role_id = ?'

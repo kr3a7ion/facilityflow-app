@@ -10,6 +10,8 @@ import { Icon } from './Icon';
 interface Unaccepted {
   id: string; ref: string; title: string; priority: string;
   assigned_at: string | null; respond_by: string | null;
+  /** When to stop chiming: a full response window from assignment, never before respond_by. */
+  ring_until?: string | null;
 }
 
 /**
@@ -78,8 +80,10 @@ export function Outstanding() {
       if (Date.now() < snoozedUntil) return;
       const now = Date.now();
       for (const j of jobs) {
-        // Past the response deadline the job is a person's problem, not a chime's.
-        if (j.respond_by && new Date(j.respond_by).getTime() < now) continue;
+        // Past its ring window the job is a person's problem, not a chime's. The window is
+        // the host's, because respond_by alone silenced every job handed out late.
+        const until = j.ring_until ?? j.respond_by;
+        if (until && new Date(until).getTime() < now) continue;
         const every = EVERY_MS[j.priority] ?? EVERY_MS.P3!;
         const last = lastPlayed.current[j.id] ?? 0;
         if (now - last < every) continue;

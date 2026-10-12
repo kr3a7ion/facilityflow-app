@@ -74,10 +74,21 @@ const app = await buildApp(db, config);
 let r = await app.inject({ method: 'GET', url: '/api/health' });
 check('health responds before setup', r.statusCode === 200 && r.json().setupComplete === false);
 
-r = await app.inject({ method: 'POST', url: '/api/setup', payload: {
+// Submitted twice at once — a double-tap on a slow PC. Both pass the first "already set
+// up?" check before either has finished hashing the password, so the write has to ask again.
+const setupBody = {
   property: { name: 'Harmony Court Serviced Residences', shortName: 'Harmony Court', timezone: 'Africa/Lagos' },
   admin: { displayName: 'System Administrator', username: 'admin', password: 'correct-horse-battery' },
-} });
+};
+const [setupA, setupB] = await Promise.all([
+  app.inject({ method: 'POST', url: '/api/setup', payload: setupBody }),
+  app.inject({ method: 'POST', url: '/api/setup', payload: setupBody }),
+]);
+r = setupA.statusCode === 201 ? setupA : setupB;
+check('setup submitted twice at once creates one property, not two',
+  [setupA.statusCode, setupB.statusCode].sort().join(',') === '201,409'
+    && (db.prepare('SELECT COUNT(*) AS n FROM properties').get() as { n: number }).n === 1,
+  `${setupA.statusCode} ${setupB.statusCode}`);
 check('setup creates property, roles and admin', r.statusCode === 201, r.body.slice(0, 120));
 check('setup seeds the full permission catalogue', r.json().permissionsSeeded === PERMISSIONS.length);
 check('setup creates every system role', r.json().rolesCreated === ROLES.length);

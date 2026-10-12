@@ -13,11 +13,12 @@ every module, served by the same process. Nothing in the system is API-only.
 
 ## The phone app
 
-**[app/](app/)** is a Flutter Android app that rings a technician's phone with the screen
-off — the thing a web page on an offline LAN cannot do. `app/README.md` explains why, how
-to build it, and the Android battery-manager traps that will otherwise silently stop it.
-The server half (pairing, device tokens, the event stream) ships here and is covered by
-the smoke suite; the app itself has not been compiled.
+**[facilityflow-alart-app](https://github.com/kr3a7ion/facilityflow-alart-app)** is a
+Flutter Android app that rings a technician's phone with the screen off — the thing a web
+page on an offline LAN cannot do. Its README explains why, how to build it, and the Android
+battery-manager traps that will otherwise silently stop it. The server half (pairing,
+device tokens, the event stream) ships here and is covered by the smoke suite; the app is
+built on GitHub by its own workflow but has not yet been run on a handset.
 
 ## For the department
 
@@ -33,7 +34,7 @@ npm install          # Node 22+
 npm run seed         # a whole demo property, see below
 npm run build        # client then server
 npm start            # http://localhost:4700 — API and UI on one address
-npm run smoke        # 584 end-to-end checks against throwaway databases
+npm run smoke        # 937 end-to-end checks against throwaway databases
 ```
 
 For client work, `npm run dev` (server, port 4700) and `npm run dev:web` (Vite on
@@ -115,7 +116,8 @@ cmdlet"*. That is the shell's security default, not a problem with the file.
 
 These scripts were written against the documented PowerShell and Scheduled Task
 behaviour but have not been executed on a Windows machine — the rest of the system has
-CI, this has not. Read the output on first run.
+CI (`.github/workflows/ci.yml`: typecheck, build and the smoke suite on every push and pull
+request), this has not. Read the output on first run.
 
 ### Why there is no desktop app
 
@@ -242,6 +244,12 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | The port is **saved, never applied live** — rebinding under a running server would kill the request that asked for it and strand every other device mid-action | `routes/admin.ts` |
 | A corrupt or hand-edited `host.json` is **ignored rather than fatal** — the department cannot fix JSON at 6am, and a host that will not start is the worse failure | `config.readHostFile` |
 | Host status reports **unknown** rather than guessing when the boot service or firewall cannot be queried | `services/host.ts` |
+| The **HTTPS switch** reaches the next start, and saving the port or address afterwards does not quietly drop it | `config.readHostFile` |
+| A **remote session left idle** past the property's timeout is signed out; the same idle time on the property network is not | `auth/sessions.ts` |
+| A job handed out — or sent back — **after its response deadline still rings** the person it went to, for a full response window from assignment, while the deadline it is judged against stays put | `workOrders.ringUntil` |
+| A phone shows as **not listening only when its last stream closes**, so a redial after a silent drop is not reported as a dead app | `devices.streamClosed` |
+| Setup **submitted twice at once** creates one property and one administrator, not two | `routes/setup.ts` |
+| Every API path the client calls **reaches a route the server registers** — a merge cannot drop one silently | `smoke.modules.ts` |
 | Setup creates the **site** at the root of the location tree, so the first job on a brand-new install has somewhere to land | `routes/setup.ts` |
 | An applied migration that has been edited **stops the server**, rather than letting field databases diverge | `db/migrate.ts` |
 | A restore is **staged and applied at boot**, never swapped under a live WAL connection, and the current database is copied out of the way first — so restoring the wrong snapshot is survivable | `db/backup.ts` · `main.ts` |
@@ -263,8 +271,8 @@ apps/server/src
   config.ts        data dir (anchored to the repo, not the shell's cwd), port, policy
   app.ts           fastify instance, principal resolution, error shape
   main.ts          entry point; prints the LAN addresses to hand out
-  smoke.ts         85 checks — schema, auth, RBAC, audit, backup and restore
-  smoke.modules.ts 499 checks — every rule in the table above, through HTTP,
+  smoke.ts         86 checks — schema, auth, RBAC, audit, backup and restore
+  smoke.modules.ts 851 checks — every rule in the table above, through HTTP,
                    plus the payload shape each screen depends on
 apps/web/src
   lib/             fetch wrapper, formatting, session context
@@ -279,6 +287,10 @@ apps/web/src
     seed.ts        the demo property
     migrations/    0001 core · 0002 people & places · 0003 assets · 0004 work orders
                    0005 PPM · 0006 power & fuel · 0007 stores & finance · 0008 safety
+                   0009 clamp load · 0010 genset log · 0011 alerts · 0012 paired phones
+                   0013 money visibility · 0014 rings & emergencies · 0015 apartments
+                   0016 remote access · 0017 duty device · 0018 SLA rules
+                   0019 alert routing & changeover
   auth/            permission catalogue, argon2id, sessions, requirePermission(code)
   services/
     workOrders.ts  the lifecycle state machine and SLA
@@ -295,7 +307,7 @@ apps/web/src
 
 ## API
 
-66 tables, 61 permission codes, 9 roles. Every route checks a permission **code**,
+77 tables, 69 permission codes, 9 roles. Every route checks a permission **code**,
 never a role name — "the HOD wants team leads to issue permits now" is a settings
 change, not a release.
 

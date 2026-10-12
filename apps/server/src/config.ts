@@ -98,6 +98,13 @@ export function readHostFile(dataDir: string): HostFile {
     if (typeof parsed?.bindTo === 'string' && IPV4.test(parsed.bindTo)) {
       out.bindTo = parsed.bindTo;
     }
+    // Admin → Host PC writes these two. Dropping them here meant the switch never reached
+    // the next start, and every later save of the port or address wrote the file without them.
+    if (typeof parsed?.https === 'boolean') out.https = parsed.https;
+    const httpsPort = Number(parsed?.httpsPort);
+    if (Number.isFinite(httpsPort) && httpsPort >= 1024 && httpsPort <= 65535) {
+      out.httpsPort = Math.floor(httpsPort);
+    }
     return out;
   } catch {
     return {};

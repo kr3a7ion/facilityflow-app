@@ -4,6 +4,7 @@ import { requireSignedIn } from '../auth/guard.js';
 import { ulid } from '../lib/ids.js';
 import * as bus from '../services/bus.js';
 import * as devices from '../services/devices.js';
+import * as jobs from '../services/workOrders.js';
 import { audit } from '../audit.js';
 import { nowIso } from '../lib/time.js';
 import { networkView } from '../services/network.js';
@@ -144,11 +145,16 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
      * make sure a human finds out before an outage does.
      */
     const device = req.deviceId;
-    if (device) devices.setConnected(app.db, device, true);
+    if (device) devices.streamOpened(app.db, device);
 
+    // 'close' and 'error' can both fire for one socket; counting the stream closed twice
+    // would take another, live stream of the same phone down with it.
+    let finished = false;
     const done = (): void => {
+      if (finished) return;
+      finished = true;
       unsubscribe();
-      if (device) devices.setConnected(app.db, device, false);
+      if (device) devices.streamClosed(app.db, device);
     };
     req.raw.on('close', done);
     req.raw.on('error', done);
@@ -169,15 +175,23 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
     const me = req.principal!;
     if (!me.staffId) return { unaccepted: [] };
     const rows = app.db.prepare(
-      `SELECT w.id, w.ref, w.title, w.priority, w.assigned_at, w.respond_by
+      `SELECT w.id, w.ref, w.title, w.priority, w.assigned_at, w.respond_by, w.sla_rule_id
          FROM work_orders w
         WHERE w.property_id = ? AND w.assigned_to_staff_id = ? AND w.status = 'assigned'
         ORDER BY w.priority, w.assigned_at`
     ).all(me.propertyId, me.staffId) as {
       id: string; ref: string; title: string; priority: string;
-      assigned_at: string | null; respond_by: string | null;
+      assigned_at: string | null; respond_by: string | null; sla_rule_id: string | null;
     }[];
-    return { unaccepted: rows, at: nowIso() };
+    return {
+      unaccepted: rows.map(({ sla_rule_id, ...row }) => ({
+        ...row,
+        // When to stop ringing. Not respond_by: a job handed out after that has passed
+        // still has to reach the person it was handed to. See jobs.ringUntil.
+        ring_until: jobs.ringUntil(app.db, me.propertyId, { ...row, sla_rule_id }),
+      })),
+      at: nowIso(),
+    };
   });
 
   /**

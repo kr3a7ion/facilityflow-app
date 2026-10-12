@@ -1,0 +1,46 @@
+# Typecheck, build and the smoke suite on every push to main and every pull request.
+#
+# The smoke suite is the system's specification: every rule in the README's table has a
+# check there, run through the real HTTP layer against a throwaway database. Until now it
+# only ran when somebody remembered to, which is how a merge could drop three routes and
+# their tests without anything going red.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke
+        run: npm run smoke
+        env:
+          FF_LOG_LEVEL: warn
