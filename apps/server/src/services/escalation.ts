@@ -2,7 +2,7 @@ import type { Db } from '../db/connection.js';
 import { ulid } from '../lib/ids.js';
 import * as bus from './bus.js';
 import { nowIso } from '../lib/time.js';
-import { slaFor } from './settings.js';
+import { forJob } from './slaRules.js';
 import { slaState, type WorkOrder } from './workOrders.js';
 
 /**
@@ -30,7 +30,8 @@ export function tick(db: Db, propertyId: string, at: string = nowIso()): Escalat
   const escalated: EscalationResult['escalated'] = [];
 
   for (const wo of jobs) {
-    const sla = slaFor(db, propertyId, wo.priority);
+    // The job's own rule, if it took one, so a breach reaches the person that rule names.
+    const sla = forJob(db, propertyId, wo);
     const s = slaState(wo, at);
     let level = 0;
     let role = sla.escalateToRole;

@@ -19,6 +19,7 @@ interface Detail {
     labour_minutes: number; assigned_to_staff_id: string | null;
   };
   sla: { state: string; minutesRemaining: number | null; effectiveDueAt: string | null; heldMinutes: number };
+  slaRule?: string | null;
   history: { id: string; at: string; actor_name: string | null; event_type: string;
              note: string | null; from_status: string | null; to_status: string | null }[];
   parts: { id: string; description: string; qty: number; total_kobo?: number }[];
@@ -81,7 +82,7 @@ export function JobCard() {
   if (detail.isLoading) return <main className="view"><Card><Loading rows={6} /></Card></main>;
   if (detail.isError) return <main className="view"><ErrorNote error={detail.error} /></main>;
 
-  const { job, sla, history, parts, cost, checklist } = detail.data!;
+  const { job, sla, slaRule, history, parts, cost, checklist } = detail.data!;
   const mine = !!me?.user.staffId && job.assigned_to_staff_id === me.user.staffId;
   const busy = act.isPending;
 
@@ -153,6 +154,8 @@ export function JobCard() {
                   </span>
                 )}
               </dd>
+              {slaRule && (<><dt>Target</dt>
+                <dd>Set by the <b>{slaRule}</b> rule, not the {job.priority} default</dd></>)}
               {job.description && (<><dt>Description</dt>
                 <dd className="fw-4 pre-wrap">{job.description}</dd></>)}
               {job.resolution_notes && (<><dt>Resolution</dt>

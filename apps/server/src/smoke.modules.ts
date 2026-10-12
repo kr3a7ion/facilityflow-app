@@ -3524,6 +3524,128 @@ r = await post('/api/records/apartment/delete-batch', ifeoma, { ids: [porto.id] 
 check('a technician cannot batch delete', r.statusCode === 403);
 
 // --------------------------------------------------------------------------
+heading('Specific response and resolve targets');
+// --------------------------------------------------------------------------
+{
+  const mins = (job: { reported_at: string; respond_by: string }) =>
+    Math.round((new Date(job.respond_by).getTime() - new Date(job.reported_at).getTime()) / 60000);
+  const raise = async (trade: string, locationId: string, title: string) => {
+    const res = await post('/api/jobs', admin, { title, trade, locationId, priority: 'P2' });
+    if (res.statusCode !== 201) throw new Error(`could not raise ${title}: ${res.body}`);
+    return res.json().job as { id: string; reported_at: string; respond_by: string; sla_rule_id: string | null };
+  };
+
+  r = await post('/api/locations', admin, { type: 'block', code: 'BLK-SLA', name: 'Block S', parentId: siteId });
+  const blockS = r.json().id as string;
+  r = await post('/api/locations', admin, { type: 'floor', code: 'BLK-SLA-3', name: 'Block S floor 3', parentId: blockS });
+  const floorS3 = r.json().id as string;
+  check('a block with a floor under it to aim rules at', !!blockS && !!floorS3);
+
+  r = await post('/api/admin/sla-rules', ifeoma, { priority: 'P2', trade: 'electrical', respondMinutes: 30 });
+  check('a technician cannot write a target rule', r.statusCode === 403);
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', respondMinutes: 30 });
+  check('a rule with no trade and no place is refused — that is the default row',
+    r.statusCode === 400 && r.json().error === 'no_scope', r.body.slice(0, 160));
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical' });
+  check('a rule that changes nothing is refused',
+    r.statusCode === 400 && r.json().error === 'no_change', r.body.slice(0, 160));
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'welding', respondMinutes: 30 });
+  check('a trade the property does not have is refused', r.statusCode === 400 && r.json().error === 'unknown_trade');
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical', resolveMinutes: 30 });
+  check('resolving faster than the default response is refused, judged on what the job would get',
+    r.statusCode === 400 && r.json().error === 'resolve_before_respond', r.body.slice(0, 200));
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical', escalateToRole: 'nobody' });
+  check('escalating to a role that does not exist is refused', r.statusCode === 400 && r.json().error === 'unknown_role');
+
+  r = await post('/api/admin/sla-rules', admin,
+    { priority: 'P2', trade: 'Electrical', respondMinutes: 30, note: 'Lifts and DBs' });
+  check('a trade rule is created', r.statusCode === 201, r.body.slice(0, 200));
+  const tradeRule = r.json().rule as { id: string; trade: string };
+  check('and its trade is stored the way jobs carry it', tradeRule.trade === 'electrical');
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical', respondMinutes: 45 });
+  check('a second rule for the same priority, trade and place is refused',
+    r.statusCode === 409 && r.json().error === 'duplicate_rule');
+
+  const elecAtSite = await raise('electrical', siteId, 'SLA: electrical, no place rule');
+  check('a P2 electrical job takes the trade rule (30 minutes, not 60)', mins(elecAtSite) === 30, String(mins(elecAtSite)));
+  check('and records which rule it took', elecAtSite.sla_rule_id === tradeRule.id);
+  r = await get(`/api/jobs/${elecAtSite.id}`, admin);
+  check('the job card can say why', r.json().slaRule === 'P2 · electrical', String(r.json().slaRule));
+  const plumbAtSite = await raise('plumbing', siteId, 'SLA: plumbing, nothing applies');
+  check('a P2 plumbing job keeps the default', mins(plumbAtSite) === 60 && plumbAtSite.sla_rule_id === null);
+
+  r = await post('/api/admin/sla-rules', admin,
+    { priority: 'P2', locationId: blockS, respondMinutes: 20, escalateToRole: 'hod' });
+  check('a place rule is created', r.statusCode === 201, r.body.slice(0, 200));
+  const blockRule = r.json().rule as { id: string };
+  const plumbOnFloor = await raise('plumbing', floorS3, 'SLA: plumbing on a floor of the block');
+  check('a job on a floor takes the rule on the block above it', mins(plumbOnFloor) === 20, String(mins(plumbOnFloor)));
+  const elecOnFloor = await raise('electrical', floorS3, 'SLA: electrical on a floor of the block');
+  check('a place rule beats a trade rule', mins(elecOnFloor) === 20 && elecOnFloor.sla_rule_id === blockRule.id);
+
+  r = await post('/api/admin/sla-rules', admin,
+    { priority: 'P2', trade: 'electrical', locationId: blockS, respondMinutes: 10 });
+  const bothRule = r.json().rule as { id: string };
+  const elecOnFloor2 = await raise('electrical', floorS3, 'SLA: electrical on the floor, both rule');
+  check('a rule naming both the trade and the place beats either alone', mins(elecOnFloor2) === 10 && elecOnFloor2.sla_rule_id === bothRule.id);
+
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', locationId: floorS3, respondMinutes: 25 });
+  const floorRule = r.json().rule as { id: string };
+  const plumbOnFloor2 = await raise('plumbing', floorS3, 'SLA: plumbing, floor rule and block rule');
+  check('the nearer place wins: the floor\'s rule over the block\'s',
+    mins(plumbOnFloor2) === 25 && plumbOnFloor2.sla_rule_id === floorRule.id);
+
+  r = await get(`/api/admin/sla-rules/preview?priority=P2&trade=plumbing&locationId=${floorS3}`, admin);
+  check('the preview gives the same answer the job got',
+    r.json().respondMinutes === 25 && r.json().ruleId === floorRule.id, r.body.slice(0, 200));
+
+  r = await get('/api/admin/sla-rules', admin);
+  check('the list carries all four live rules', (r.json().rules as unknown[]).length === 4);
+
+  r = await patch(`/api/admin/sla-rules/${tradeRule.id}`, admin,
+    { priority: 'P2', trade: 'electrical', respondMinutes: 35, note: null });
+  check('a rule can be edited', r.statusCode === 200 && r.json().rule.respond_minutes === 35, r.body.slice(0, 200));
+  r = await patch(`/api/admin/sla-rules/${tradeRule.id}`, admin,
+    { priority: 'P2', trade: 'electrical', locationId: blockS, respondMinutes: 35 });
+  check('but not into a copy of another rule', r.statusCode === 409);
+  const before = (db.prepare('SELECT respond_by FROM work_orders WHERE id = ?').get(elecAtSite.id) as { respond_by: string }).respond_by;
+  check('editing a rule does not move a deadline already set', before === elecAtSite.respond_by);
+
+  r = await del(`/api/admin/sla-rules/${tradeRule.id}`, admin);
+  check('a rule can be deleted', r.statusCode === 200 && r.json().jobsKeepTheirDeadlines >= 1, r.body.slice(0, 160));
+  const elecAfter = await raise('electrical', siteId, 'SLA: electrical after the rule went');
+  check('new jobs go back to the default', mins(elecAfter) === 60 && elecAfter.sla_rule_id === null);
+  check('the old job still points at the rule that set its deadline',
+    (db.prepare('SELECT sla_rule_id FROM work_orders WHERE id = ?').get(elecAtSite.id) as { sla_rule_id: string }).sla_rule_id === tradeRule.id);
+  r = await post('/api/admin/sla-rules', admin, { priority: 'P2', trade: 'electrical', respondMinutes: 40 });
+  check('and the same rule can be made again once deleted', r.statusCode === 201, r.body.slice(0, 160));
+  r = await patch(`/api/admin/sla-rules/${tradeRule.id}`, admin, { priority: 'P2', trade: 'electrical', respondMinutes: 50 });
+  check('a deleted rule cannot be edited', r.statusCode === 404);
+
+  // Escalation reaches the person the job's own rule names.
+  const past = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  db.prepare('UPDATE work_orders SET reported_at = ?, respond_by = ?, due_at = ? WHERE id = ?')
+    .run(past, past, past, plumbOnFloor.id);
+  const escalated = tick(db, propertyId).escalated.find((e) => e.id === plumbOnFloor.id);
+  check('a breached job escalates to the role its rule names (hod), not the P2 default',
+    escalated?.role === 'hod', JSON.stringify(escalated));
+
+  r = await get('/api/admin/settings', admin);
+  const matrix = r.json().settings.sla_matrix as { priority: string; escalateToRole: string }[];
+  r = await post('/api/admin/settings', admin,
+    { key: 'sla_matrix', value: matrix.map((m) => (m.priority === 'P3' ? { ...m, escalateToRole: 'nobody' } : m)) });
+  check('the default table cannot escalate to a role that does not exist',
+    r.statusCode === 400 && r.json().error === 'unknown_role', r.body.slice(0, 160));
+
+  const logged = db.prepare(
+    `SELECT action FROM audit_log WHERE entity_type = 'sla_rule' GROUP BY action ORDER BY action`
+  ).all() as { action: string }[];
+  check('rules are created, edited and deleted on the audit log',
+    logged.map((l) => l.action).join(',') === 'sla_rule.created,sla_rule.deleted,sla_rule.updated',
+    JSON.stringify(logged));
+}
+
+// --------------------------------------------------------------------------
 heading('Integrity');
 // --------------------------------------------------------------------------
 check('no foreign key is left dangling', (db.pragma('foreign_key_check') as unknown[]).length === 0);
