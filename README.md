@@ -347,6 +347,8 @@ GET  /api/reports/dashboard          POST /api/reports/escalate
 
 ## Environment
 
+Read from the environment the server starts in; nothing reads a `.env` file.
+
 | Variable | Default | Notes |
 |---|---|---|
 | `FF_DATA_DIR` | `<repo>/data` | Database, attachments and backups |

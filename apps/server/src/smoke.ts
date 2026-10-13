@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { openDb, integrityCheck } from './db/connection.js';
 import { migrate, appliedVersions } from './db/migrate.js';
 import { buildApp } from './app.js';
-import { loadConfig } from './config.js';
+import { loadConfig, defaultDataDir } from './config.js';
 import { runBackup, stageRestore, applyPendingRestore, PENDING } from './db/backup.js';
 import { runDailyBackup } from './services/scheduler.js';
 import { readHostFile, writeHostFile } from './config.js';
@@ -74,6 +74,14 @@ const app = await buildApp(db, config);
 // ---- first run --------------------------------------------------------------
 let r = await app.inject({ method: 'GET', url: '/api/health' });
 check('health responds before setup', r.statusCode === 200 && r.json().setupComplete === false);
+{
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const pkg = JSON.parse(fs.readFileSync(path.join(here, '../package.json'), 'utf8')) as { version: string };
+  check('the version reported is the one in package.json, not a copy of it', r.json().version === pkg.version,
+    `${r.json().version} vs ${pkg.version}`);
+  check('the data folder is found from the npm workspace root, wherever the shell is',
+    defaultDataDir() === path.resolve(here, '../../../data'), defaultDataDir());
+}
 
 // Submitted twice at once — a double-tap on a slow PC. Both pass the first "already set
 // up?" check before either has finished hashing the password, so the write has to ask again.
@@ -346,6 +354,22 @@ check('backup keeps snapshots in the backups folder', direct.file.startsWith(con
     second === false, `first=${first} second=${second}`);
   check('so restarting the host six times a morning does not prune the folder empty',
     after <= before + 1, `${before} → ${after}`);
+}
+{
+  // "Today" is Lagos's. At 00:20 in Lagos it is still 23:20 the day before in UTC, and a
+  // snapshot from 23:50 Lagos time — yesterday, there — carries yesterday's UTC date too.
+  // Comparing UTC dates called it today's and skipped the first backup of the new day.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-daily-'));
+  fs.writeFileSync(path.join(dir, 'facilityflow-2026-03-04T22-50-00-000Z.db'), '');
+  const took = runDailyBackup(db, { ...config, backupsDir: dir }, () => {}, new Date('2026-03-04T23:20:00Z'));
+  check('just after midnight in the property, yesterday evening\u2019s snapshot does not count as today\u2019s', took);
+
+  const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-daily-'));
+  fs.writeFileSync(path.join(dir2, 'facilityflow-2026-03-04T23-10-00-000Z.db'), '');
+  const again = runDailyBackup(db, { ...config, backupsDir: dir2 }, () => {}, new Date('2026-03-05T10:00:00Z'));
+  check('while one taken ten past midnight there does, though its UTC date is the day before', !again);
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir2, { recursive: true, force: true });
 }
 
 // ---- download, and the restore path -----------------------------------------

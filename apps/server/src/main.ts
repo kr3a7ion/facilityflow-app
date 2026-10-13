@@ -117,6 +117,8 @@ async function main(): Promise<void> {
     scheduler.stop();
     heartbeat.stop();
     await app.close();
+    // The second server holds its own port; a restart that leaves it bound fails to start.
+    if (https) await https.server.close();
     db.close();
     process.exit(0);
   };
