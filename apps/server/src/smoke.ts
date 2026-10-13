@@ -259,12 +259,19 @@ check('an admin cannot disable their own account', r.statusCode === 400);
       payload: { username: 'admin', password: 'correct-horse-battery' } });
     return res.cookies.find((c) => c.name === 'ff_sid');
   };
-  check('on the plain LAN address the session cookie works over HTTP',
-    (await cookieFrom('192.168.1.40'))?.secure !== true);
-  check('behind TLS ended on this PC — the tunnel — it is marked Secure',
-    (await cookieFrom('127.0.0.1', { 'x-forwarded-proto': 'https' }))?.secure === true);
+  // Each check needs a cookie to exist: a refused sign-in has none, and "not Secure" must
+  // not pass just because nothing was handed out.
+  const lan = await cookieFrom('192.168.1.40');
+  check('on the plain LAN address the session cookie works over HTTP', !!lan && lan.secure !== true);
+
+  // A forwarded request is from outside, so the property has to let people in that way first.
+  await app.inject({ method: 'PATCH', url: '/api/admin/remote', headers: admin, payload: { enabled: true } });
+  const tunnel = await cookieFrom('127.0.0.1', { 'x-forwarded-proto': 'https' });
+  check('behind TLS ended on this PC — the tunnel — it is marked Secure', tunnel?.secure === true);
+  const claimed = await cookieFrom('192.168.1.40', { 'x-forwarded-proto': 'https' });
   check('and nobody on the network can claim TLS they did not use',
-    (await cookieFrom('192.168.1.40', { 'x-forwarded-proto': 'https' }))?.secure !== true);
+    !!claimed && claimed.secure !== true);
+  await app.inject({ method: 'PATCH', url: '/api/admin/remote', headers: admin, payload: { enabled: false } });
 
   const assets = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist/assets');
   if (fs.existsSync(assets)) {
