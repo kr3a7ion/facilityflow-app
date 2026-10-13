@@ -142,9 +142,12 @@ async function bootService(): Promise<HostStatus['bootService']> {
     const status = /Status:\s*(.+)/i.exec(r.out)?.[1]?.trim();
     return { state: 'registered', detail: status || undefined };
   }
-  // schtasks exits non-zero when the task simply is not there, which is an answer.
-  if (/cannot find|does not exist/i.test(r.out) || !r.ok) {
-    return { state: 'missing' };
+  // schtasks exits non-zero when the task simply is not there, which is an answer. It also
+  // exits non-zero when the account the server runs as may not ask — and "missing" then
+  // would send somebody to re-register a task that is running fine.
+  if (/cannot find|does not exist/i.test(r.out)) return { state: 'missing' };
+  if (!r.ok) {
+    return { state: 'unknown', why: 'The account this server runs as could not query the scheduled task.' };
   }
   return { state: 'unknown', why: 'The scheduled task query gave an answer that could not be read.' };
 }
@@ -156,7 +159,8 @@ async function firewall(port: number): Promise<HostStatus['firewall']> {
   const r = await run('netsh', ['advfirewall', 'firewall', 'show', 'rule',
                                 `name=FacilityFlow (${port})`]);
   if (r.ok && /Enabled:\s*Yes/i.test(r.out)) return { state: 'open' };
-  if (/No rules match/i.test(r.out) || !r.ok) return { state: 'missing' };
+  if (/No rules match/i.test(r.out)) return { state: 'missing' };
+  if (!r.ok) return { state: 'unknown', why: 'The account this server runs as could not read the firewall rules.' };
   return { state: 'unknown', why: 'The firewall query gave an answer that could not be read.' };
 }
 
