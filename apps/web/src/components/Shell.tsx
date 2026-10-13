@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Component, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qk } from '../lib/api';
 import { useSession } from '../lib/session';
@@ -7,6 +7,7 @@ import { initials, when } from '../lib/format';
 import { Icon, type IconName } from './Icon';
 import { play, soundOn, setSoundOn, preview, deviceId, audioReady } from '../lib/sound';
 import { textSize, setTextSize, nextTextSize, LABEL, type TextSize } from '../lib/textsize';
+import { Card, Loading } from './Bits';
 import { Mimic } from './Mimic';
 import { LogoTile } from './Logo';
 import { ChangePassword } from './ChangePassword';
@@ -56,6 +57,7 @@ export function Shell() {
   const { me, can, canAny } = useSession();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const items = ITEMS.filter((i) => !i.need || can(i.need));
   // Anyone holding any administrative right gets the section; the page hides the tabs
@@ -479,7 +481,13 @@ export function Shell() {
         <Alarm live={live} />
         {/* Only draws itself on a screen that has been made the duty screen. */}
         <DutyBar live={live} />
-        <Outlet />
+        {/* Each screen is fetched the first time it is opened; this holds its place meanwhile. */}
+        {/* Keyed on the path, so moving to another screen clears a screen that failed. */}
+        <ScreenBoundary key={location.pathname}>
+          <Suspense fallback={<main className="view"><Card><Loading rows={6} /></Card></main>}>
+            <Outlet />
+          </Suspense>
+        </ScreenBoundary>
 
         {/*
           * The phone's whole navigation.
@@ -558,4 +566,30 @@ export function Shell() {
       </div>
     </div>
   );
+}
+
+/**
+ * A screen that could not be drawn, said in words rather than a blank page.
+ *
+ * Screens are fetched when first opened, and one that cannot be — the host unreachable, or
+ * an update that a reload did not settle — would otherwise take the whole app down with it,
+ * sidebar and all. Only the screen area is replaced, so everything else keeps working.
+ */
+class ScreenBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError(): { failed: boolean } { return { failed: true }; }
+  render(): ReactNode {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <main className="view">
+        <div className="note crit" role="alert">
+          <b>This screen could not be loaded.</b> The host may be unreachable, or it has just been
+          updated. Check the connection, then load the page again.
+          <div className="mt-5">
+            <button className="btn" onClick={() => window.location.reload()}>Load the page again</button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 }
