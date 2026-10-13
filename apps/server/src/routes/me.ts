@@ -133,7 +133,10 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
     // live, and falls back to polling if it never arrives.
     write({ kind: 'ping', at: nowIso() });
 
-    const unsubscribe = bus.subscribe(me.userId, write);
+    const unsubscribe = bus.subscribe(me.userId, write, {
+      deviceId: req.deviceId ?? null,
+      close: () => reply.raw.end(),
+    });
 
     /*
      * A paired phone says so while it is here, and stops saying so the moment it is not.

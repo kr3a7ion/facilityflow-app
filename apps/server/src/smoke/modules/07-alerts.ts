@@ -618,3 +618,69 @@ check('nobody can unpair somebody else\u2019s phone through the path', r.statusC
   check('a phone can unpair itself', r.statusCode === 200, r.body.slice(0, 140));
   check('and its token stops working', (await get('/api/me', own)).statusCode === 401);
 }
+
+/*
+ * A phone's token has no password behind it, so it outlived everything that is meant to
+ * take somebody's access away: a password reset, their own password change, their account
+ * being disabled — and re-enabling the account brought every old phone back. And revoking
+ * stopped the token's next request but not the stream it already had open, so a phone
+ * unpaired on the website went on hearing every event, counted as reached by every ring.
+ * A fresh account, so cutting its streams touches nothing else in this chapter.
+ */
+{
+  r = await post('/api/admin/users', admin,
+    { username: 'pagerpat', roleKey: 'technician', displayName: 'Pat Pager', password: PW });
+  check('an account to pair a phone to', r.statusCode === 201, r.body.slice(0, 140));
+  const patId = (db.prepare("SELECT id FROM users WHERE username = 'pagerpat'").get() as { id: string }).id;
+  let pat = await login('pagerpat', PW);
+  const pair = async (who: Hdr) => {
+    const code = (await post('/api/me/pairing-code', who)).json().code as string;
+    const p = (await post('/api/devices/pair', { cookie: '' } as Hdr,
+      { code, deviceName: 'Pat Itel A70', platform: 'android' })).json() as { deviceId: string; token: string };
+    return { ...p, hdr: { authorization: `Bearer ${p.token}` } as unknown as Hdr };
+  };
+  const works = async (h: Hdr) => (await get('/api/me/outstanding', h)).statusCode === 200;
+
+  // Unpairing ends the stream it had open.
+  let phone = await pair(pat);
+  const stream = app.inject({ method: 'GET', url: '/api/events', headers: phone.hdr });
+  await new Promise((res) => setTimeout(res, 50));
+  check('a listening phone holds a stream open', bus.listenerCountFor(patId) === 1,
+    String(bus.listenerCountFor(patId)));
+  await app.inject({ method: 'DELETE', url: `/api/me/devices/${phone.deviceId}`, headers: pat });
+  check('unpairing it takes it off the list at once, so a ring sent now does not count it',
+    bus.listenerCountFor(patId) === 0, String(bus.listenerCountFor(patId)));
+  const ended = await Promise.race([
+    stream.then(() => true), new Promise<boolean>((res) => setTimeout(() => res(false), 2000)),
+  ]);
+  check('and the stream itself is closed, not left to hear the next event', ended);
+
+  // An administrator's reset.
+  phone = await pair(pat);
+  check('a newly paired phone works', await works(phone.hdr));
+  r = await post(`/api/admin/users/${patId}/reset-password`, admin, { password: 'a-reset-password-1' });
+  check('resetting the password unpairs the phone with everything else',
+    r.statusCode === 200 && r.json().phonesUnpaired === 1, r.body.slice(0, 160));
+  check('and its token stops working', !(await works(phone.hdr)));
+
+  // Their own password change.
+  pat = await login('pagerpat', 'a-reset-password-1');
+  phone = await pair(pat);
+  r = await post('/api/auth/password', pat,
+    { currentPassword: 'a-reset-password-1', newPassword: 'a-chosen-password-2' });
+  check('changing your own password unpairs your phone too, and says so',
+    r.statusCode === 200 && r.json().phonesUnpaired === 1 && /pairing again/.test(String(r.json().message)),
+    r.body.slice(0, 200));
+  check('its token stops working', !(await works(phone.hdr)));
+  const fresh = r.cookies.find((c) => c.name === 'ff_sid');
+  pat = { cookie: `ff_sid=${fresh?.value}` };
+  check('while the browser that changed it carries on, on its new session', await works(pat));
+
+  // Disabled, then enabled again.
+  phone = await pair(pat);
+  r = await post(`/api/admin/users/${patId}/disable`, admin);
+  check('disabling the account unpairs the phone',
+    r.statusCode === 200 && r.json().phonesUnpaired === 1, r.body.slice(0, 160));
+  await post(`/api/admin/users/${patId}/enable`, admin);
+  check('and enabling it again does not bring the old phone back', !(await works(phone.hdr)));
+}

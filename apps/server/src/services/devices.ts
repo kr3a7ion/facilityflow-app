@@ -13,6 +13,7 @@ import type { Db } from '../db/connection.js';
 import { ulid } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { HttpError } from '../lib/errors.js';
+import * as bus from './bus.js';
 
 /** Long enough that guessing is not a strategy, short enough to live in a QR code. */
 const TOKEN_BYTES = 32;
@@ -242,7 +243,27 @@ export function revoke(db: Db, propertyId: string, deviceId: string, by: string)
     `UPDATE app_devices SET revoked_at = ?, revoked_by = ?
       WHERE id = ? AND property_id = ? AND revoked_at IS NULL`
   ).run(nowIso(), by, deviceId, propertyId);
+  // And its open stream with it: a revoked token must stop hearing events now, not when
+  // its socket next happens to drop.
+  if (r.changes > 0) bus.disconnect({ deviceId });
   return r.changes > 0;
+}
+
+/**
+ * Unpair every phone a person has: their password reset or changed, or their account
+ * disabled. A phone holds a token with no password behind it, so without this it outlived
+ * every one of those — and re-enabling the account brought every old phone back with it.
+ */
+export function revokeAllForUser(db: Db, userId: string, by: string | null): number {
+  const ids = (db.prepare(
+    'SELECT id FROM app_devices WHERE user_id = ? AND revoked_at IS NULL'
+  ).all(userId) as { id: string }[]).map((d) => d.id);
+  if (ids.length === 0) return 0;
+  db.prepare(
+    'UPDATE app_devices SET revoked_at = ?, revoked_by = ? WHERE user_id = ? AND revoked_at IS NULL'
+  ).run(nowIso(), by, userId);
+  for (const deviceId of ids) bus.disconnect({ deviceId });
+  return ids.length;
 }
 
 /** Housekeeping: spent and expired codes are litter after a day. */
