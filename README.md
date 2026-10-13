@@ -306,6 +306,7 @@ apps/server/src
   smoke.ts         schema, auth, RBAC, audit, backup and restore
   smoke.modules.ts every rule in the table above, through HTTP,
                    plus the payload shape each screen depends on
+  smoke/modules/   its eleven chapters, run in order, and the harness they share
   db/
     connection.ts  pragmas that matter: foreign_keys, WAL, busy_timeout
     migrate.ts     numbered SQL, checksummed, transactional
