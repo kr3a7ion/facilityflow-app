@@ -233,7 +233,9 @@ internet down.
    stop. A known password and a public address is the one combination that must not exist.
    The panel names anybody in that state so it can be fixed before they travel.
 5. **A remote session times out faster** than one on site — 20 minutes of doing nothing by
-   default.
+   default. Doing nothing means nobody touching the page: a tab left open keeps asking for
+   updates by itself, and that does not count, so a laptop left open in a hotel times out
+   like a closed one. The sign-in screen then says why.
 
 ### What the record shows
 

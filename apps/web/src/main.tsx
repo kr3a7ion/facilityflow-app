@@ -1,9 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionProvider } from './lib/session';
-import { ApiError } from './lib/api';
+import { ApiError, qk } from './lib/api';
 import { App } from './App';
 import { applyTextSize, textSize } from './lib/textsize';
 
@@ -31,7 +31,22 @@ try {
 // type should not have to watch the small version draw itself first.
 applyTextSize(textSize());
 
-const client = new QueryClient({
+/*
+ * A session can end under an open page: the remote timeout, or an administrator signing
+ * somebody out. Whichever request finds out first, the session query has to hear it, or the
+ * page goes on showing what it showed until somebody happens to click.
+ */
+const SESSION_GONE = new Set(['not_signed_in', 'timed_out']);
+const signedOut = (err: unknown, key?: readonly unknown[]): void => {
+  // Not a wrong password, which is a 401 too; and not the session query itself, which
+  // would only ask again.
+  if (!(err instanceof ApiError) || !SESSION_GONE.has(err.code) || key?.[0] === qk.me[0]) return;
+  void client.invalidateQueries({ queryKey: qk.me });
+};
+
+const client: QueryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: (err, query) => signedOut(err, query.queryKey) }),
+  mutationCache: new MutationCache({ onError: (err) => signedOut(err) }),
   defaultOptions: {
     queries: {
       // On a weak wifi signal, refetching when the tab comes back is most of what

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { requirePermission } from '../auth/guard.js';
+import { notSignedIn, requirePermission } from '../auth/guard.js';
 import { nowIso } from '../lib/time.js';
 import * as reports from '../services/reports.js';
 import { lowStock } from '../services/stores.js';
@@ -22,7 +22,7 @@ export async function reportRoutes(app: FastifyInstance): Promise<void> {
    * hidden in the client.
    */
   app.get('/api/status/plant', async (req, reply) => {
-    if (!req.principal) return reply.code(401).send({ error: 'not_signed_in' });
+    if (!req.principal) return notSignedIn(req, reply);
     const me = req.principal;
     const today = localDate(propertyTimezone(app.db, me.propertyId));
     const full = reports.plantStatus(app.db, me.propertyId, today);
@@ -44,7 +44,7 @@ export async function reportRoutes(app: FastifyInstance): Promise<void> {
    * things only an administrator can do.
    */
   app.get('/api/setup/progress', async (req, reply) => {
-    if (!req.principal) return reply.code(401).send({ error: 'not_signed_in' });
+    if (!req.principal) return notSignedIn(req, reply);
     const me = req.principal;
     const full = readiness(app.db, me.propertyId, app.config);
     const mine = full.steps.filter((s) => me.permissions.has(s.needs));

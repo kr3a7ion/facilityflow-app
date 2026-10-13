@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { LogoTile } from '../components/Logo';
+import { forgetTimedOut, timedOut } from '../lib/api';
 
 export function Login() {
   const [username, setUsername] = useState('');
@@ -26,6 +27,7 @@ export function Login() {
   const signIn = useMutation({
     mutationFn: () => api.post<{ mustChangePassword: boolean }>('/api/auth/login', { username, password }),
     onSuccess: async () => {
+      forgetTimedOut();
       await qc.cancelQueries();
       qc.clear();
       window.location.assign('/');
@@ -76,9 +78,14 @@ export function Login() {
                  value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
 
-        {err && (
+        {err ? (
           <div className={`note ${err.status === 423 ? 'warn' : 'crit'} mb-6`} role="alert">
             {err.message}
+          </div>
+        ) : timedOut() && (
+          <div className="note warn mb-6" role="status">
+            You were signed out after a while without use from outside the property. Sign in
+            again to carry on.
           </div>
         )}
 

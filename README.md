@@ -270,7 +270,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | A corrupt or hand-edited `host.json` is **ignored rather than fatal** — the department cannot fix JSON at 6am, and a host that will not start is the worse failure | `config.readHostFile` |
 | Host status reports **unknown** rather than guessing when the boot service or firewall cannot be queried | `services/host.ts` |
 | The **HTTPS switch** reaches the next start, and saving the port or address afterwards does not quietly drop it | `config.readHostFile` |
-| A **remote session left idle** past the property's timeout is signed out; the same idle time on the property network is not | `auth/sessions.ts` |
+| A **remote session left idle** past the property's timeout is signed out, however busily an open tab polls; the same idle time on the property network is not | `auth/sessions.ts` |
 | A job handed out — or sent back — **after its response deadline still rings** the person it went to, for a full response window from assignment, while the deadline it is judged against stays put | `workOrders.ringUntil` |
 | A phone shows as **not listening only when its last stream closes**, so a redial after a silent drop is not reported as a dead app | `devices.streamClosed` |
 | Setup **submitted twice at once** creates one property and one administrator, not two | `routes/setup.ts` |
