@@ -25,19 +25,18 @@ const TYPES: Record<string, { ext: string; magic: number[][] }> = {
  * readable by whoever may read the job — there is no separate "can see photos" right
  * to get out of step with it.
  */
-export const ENTITY_PERMS: Record<string, { read: string; write: string }> = {
-  work_order:     { read: 'wo.read', write: 'wo.update' },
-  fuel_delivery:  { read: 'fuel.read', write: 'fuel.delivery.create' },
-  permit:         { read: 'permit.request', write: 'permit.request' },
-  incident:       { read: 'incident.read', write: 'incident.report' },
-  expense:        { read: 'finance.read', write: 'finance.expense.create' },
-  purchase:       { read: 'finance.read', write: 'purchase.record' },
-  apartment:      { read: 'apartment.read', write: 'apartment.manage' },
-  asset:          { read: 'asset.read', write: 'asset.manage' },
-  unit_inspection:{ read: 'apartment.read', write: 'apartment.manage' },
+export const ENTITY_PERMS: Record<string, { read: string; write: string; table: string }> = {
+  work_order:     { read: 'wo.read', write: 'wo.update', table: 'work_orders' },
+  fuel_delivery:  { read: 'fuel.read', write: 'fuel.delivery.create', table: 'fuel_deliveries' },
+  permit:         { read: 'permit.request', write: 'permit.request', table: 'permits' },
+  incident:       { read: 'incident.read', write: 'incident.report', table: 'incidents' },
+  expense:        { read: 'finance.read', write: 'finance.expense.create', table: 'expenses' },
+  purchase:       { read: 'finance.read', write: 'purchase.record', table: 'purchases' },
+  apartment:      { read: 'apartment.read', write: 'apartment.manage', table: 'apartments' },
+  asset:          { read: 'asset.read', write: 'asset.manage', table: 'assets' },
 };
 
-export function permsFor(entityType: string): { read: string; write: string } {
+export function permsFor(entityType: string): { read: string; write: string; table: string } {
   const p = ENTITY_PERMS[entityType];
   if (!p) throw new HttpError(400, 'unknown_entity', `Files cannot be attached to "${entityType}".`);
   return p;
@@ -72,6 +71,16 @@ export function save(db: Db, config: Config, input: SaveInput) {
       'Photos are resized in the browser before upload, so this usually means an unresized import.');
   }
   const { mime, ext } = sniff(input.data, input.declaredMime);
+
+  // The record has to exist, and in this property, before a byte is written. Otherwise
+  // a file could hang off an id that never existed — or another property's — and sit on
+  // disk and in every backup with nothing able to show it.
+  const { table } = permsFor(input.entityType);
+  const exists = db.prepare(`SELECT 1 FROM ${table} WHERE id = ? AND property_id = ?`)
+    .get(input.entityId, input.propertyId);
+  if (!exists) {
+    throw new HttpError(404, 'no_such_record', 'That record does not exist, so nothing can be attached to it.');
+  }
 
   const at = nowIso();
   const id = ulid();

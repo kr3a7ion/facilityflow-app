@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Db } from '../db/connection.js';
-import { nowIso } from '../lib/time.js';
+import { nowIso, localDate } from '../lib/time.js';
 import { tick } from './escalation.js';
 import { generateDue, remindDue } from './ppm.js';
 import { pruneSessions } from '../auth/sessions.js';
@@ -43,6 +43,13 @@ export function runEscalationSweep(db: Db, log: (msg: string) => void = () => {}
     if (r.escalated.length) {
       log(`[escalation] ${r.escalated.length} job(s) escalated: ${r.escalated.map((e) => e.ref).join(', ')}`);
     }
+    // Said where whoever looks after the host PC will see it: a role nobody holds is a
+    // setup problem, and one that reached nobody at all is a job nobody has been told about.
+    for (const e of r.escalated.filter((x) => x.fellBack)) {
+      log(e.told
+        ? `[escalation] nobody active holds "${e.role}"; ${e.ref} went to the ${e.told} who can reassign work instead`
+        : `[escalation] !! ${e.ref} reached nobody — no active "${e.role}" and nobody who can reassign work`);
+    }
   }
   return total;
 }
@@ -73,11 +80,25 @@ export function runPpmGeneration(db: Db, log: (msg: string) => void = () => {}):
  * A failure here is logged and swallowed: a full disk must not take the job board down
  * with it, and the Admin screen shows what the newest snapshot actually is.
  */
-export function runDailyBackup(db: Db, cfg: Config, log: (msg: string) => void = () => {}): boolean {
-  const today = nowIso().slice(0, 10);
+export function runDailyBackup(
+  db: Db, cfg: Config, log: (msg: string) => void = () => {}, now: Date = new Date()
+): boolean {
+  /*
+   * "Today" is the property's, not Greenwich's. Snapshot names carry a UTC stamp, and this
+   * used to compare their UTC date with UTC today — so for the hour Lagos is a day ahead of
+   * UTC, a snapshot taken at half past midnight counted as yesterday's and one taken late
+   * the evening before counted as today's. Each name is read back as an instant and placed
+   * on the property's calendar instead.
+   */
+  const tz = (db.prepare('SELECT timezone FROM properties LIMIT 1').get() as
+    { timezone: string } | undefined)?.timezone ?? 'UTC';
+  const today = localDate(tz, now);
   fs.mkdirSync(cfg.backupsDir, { recursive: true });
-  const already = fs.readdirSync(cfg.backupsDir)
-    .some((f) => f.startsWith(`facilityflow-${today}`) && f.endsWith('.db'));
+  const already = fs.readdirSync(cfg.backupsDir).some((f) => {
+    const m = /^facilityflow-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z\.db$/.exec(f);
+    if (!m) return false;
+    return localDate(tz, new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`)) === today;
+  });
   if (already) return false;
 
   const r = runBackup(db, cfg);

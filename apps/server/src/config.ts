@@ -23,10 +23,22 @@ export interface Config {
  * to two different databases. Anchor it to the workspace root instead.
  * FF_DATA_DIR overrides it when the host keeps its data somewhere else.
  */
-function defaultDataDir(): string {
+function isWorkspaceRoot(dir: string): boolean {
+  // The root package.json is the one that declares the workspaces — which is how npm, the
+  // tool this project is installed with, knows it too. pnpm-workspace.yaml used to be the
+  // marker: a file npm never reads, which anybody tidying up could delete, and the data
+  // directory would quietly move to wherever the shell happened to be.
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as { workspaces?: unknown };
+    if (Array.isArray(pkg.workspaces)) return true;
+  } catch { /* no package.json here */ }
+  return fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'));
+}
+
+export function defaultDataDir(): string {
   let dir = path.dirname(fileURLToPath(import.meta.url));
   for (let up = 0; up < 8; up++) {
-    if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return path.join(dir, 'data');
+    if (isWorkspaceRoot(dir)) return path.join(dir, 'data');
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
