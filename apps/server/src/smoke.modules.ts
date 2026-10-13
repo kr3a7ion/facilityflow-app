@@ -549,6 +549,36 @@ esc = tick(db, propertyId);
 check('a P1 at twice its deadline reaches the HOD',
   esc.escalated.find((e) => e.id === p1.id)?.role === 'hod');
 
+/*
+ * A role with nobody in it. A property with no team lead accounts yet — or whose only one
+ * has been disabled — sent the first step of every escalation to nobody, silently.
+ */
+{
+  const leadIds = (db.prepare(
+    `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = 'team_lead' AND u.is_active = 1`
+  ).all() as { id: string }[]).map((x) => x.id);
+  for (const id of leadIds) db.prepare('UPDATE users SET is_active = 0 WHERE id = ?').run(id);
+
+  r = await post('/api/jobs', grace, { title: 'Nobody has picked this up', locationId: siteId, priority: 'P2' });
+  const unanswered = r.json().job as { id: string };
+  db.prepare('UPDATE work_orders SET respond_by = ? WHERE id = ?').run(iso(-1 / 24), unanswered.id);
+  const e = tick(db, propertyId).escalated.find((x) => x.id === unanswered.id);
+  check('a response breach with no team lead on the property still reaches somebody',
+    !!e && e.role === 'team_lead' && e.fellBack && e.told > 0, JSON.stringify(e));
+  check('namely whoever can reassign it — the supervisor among them',
+    (db.prepare(
+      `SELECT COUNT(*) n FROM notifications n JOIN users u ON u.id = n.user_id
+        WHERE n.kind = 'escalation' AND n.entity_id = ? AND u.username = 'grace'`
+    ).get(unanswered.id) as { n: number }).n === 1);
+  check('and the job\u2019s history says the role was empty, rather than that it was told',
+    JSON.parse((db.prepare(
+      `SELECT meta_json FROM work_order_events WHERE wo_id = ? AND event_type = 'escalated'`
+    ).get(unanswered.id) as { meta_json: string }).meta_json).nobodyInRole === true);
+
+  for (const id of leadIds) db.prepare('UPDATE users SET is_active = 1 WHERE id = ?').run(id);
+  await post(`/api/jobs/${unanswered.id}/cancel`, grace, { reason: 'Escalation fixture' });
+}
+
 r = await get('/api/notifications', grace);
 check('notifications are readable with an unread count', r.json().unread > 0);
 r = await post('/api/notifications/read', grace);
