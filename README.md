@@ -290,7 +290,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | A file can only be attached to a record that **exists, in this property** — checked before a byte reaches the disk, so nothing hangs off an id that never existed | `services/attachments.ts` |
 | An uploaded file's **declared type is not evidence** — the first bytes are checked, and SVG is not accepted at all | `services/attachments.ts` |
 | Attachments **inherit the permission of what they hang off** — there is no separate "can see photos" right to drift out of step | `services/attachments.ts` |
-| A paired phone's token opens **only what the alert app does** — listen, read what it rings about, answer, accept, unpair — never its owner's whole role, so a lost phone is not a standing key to the system | `app.ts` |
+| A paired phone's token opens **only what the alert app does** — listen, read what it rings about and its owner's own notices (without marking them read), answer, accept, unpair — never its owner's whole role, so a lost phone is not a standing key to the system | `app.ts` |
 | Resetting a password **signs that person out of every device** and forces a change | `routes/admin.ts` |
 | Until a temporary password is changed, the **server** refuses that session everything but the change itself — on the property network too, not only behind the screen the browser draws | `app.ts` |
 | The **administrator role cannot be edited down**, and role changes are audited with the codes before and after | `routes/admin.ts` |
