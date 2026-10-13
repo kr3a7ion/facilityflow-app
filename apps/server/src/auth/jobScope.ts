@@ -18,25 +18,29 @@ import type { Principal } from './sessions.js';
  *    decided a job has to be put in somebody's name before a technician can take it.
  *  - **team**: jobs assigned to this person, to their team, or to anybody on their team —
  *    plus jobs nobody has been given yet, because dispatching those to their own people is
- *    what a team lead's wo.assign is for.
+ *    what a team lead's wo.assign is for. "Their team" is the one they are on and any team
+ *    they lead: the lead of a team is rung for its jobs, and must be able to act on them.
  *
  * An account with no staff record has no assignments and no team; it reaches only the jobs
  * it raised, which is what the board already showed it — wrong in the harmless direction,
  * and visible on the Users tab as the missing link it is.
  */
+/** Two placeholders, both the staff id: the team they are on, and the teams they lead. */
+const MY_TEAMS = `(SELECT team_id FROM staff WHERE id = ?
+                   UNION SELECT id FROM teams WHERE team_lead_staff_id = ? AND is_active = 1)`;
+
 export function jobScopeClause(
   me: Principal, scope: 'own' | 'team' | 'all', alias = 'w'
 ): { sql: string; args: unknown[] } {
   if (scope === 'all') return { sql: '1 = 1', args: [] };
   if (!me.staffId) return { sql: `${alias}.created_by = ?`, args: [me.userId] };
   if (scope === 'own') return { sql: `${alias}.assigned_to_staff_id = ?`, args: [me.staffId] };
-  const myTeam = '(SELECT team_id FROM staff WHERE id = ?)';
   return {
     sql: `(${alias}.assigned_to_staff_id = ?
            OR (${alias}.assigned_to_staff_id IS NULL AND ${alias}.assigned_team_id IS NULL)
-           OR ${alias}.assigned_team_id = ${myTeam}
-           OR ${alias}.assigned_to_staff_id IN (SELECT id FROM staff WHERE team_id = ${myTeam}))`,
-    args: [me.staffId, me.staffId, me.staffId],
+           OR ${alias}.assigned_team_id IN ${MY_TEAMS}
+           OR ${alias}.assigned_to_staff_id IN (SELECT id FROM staff WHERE team_id IN ${MY_TEAMS}))`,
+    args: [me.staffId, me.staffId, me.staffId, me.staffId, me.staffId],
   };
 }
 
@@ -76,4 +80,11 @@ export function teamOfStaff(db: Db, staffId: string | null): string | null {
   if (!staffId) return null;
   return (db.prepare('SELECT team_id FROM staff WHERE id = ?').get(staffId) as
     { team_id: string | null } | undefined)?.team_id ?? null;
+}
+
+/** The team a staff record is on and every active team they lead: what 'team' scope reaches. */
+export function teamsOfStaff(db: Db, staffId: string | null): string[] {
+  if (!staffId) return [];
+  return (db.prepare(MY_TEAMS.slice(1, -1)).all(staffId, staffId) as { team_id: string | null }[])
+    .map((t) => t.team_id).filter((t): t is string => !!t);
 }

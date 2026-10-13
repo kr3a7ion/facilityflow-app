@@ -174,14 +174,30 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/me/outstanding', { preHandler: requireSignedIn() }, async (req) => {
     const me = req.principal!;
     if (!me.staffId) return { unaccepted: [] };
+    /*
+     * Jobs in this person's name, and jobs handed to a team they lead with nobody's name
+     * on them yet.
+     *
+     * A job given to a team used to ring nobody: this list held only jobs in your own
+     * name, and a technician may act only on those. The lead is the one person who can put
+     * it in somebody's name, so it rings them, marked with the team, until it is in a
+     * name or accepted. team_name is null for a job in your own name. Only a lead who can
+     * hand work out: a technician named as lead would be rung for what they cannot do.
+     */
+    const canAssign = me.permissions.has('wo.assign') ? 1 : 0;
     const rows = app.db.prepare(
-      `SELECT w.id, w.ref, w.title, w.priority, w.assigned_at, w.respond_by, w.sla_rule_id
+      `SELECT w.id, w.ref, w.title, w.priority, w.assigned_at, w.respond_by, w.sla_rule_id,
+              CASE WHEN w.assigned_to_staff_id IS NULL THEN t.name END AS team_name
          FROM work_orders w
-        WHERE w.property_id = ? AND w.assigned_to_staff_id = ? AND w.status = 'assigned'
+         LEFT JOIN teams t ON t.id = w.assigned_team_id
+        WHERE w.property_id = ? AND w.status = 'assigned'
+          AND (w.assigned_to_staff_id = ?
+               OR (? = 1 AND w.assigned_to_staff_id IS NULL AND t.team_lead_staff_id = ? AND t.is_active = 1))
         ORDER BY w.priority, w.assigned_at`
-    ).all(me.propertyId, me.staffId) as {
+    ).all(me.propertyId, me.staffId, canAssign, me.staffId) as {
       id: string; ref: string; title: string; priority: string;
       assigned_at: string | null; respond_by: string | null; sla_rule_id: string | null;
+      team_name: string | null;
     }[];
     return {
       unaccepted: rows.map(({ sla_rule_id, ...row }) => ({

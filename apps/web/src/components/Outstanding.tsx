@@ -12,6 +12,11 @@ interface Unaccepted {
   assigned_at: string | null; respond_by: string | null;
   /** When to stop chiming: a full response window from assignment, never before respond_by. */
   ring_until?: string | null;
+  /**
+   * Set when the job was handed to a team this person leads, with nobody's name on it yet.
+   * Theirs to put in somebody's name, which is what the button offers instead of Accept.
+   */
+  team_name?: string | null;
 }
 
 /**
@@ -29,7 +34,8 @@ const EVERY_MS: Record<string, number> = {
 };
 
 /**
- * Work handed to you that you have not picked up — and the sound that keeps asking.
+ * Work handed to you that you have not picked up — and the sound that keeps asking. For a
+ * team lead, also work handed to their team that nobody's name is on yet.
  *
  * Being told once is not enough when the phone is in a pocket and the chime happened
  * while it was in a toolbag. So it asks again, on a cadence set by the priority, until
@@ -117,7 +123,9 @@ export function Outstanding() {
     <div className={`waiting ${worst === 'P1' ? 'p1' : ''}`} role="alert">
       <span className="wicon"><Icon name="alert" size={18} /></span>
       <div className="wbody">
-        <b>{jobs.length === 1 ? 'A job is waiting for you' : `${jobs.length} jobs are waiting for you`}</b>
+        <b>{jobs.length === 1
+          ? (jobs[0]!.team_name ? 'A job for your team needs someone' : 'A job is waiting for you')
+          : `${jobs.length} jobs are waiting for you`}</b>
         <ul>
           {jobs.slice(0, 3).map((j) => (
             <li key={j.id}>
@@ -125,9 +133,11 @@ export function Outstanding() {
                 {j.priority}
               </Chip>
               <Link to={`/jobs/${j.id}`}>{j.title}</Link>
-              <span className="sub">{j.ref}</span>
-              <Btn size="sm" tone="pri" disabled={accept.isPending}
-                   onClick={() => accept.mutate(j.id)}>Accept</Btn>
+              <span className="sub">{j.ref}{j.team_name ? ` · ${j.team_name} team` : ''}</span>
+              {j.team_name
+                ? <Link className="btn sm pri" to={`/jobs/${j.id}`}>Assign</Link>
+                : <Btn size="sm" tone="pri" disabled={accept.isPending}
+                       onClick={() => accept.mutate(j.id)}>Accept</Btn>}
             </li>
           ))}
           {jobs.length > 3 && <li className="sub">and {jobs.length - 3} more on your board</li>}

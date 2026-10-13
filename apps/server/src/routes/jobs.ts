@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission, scopeOf } from '../auth/guard.js';
-import { assertJobInScope, jobScopeClause, teamOfStaff } from '../auth/jobScope.js';
+import { assertJobInScope, jobScopeClause, teamOfStaff, teamsOfStaff } from '../auth/jobScope.js';
 import { HttpError } from '../lib/errors.js';
 import * as jobs from '../services/jobs.js';
 import * as slaRules from '../services/slaRules.js';
@@ -204,9 +204,9 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     const present = availableStaff(app.db, me.propertyId);
     // A team lead dispatches to their own people; offering the whole roster would only
     // produce refusals.
-    const myTeam = scopeOf(req, 'wo.assign') === 'team' ? teamOfStaff(app.db, me.staffId) : null;
+    const myTeams = teamsOfStaff(app.db, me.staffId);
     const staff = scopeOf(req, 'wo.assign') === 'team'
-      ? present.filter((p) => p.staff_id === me.staffId || (myTeam !== null && p.team_id === myTeam))
+      ? present.filter((p) => p.staff_id === me.staffId || (p.team_id !== null && myTeams.includes(p.team_id)))
       : present;
     return {
       staff,
@@ -227,10 +227,11 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
       // Within the team in both directions: the job has to be theirs to move, and so does
       // the person or team it is moved to. Handing work to another team is a supervisor's call.
       if (scopeOf(req, 'wo.assign') === 'team') {
-        const myTeam = teamOfStaff(app.db, me.staffId);
+        const myTeams = teamsOfStaff(app.db, me.staffId);
+        const theirs = staffId ? teamOfStaff(app.db, staffId) : null;
         const ok = staffId
-          ? staffId === me.staffId || (myTeam !== null && teamOfStaff(app.db, staffId) === myTeam)
-          : !!teamId && myTeam !== null && teamId === myTeam;
+          ? staffId === me.staffId || (theirs !== null && myTeams.includes(theirs))
+          : !!teamId && myTeams.includes(teamId);
         if (!ok) {
           throw new HttpError(403, 'out_of_scope',
             'You can assign work within your own team. A supervisor can give it to another team.');

@@ -77,6 +77,61 @@ check('and the team now reports who leads it',
   ((await get('/api/staff', admin)).json().teams as { id: string; team_lead_name: string | null }[])
     .find((t) => t.id === civilTeam)?.team_lead_name === 'Musa Ibrahim');
 
+/*
+ * A job handed to a team rang nobody. The phone and the banner listed only jobs in your own
+ * name, and a technician may act only on those — so a team job sat silent until somebody
+ * happened to look. It rings the team's lead now, the one person who can put it in a name.
+ */
+{
+  type Waiting = { id: string; team_name: string | null; ring_until: string | null };
+  const waitingFor = async (who: Hdr) =>
+    (await get('/api/me/outstanding', who)).json().unaccepted as Waiting[];
+
+  r = await post('/api/jobs', grace, {
+    title: 'Crack along the car park ramp', locationId: siteId, priority: 'P2', trade: 'civil',
+  });
+  const teamJob = r.json().job as { id: string; ref: string };
+  r = await post(`/api/jobs/${teamJob.id}/assign`, grace, { teamId: civilTeam });
+  check('a job can be handed to a team rather than a person', r.statusCode === 200, r.body.slice(0, 160));
+
+  const forLead = (await waitingFor(musaAgain)).find((w) => w.id === teamJob.id);
+  check('a job handed to a team rings the team’s lead', !!forLead, JSON.stringify(forLead));
+  check('marked with the team, so the lead knows it is theirs to put in a name',
+    forLead?.team_name === 'Civil', JSON.stringify(forLead));
+  check('and with a time to stop ringing, like any other', !!forLead?.ring_until, JSON.stringify(forLead));
+  check('but not the technicians on the team, who cannot act on a job not in their name',
+    !(await waitingFor(chidiSession)).some((w) => w.id === teamJob.id));
+
+  // Named as lead, but in a role that cannot hand work out: ringing them asks for what they
+  // cannot do.
+  await app.inject({ method: 'PATCH', url: `/api/teams/${civilTeam}`, headers: admin,
+    payload: { teamLeadStaffId: chidiStaff?.id } });
+  check('a lead whose role cannot hand out work is not rung for the team\u2019s jobs',
+    !(await waitingFor(chidiSession)).some((w) => w.id === teamJob.id));
+  await app.inject({ method: 'PATCH', url: `/api/teams/${civilTeam}`, headers: admin,
+    payload: { teamLeadStaffId: musaStaff?.id } });
+  check('the lead’s notice says what to do with it',
+    unreadFor('musa').some((n) => n.kind === 'wo.assigned' && n.title.includes(teamJob.ref)
+      && (n.body ?? '').startsWith('P2') && (n.body ?? '').includes('name')),
+    JSON.stringify(unreadFor('musa').slice(0, 2)));
+
+  r = await post(`/api/jobs/${teamJob.id}/assign`, grace, { staffId: ifeomaStaff?.id });
+  check('once it is in somebody’s name, the lead’s ring stops',
+    r.statusCode === 200 && !(await waitingFor(musaAgain)).some((w) => w.id === teamJob.id), r.body.slice(0, 160));
+  const forIfeoma = (await waitingFor(ifeoma)).find((w) => w.id === teamJob.id);
+  check('and that person’s starts, as their own job', !!forIfeoma && forIfeoma.team_name === null,
+    JSON.stringify(forIfeoma));
+
+  r = await post('/api/jobs', grace, {
+    title: 'Loose kerb stone by the gatehouse', locationId: siteId, priority: 'P3', trade: 'civil',
+  });
+  const picked = r.json().job as { id: string };
+  await post(`/api/jobs/${picked.id}/assign`, grace, { teamId: civilTeam });
+  r = await post(`/api/jobs/${picked.id}/accept`, musaAgain);
+  check('a lead who takes the team’s job stops it ringing too',
+    r.statusCode === 200 && !(await waitingFor(musaAgain)).some((w) => w.id === picked.id), r.body.slice(0, 160));
+}
+
 r = await post('/api/jobs', grace, {
   title: 'Extractor fan seized', locationId: siteId, priority: 'P1', trade: 'mechanical',
 });
@@ -109,6 +164,20 @@ if (tundeStaff) {
   check('a job can be moved to somebody else', r.statusCode === 200, r.body.slice(0, 160));
   check('and the person it was taken from is told it has left their board',
     unreadFor('ifeoma').some((n) => n.kind === 'wo.reassigned'));
+
+  // What the lead's ring is for: they put the team's job in one of their people's names —
+  // here a team they lead without being on it.
+  r = await post('/api/jobs', grace, {
+    title: 'Blocked gully outside block C', locationId: siteId, priority: 'P3', trade: 'civil',
+  });
+  const gully = r.json().job as { id: string };
+  await post(`/api/jobs/${gully.id}/assign`, grace, { teamId: civilTeam });
+  r = await post(`/api/jobs/${gully.id}/assign`, musaAgain, { staffId: tundeStaff.id });
+  check('the lead puts the team’s job in one of their people’s names', r.statusCode === 200,
+    r.body.slice(0, 160));
+  check('and it rings that person instead',
+    ((await get('/api/me/outstanding', chidiSession)).json().unaccepted as { id: string }[])
+      .some((w) => w.id === gully.id));
 }
 
 // Completion is a handover, not an ending.
