@@ -351,6 +351,14 @@ GET  /api/reports/dashboard          POST /api/reports/escalate
 | `FF_BACKUP_KEEP` | `14` | Snapshots retained |
 | `FF_LOG_LEVEL` | `info` | Fastify log level |
 
+### The one advisory `npm audit` still reports
+
+`node-forge` is flagged for accepting extra fields when it **verifies** an RSA PKCS#1 v1.5
+signature, and no fixed release exists. The host only uses it to **generate** the property's
+own root and server certificate (`services/tls.ts`); it never verifies a signature with it,
+so the flaw has nothing to act on here. Revisit if `tls.ts` ever starts checking certificates
+it did not make itself.
+
 `FF_PORT` beats `data/host.json` beats the default. The scheduled task sets no environment,
 so on the office PC the file is what decides — which is what makes the port changeable from
 a screen at all.
