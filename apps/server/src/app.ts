@@ -100,7 +100,7 @@ export async function buildApp(
     // Answered once per request, from the socket rather than a header, and carried for
     // the rest of the pipeline: the permission check below, the audit entry, and the
     // session list all need the same answer.
-    req.origin = remote.originOf(req);
+    req.origin = remote.originOf(req, db);
 
     const sid = req.cookies?.[COOKIE];
     if (sid) {

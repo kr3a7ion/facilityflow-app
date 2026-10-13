@@ -3058,6 +3058,30 @@ check('and nothing from outside gets in while it is',
 r = await get('/api/jobs', graceOwn);
 check('while the same person on the property network is unaffected', r.statusCode === 200);
 
+/*
+ * Cloudflare is the tunnel the department chose, not the only one anybody can run. Any other
+ * tunnel or proxy on the host PC reaches the app over loopback — and loopback looked like the
+ * property network, so it walked past every rule here.
+ */
+{
+  const ask = (remoteAddress: string, headers: Record<string, string>) =>
+    app.inject({ method: 'GET', url: '/api/jobs', remoteAddress, headers: { ...graceOwn, ...headers } });
+  const closed = (res: { statusCode: number; body: string }) =>
+    res.statusCode === 403 && res.body.includes('remote_closed');
+  check('a request any proxy forwarded is from outside',
+    closed(await ask('127.0.0.1', { 'x-forwarded-for': '41.58.10.10' })));
+  check('so is one carrying the standard Forwarded header',
+    closed(await ask('127.0.0.1', { forwarded: 'for=41.58.10.10;proto=https' })));
+  check('and one a raw tunnel carried in to loopback, asking for a public name',
+    closed(await ask('127.0.0.1', { host: 'harmony-court.ngrok-free.app' })));
+  check('while the host PC\u2019s own browser on localhost is on the property network',
+    (await ask('127.0.0.1', { host: 'localhost:4700' })).statusCode === 200);
+  check('and so is the host PC by its own name',
+    (await ask('127.0.0.1', { host: `${os.hostname()}:4700` })).statusCode === 200);
+  check('and a phone on the wifi using the LAN address',
+    (await ask('192.168.1.23', { host: '192.168.1.50:4700' })).statusCode === 200);
+}
+
 // ---- open the door --------------------------------------------------------
 r = await app.inject({ method: 'PATCH', url: '/api/admin/remote', headers: graceOwn,
   payload: { enabled: true } });
@@ -3070,6 +3094,16 @@ check('an administrator opens it', r.statusCode === 200 && r.json().enabled === 
 
 r = await get('/api/jobs', fromOutside);
 check('now a supervisor can read the board from outside', r.statusCode === 200, r.body.slice(0, 160));
+
+// The published address marks a request as outside however it arrives — even through a
+// router that hands it over from a LAN address.
+r = await app.inject({ method: 'GET', url: '/api/jobs', remoteAddress: '192.168.1.1',
+  headers: { ...ifeoma, host: 'srl.example.com' } });
+check('a request for the published address is from outside, whatever socket it came on',
+  r.statusCode === 403 && r.json().required === 'remote.access', r.body.slice(0, 160));
+r = await app.inject({ method: 'GET', url: '/api/jobs', remoteAddress: '192.168.1.1',
+  headers: { ...ifeoma, host: '192.168.1.50:4700' } });
+check('while the same request for the LAN address is not', r.statusCode === 200, r.body.slice(0, 160));
 
 r = await get('/api/jobs', fromOutsideTech);
 check('a technician still cannot, because remote.access is not theirs',
