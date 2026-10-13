@@ -7,7 +7,7 @@ import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
 import type { Db } from './db/connection.js';
 import type { Config } from './config.js';
-import { COOKIE, principalFromSession, principalFromDevice, type Principal } from './auth/sessions.js';
+import { COOKIE, activityOf, lookupSession, principalFromDevice, type Principal } from './auth/sessions.js';
 import * as remote from './services/remote.js';
 import { identify } from './services/devices.js';
 import { isHttpError } from './lib/errors.js';
@@ -47,6 +47,8 @@ declare module 'fastify' {
     origin: remote.Origin;
     /** Set only when the caller is a paired phone rather than a browser. */
     deviceId: string | null;
+    /** The session this request's cookie named was ended by the remote timeout. */
+    timedOut: boolean;
   }
 }
 
@@ -92,6 +94,7 @@ export async function buildApp(
   app.decorate('appVersion', APP_VERSION);
   app.decorateRequest('principal', null);
   app.decorateRequest('deviceId', null);
+  app.decorateRequest('timedOut', false);
 
   await app.register(cookie);
   // 8 MB ceiling: the client resizes photos to roughly 250 KB before sending, so
@@ -117,7 +120,9 @@ export async function buildApp(
 
     const sid = req.cookies?.[COOKIE];
     if (sid) {
-      req.principal = principalFromSession(db, sid, req.origin);
+      const found = lookupSession(db, sid, req.origin, activityOf(req));
+      req.principal = found.principal;
+      req.timedOut = found.timedOut;
       if (req.principal) return;
     }
     const auth = req.headers.authorization;

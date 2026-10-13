@@ -9,13 +9,40 @@ export class ApiError extends Error {
   }
 }
 
+/*
+ * When somebody last touched this page, sent with every call.
+ *
+ * An open tab asks for things by itself — the board every minute, the alarm, the bell — and
+ * the host cannot tell those from somebody using it. Outside the property that difference
+ * is the remote timeout: a tab left open on an unattended laptop has to time out like a
+ * closed one. Each tab keeps its own; the host keeps whichever was used last.
+ */
+let lastUse = Date.now();
+for (const kind of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) {
+  window.addEventListener(kind, () => { lastUse = Date.now(); }, { capture: true, passive: true });
+}
+const idleSeconds = (): string => String(Math.max(0, Math.floor((Date.now() - lastUse) / 1000)));
+
+const TIMED_OUT = 'ff-timed-out';
+
+/** Whether the last session ended on the remote timeout, for the sign-in screen to say so. */
+export function timedOut(): boolean {
+  try { return sessionStorage.getItem(TIMED_OUT) === '1'; } catch { return false; }
+}
+export function forgetTimedOut(): void {
+  try { sessionStorage.removeItem(TIMED_OUT); } catch { /* private mode */ }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method,
       credentials: 'same-origin',
-      headers: body === undefined ? {} : { 'content-type': 'application/json' },
+      headers: {
+        'x-ff-idle': idleSeconds(),
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -36,6 +63,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   if (!res.ok) {
+    if (res.status === 401 && data.error === 'timed_out') {
+      try { sessionStorage.setItem(TIMED_OUT, '1'); } catch { /* private mode */ }
+    }
     throw new ApiError(
       res.status,
       String(data.error ?? 'error'),

@@ -1,5 +1,12 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
+/** No session — and when the remote timeout ended it, say so, for the sign-in screen. */
+export function notSignedIn(req: FastifyRequest, reply: FastifyReply): FastifyReply {
+  return reply.code(401).send(req.timedOut
+    ? { error: 'timed_out', message: 'You were signed out after a while without use from outside the property. Sign in again.' }
+    : { error: 'not_signed_in', message: 'Sign in to continue.' });
+}
+
 /**
  * One middleware, one permission code. No role names in route handlers, anywhere.
  */
@@ -7,7 +14,7 @@ export function requirePermission(code: string) {
   return async function guard(req: FastifyRequest, reply: FastifyReply): Promise<void> {
     const me = req.principal;
     if (!me) {
-      await reply.code(401).send({ error: 'not_signed_in', message: 'Sign in to continue.' });
+      await notSignedIn(req, reply);
       return;
     }
     if (!me.permissions.has(code)) {
@@ -23,9 +30,7 @@ export function requirePermission(code: string) {
 
 export function requireSignedIn() {
   return async function guard(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-    if (!req.principal) {
-      await reply.code(401).send({ error: 'not_signed_in', message: 'Sign in to continue.' });
-    }
+    if (!req.principal) await notSignedIn(req, reply);
   };
 }
 

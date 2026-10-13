@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requirePermission } from '../auth/guard.js';
+import { notSignedIn, requirePermission } from '../auth/guard.js';
 import { ulid } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { audit } from '../audit.js';
@@ -411,7 +411,7 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
   }));
 
   app.get('/api/notifications', async (req, reply) => {
-    if (!req.principal) return reply.code(401).send({ error: 'not_signed_in' });
+    if (!req.principal) return notSignedIn(req, reply);
     const me = req.principal;
     return {
       notifications: app.db.prepare(
@@ -423,7 +423,7 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/api/notifications/read', async (req, reply) => {
-    if (!req.principal) return reply.code(401).send({ error: 'not_signed_in' });
+    if (!req.principal) return notSignedIn(req, reply);
     const r = app.db.prepare('UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL')
       .run(nowIso(), req.principal.userId);
     return { ok: true, marked: r.changes };

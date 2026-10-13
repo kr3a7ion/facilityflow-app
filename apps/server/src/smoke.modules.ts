@@ -11,7 +11,7 @@ import nodeTls from 'node:tls';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { openDb } from './db/connection.js';
 import { migrate } from './db/migrate.js';
 import { buildApp } from './app.js';
@@ -24,6 +24,7 @@ import * as devices from './services/devices.js';
 import { monthRange, shiftMonth, currentMonth } from './lib/time.js';
 import { addInterval, compliance as ppmCompliance, remindDue } from './services/ppm.js';
 import { tick } from './services/escalation.js';
+import { activityOf } from './auth/sessions.js';
 
 let passed = 0;
 const failures: string[] = [];
@@ -3280,12 +3281,53 @@ check('a supervisor who has changed theirs signs in from outside', r.statusCode 
     .run(new Date(Date.now() - 21 * 60_000).toISOString(), id);
 
   check('a remote session in use carries on', (await get('/api/jobs', away)).statusCode === 200);
+
+  /*
+   * What counts as use. An open tab asks for things by itself, and the website says with
+   * every call how long since anybody touched the page \u2014 so a tab left open on an
+   * unattended laptop times out like a closed one, instead of keeping itself alive forever.
+   */
+  const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+  const seen = () => (db.prepare('SELECT last_seen_at FROM sessions WHERE id = ?').get(sid) as
+    { last_seen_at: string }).last_seen_at;
+  const setSeen = (at: string) => db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').run(at, sid);
+  const idleFor = (seconds: number, from = away) => ({ ...from, 'x-ff-idle': String(seconds) });
+
+  setSeen(ago(10));
+  r = await get('/api/jobs', idleFor(10 * 60));
+  check('a tab polling by itself is still answered', r.statusCode === 200, r.body.slice(0, 160));
+  check('but does not count as somebody using it', seen() < ago(9), seen());
+  r = await get('/api/jobs', idleFor(5));
+  check('a page somebody touched a moment ago does', seen() > ago(1), seen());
+  r = await get('/api/jobs', idleFor(30 * 60));
+  check('and a slower, idle second tab does not wind that back', seen() > ago(1), seen());
+  setSeen(ago(10));
+  r = await get('/api/jobs', away);
+  check('a request that says nothing counts as use, as every request did before', seen() > ago(1), seen());
+  check('the event stream never counts: it cannot say, and it reconnects by itself',
+    activityOf({ method: 'GET', url: '/api/events', headers: {} } as FastifyRequest) === null);
+
   idle(sid);
-  check('one left alone past the property\u2019s timeout is signed out',
-    (await get('/api/jobs', away)).statusCode === 401);
+  r = await get('/api/jobs', idleFor(21 * 60));
+  check('one left alone past the property\u2019s timeout is signed out, however busily it polls',
+    r.statusCode === 401, r.body.slice(0, 160));
+  check('and told why, so the sign-in screen can say so', r.json().error === 'timed_out', r.body.slice(0, 160));
   check('for good, not only for that request',
     (db.prepare('SELECT revoked_at FROM sessions WHERE id = ?').get(sid) as
       { revoked_at: string | null }).revoked_at !== null);
+  r = await get('/api/jobs', idleFor(0));
+  check('and nothing the page reports afterwards brings it back', r.statusCode === 401);
+  check('while every later request with that cookie is told why as well — the first to find out is often the event stream, which nobody reads',
+    r.json().error === 'timed_out', r.body.slice(0, 160));
+
+  // A laptop opened after a weekend: the mouse may move before the first request goes out.
+  r = await app.inject({ method: 'POST', url: '/api/auth/login',
+    headers: { 'cf-connecting-ip': '102.89.1.1' }, payload: { username: 'grace', password: GRACE_PW } });
+  const woken = r.cookies.find((c) => c.name === 'ff_sid')!.value;
+  idle(woken);
+  r = await get('/api/jobs', idleFor(0, { ...away, cookie: `ff_sid=${woken}` }));
+  check('a laptop woken past the timeout is signed out even if it was touched before it asked',
+    r.statusCode === 401 && r.json().error === 'timed_out', r.body.slice(0, 160));
 
   idle(graceOnSite.cookie.replace('ff_sid=', ''));
   check('a session idle as long on the property network is left alone',
