@@ -76,7 +76,17 @@ console.log(`\nFacilityFlow module checks\ndata dir: ${dir}`);
 // helpers
 // --------------------------------------------------------------------------
 type Hdr = { cookie: string };
-async function login(username: string, password: string): Promise<Hdr> {
+/**
+ * Sign in as a fixture account.
+ *
+ * Every account here is created by an administrator, so every one starts on a temporary
+ * password the server holds behind the change screen. Fixture accounts are treated as past
+ * that first sign-in, so the sections below can exercise what they are about; the change
+ * itself is exercised through the API in "A person can change their own password".
+ * `asIssued` signs in on the password as it was handed out, flag and all.
+ */
+async function login(username: string, password: string, { asIssued = false } = {}): Promise<Hdr> {
+  if (!asIssued) db.prepare('UPDATE users SET must_change_password = 0 WHERE username = ?').run(username);
   const r = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username, password } });
   const c = r.cookies.find((x) => x.name === 'ff_sid');
   if (!c) throw new Error(`login failed for ${username}: ${r.body}`);
@@ -538,6 +548,36 @@ db.prepare('UPDATE work_orders SET due_at = ? WHERE id = ?').run(iso(-3), p1.id)
 esc = tick(db, propertyId);
 check('a P1 at twice its deadline reaches the HOD',
   esc.escalated.find((e) => e.id === p1.id)?.role === 'hod');
+
+/*
+ * A role with nobody in it. A property with no team lead accounts yet — or whose only one
+ * has been disabled — sent the first step of every escalation to nobody, silently.
+ */
+{
+  const leadIds = (db.prepare(
+    `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = 'team_lead' AND u.is_active = 1`
+  ).all() as { id: string }[]).map((x) => x.id);
+  for (const id of leadIds) db.prepare('UPDATE users SET is_active = 0 WHERE id = ?').run(id);
+
+  r = await post('/api/jobs', grace, { title: 'Nobody has picked this up', locationId: siteId, priority: 'P2' });
+  const unanswered = r.json().job as { id: string };
+  db.prepare('UPDATE work_orders SET respond_by = ? WHERE id = ?').run(iso(-1 / 24), unanswered.id);
+  const e = tick(db, propertyId).escalated.find((x) => x.id === unanswered.id);
+  check('a response breach with no team lead on the property still reaches somebody',
+    !!e && e.role === 'team_lead' && e.fellBack && e.told > 0, JSON.stringify(e));
+  check('namely whoever can reassign it — the supervisor among them',
+    (db.prepare(
+      `SELECT COUNT(*) n FROM notifications n JOIN users u ON u.id = n.user_id
+        WHERE n.kind = 'escalation' AND n.entity_id = ? AND u.username = 'grace'`
+    ).get(unanswered.id) as { n: number }).n === 1);
+  check('and the job\u2019s history says the role was empty, rather than that it was told',
+    JSON.parse((db.prepare(
+      `SELECT meta_json FROM work_order_events WHERE wo_id = ? AND event_type = 'escalated'`
+    ).get(unanswered.id) as { meta_json: string }).meta_json).nobodyInRole === true);
+
+  for (const id of leadIds) db.prepare('UPDATE users SET is_active = 1 WHERE id = ?').run(id);
+  await post(`/api/jobs/${unanswered.id}/cancel`, grace, { reason: 'Escalation fixture' });
+}
 
 r = await get('/api/notifications', grace);
 check('notifications are readable with an unread count', r.json().unread > 0);
@@ -1148,6 +1188,29 @@ heading('Photos and attachments');
   r = await app.inject({ method: 'POST', url: '/api/attachments', headers: { ...ifeoma, ...nonsense.headers },
                          payload: nonsense.body });
   check('files cannot be attached to an unknown kind of thing', r.statusCode === 400);
+
+  // A record that does not exist: refused before a byte reaches the disk.
+  const filesOnDisk = (): number => {
+    const walk = (d: string): number => !fs.existsSync(d) ? 0 : fs.readdirSync(d, { withFileTypes: true })
+      .reduce((n, e) => n + (e.isDirectory() ? walk(path.join(d, e.name)) : 1), 0);
+    return walk(config.attachmentsDir);
+  };
+  const before = filesOnDisk();
+  const orphan = multipart({ entityType: 'work_order', entityId: 'no-such-job' },
+                           { name: 'a.png', type: 'image/png', data: PNG });
+  r = await app.inject({ method: 'POST', url: '/api/attachments', headers: { ...ifeoma, ...orphan.headers },
+                         payload: orphan.body });
+  check('a file cannot be attached to a record that does not exist',
+    r.statusCode === 404 && r.json().error === 'no_such_record', r.body.slice(0, 120));
+  check('and nothing is left on disk or in the table for it',
+    filesOnDisk() === before
+    && (db.prepare("SELECT COUNT(*) AS n FROM attachments WHERE entity_id = 'no-such-job'").get() as { n: number }).n === 0);
+
+  const ghost = multipart({ entityType: 'unit_inspection', entityId: 'x' },
+                          { name: 'a.png', type: 'image/png', data: PNG });
+  r = await app.inject({ method: 'POST', url: '/api/attachments', headers: { ...admin, ...ghost.headers },
+                         payload: ghost.body });
+  check('nor to a kind of record the system does not have', r.statusCode === 400, r.body.slice(0, 120));
 
   // The boundary lives in the header, so build the body and header together.
   const fieldsOnly = multipart({ entityType: 'work_order', entityId: job.id });
@@ -1853,10 +1916,20 @@ r = await post('/api/admin/users', admin, {
   displayName: 'Blessing Nwosu', username: 'blessing', password: PW, roleKey: 'requester',
 });
 check('a new account is created needing a password change', r.statusCode === 201);
-const blessing = await login('blessing', PW);
+const blessing = await login('blessing', PW, { asIssued: true });
 check('and the flag reaches the client that has to act on it',
   ((await get('/api/me', blessing)).json().user as { mustChangePassword: boolean })
     .mustChangePassword === true);
+
+// The browser draws a wall here; the server holds it too, so the wall is not only as good
+// as the client drawing it.
+r = await post('/api/requests', blessing, { description: 'Lift stuck on the third floor' });
+check('until it is changed, the account cannot raise anything on the property network',
+  r.statusCode === 403 && r.json().error === 'must_change_password', r.body.slice(0, 140));
+r = await get('/api/jobs', blessing);
+check('or read anything', r.statusCode === 403);
+r = await get('/api/events', blessing);
+check('or listen for anything', r.statusCode === 403);
 
 r = await post('/api/auth/password', blessing, {
   currentPassword: 'not-the-password', newPassword: 'a-brand-new-password',
@@ -1889,6 +1962,8 @@ r = await post('/api/auth/login', { cookie: '' } as Hdr,
   { username: 'blessing', password: 'a-brand-new-password' });
 check('and the new password is the one that works',
   r.statusCode === 200 && r.json().mustChangePassword === false);
+check('and with it, the account can get on with its work',
+  (await get('/api/jobs', stillHere)).statusCode === 200);
 r = await post('/api/auth/login', { cookie: '' } as Hdr, { username: 'blessing', password: PW });
 check('while the old one no longer does', r.statusCode === 401);
 
@@ -2451,6 +2526,21 @@ check('with exactly the same permissions, not a parallel set',
 
 r = await get('/api/me/outstanding', phone);
 check('and can read the work it is meant to ring about', r.statusCode === 200);
+check('and the rings and emergencies it is meant to ring about',
+  (await get('/api/me/rings', phone)).statusCode === 200
+  && (await get('/api/alerts/emergency', phone)).statusCode === 200);
+
+// The token has no password behind it and never expires, so it opens what the app does
+// and nothing else. A lost phone must not be a standing key to the whole system.
+r = await get('/api/jobs', phone);
+check('but the phone\u2019s token cannot read the job board',
+  r.statusCode === 403 && r.json().error === 'not_for_phones', r.body.slice(0, 140));
+r = await post('/api/jobs', phone, { title: 'Raised with a phone token', locationId: siteId, priority: 'P3' });
+check('or raise work', r.statusCode === 403, r.body.slice(0, 140));
+r = await get('/api/stock', phone);
+check('or reach anything else its owner\u2019s role could', r.statusCode === 403, r.body.slice(0, 140));
+check('while the same person on the website still can',
+  (await get('/api/jobs', ifeoma)).statusCode === 200);
 
 r = await get('/api/me', { authorization: 'Bearer not-a-real-token' } as unknown as Hdr);
 check('a forged token is nobody', r.statusCode === 401);
@@ -2495,6 +2585,17 @@ check('and its token dies with it, at once',
 
 r = await app.inject({ method: 'DELETE', url: `/api/me/devices/${paired.deviceId}`, headers: grace });
 check('nobody can unpair somebody else\u2019s phone through the path', r.statusCode === 404);
+
+// The app's own Unpair tells the host, with the phone's own token.
+{
+  const code = (await post('/api/me/pairing-code', ifeoma)).json().code as string;
+  const second = (await post('/api/devices/pair', { cookie: '' } as Hdr,
+    { code, deviceName: 'Ifeoma second phone', platform: 'android' })).json() as { deviceId: string; token: string };
+  const own: Hdr = { authorization: `Bearer ${second.token}` } as unknown as Hdr;
+  r = await app.inject({ method: 'DELETE', url: `/api/me/devices/${second.deviceId}`, headers: own });
+  check('a phone can unpair itself', r.statusCode === 200, r.body.slice(0, 140));
+  check('and its token stops working', (await get('/api/me', own)).statusCode === 401);
+}
 
 // --------------------------------------------------------------------------
 heading('Money is only for the people whose job it is');
@@ -3056,6 +3157,30 @@ check('and nothing from outside gets in while it is',
 r = await get('/api/jobs', graceOwn);
 check('while the same person on the property network is unaffected', r.statusCode === 200);
 
+/*
+ * Cloudflare is the tunnel the department chose, not the only one anybody can run. Any other
+ * tunnel or proxy on the host PC reaches the app over loopback — and loopback looked like the
+ * property network, so it walked past every rule here.
+ */
+{
+  const ask = (remoteAddress: string, headers: Record<string, string>) =>
+    app.inject({ method: 'GET', url: '/api/jobs', remoteAddress, headers: { ...graceOwn, ...headers } });
+  const closed = (res: { statusCode: number; body: string }) =>
+    res.statusCode === 403 && res.body.includes('remote_closed');
+  check('a request any proxy forwarded is from outside',
+    closed(await ask('127.0.0.1', { 'x-forwarded-for': '41.58.10.10' })));
+  check('so is one carrying the standard Forwarded header',
+    closed(await ask('127.0.0.1', { forwarded: 'for=41.58.10.10;proto=https' })));
+  check('and one a raw tunnel carried in to loopback, asking for a public name',
+    closed(await ask('127.0.0.1', { host: 'harmony-court.ngrok-free.app' })));
+  check('while the host PC\u2019s own browser on localhost is on the property network',
+    (await ask('127.0.0.1', { host: 'localhost:4700' })).statusCode === 200);
+  check('and so is the host PC by its own name',
+    (await ask('127.0.0.1', { host: `${os.hostname()}:4700` })).statusCode === 200);
+  check('and a phone on the wifi using the LAN address',
+    (await ask('192.168.1.23', { host: '192.168.1.50:4700' })).statusCode === 200);
+}
+
 // ---- open the door --------------------------------------------------------
 r = await app.inject({ method: 'PATCH', url: '/api/admin/remote', headers: graceOwn,
   payload: { enabled: true } });
@@ -3068,6 +3193,16 @@ check('an administrator opens it', r.statusCode === 200 && r.json().enabled === 
 
 r = await get('/api/jobs', fromOutside);
 check('now a supervisor can read the board from outside', r.statusCode === 200, r.body.slice(0, 160));
+
+// The published address marks a request as outside however it arrives — even through a
+// router that hands it over from a LAN address.
+r = await app.inject({ method: 'GET', url: '/api/jobs', remoteAddress: '192.168.1.1',
+  headers: { ...ifeoma, host: 'srl.example.com' } });
+check('a request for the published address is from outside, whatever socket it came on',
+  r.statusCode === 403 && r.json().required === 'remote.access', r.body.slice(0, 160));
+r = await app.inject({ method: 'GET', url: '/api/jobs', remoteAddress: '192.168.1.1',
+  headers: { ...ifeoma, host: '192.168.1.50:4700' } });
+check('while the same request for the LAN address is not', r.statusCode === 200, r.body.slice(0, 160));
 
 r = await get('/api/jobs', fromOutsideTech);
 check('a technician still cannot, because remote.access is not theirs',
@@ -3887,6 +4022,139 @@ heading('Who is alerted, and the changeover');
 }
 
 // --------------------------------------------------------------------------
+heading('Who may touch which job');
+// --------------------------------------------------------------------------
+/*
+ * The scopes were in the role table from the start and only the board applied them. A
+ * technician could accept, start and complete somebody else's job by id; a team lead could
+ * dispatch work to another team and sign off another team's. Decided with the department:
+ * a technician works the jobs in their own name — a team-pool job has to be put in somebody's
+ * name first — and a team lead works within their own team in both directions.
+ */
+{
+  // Signed in afresh: the remote section above changed Grace's password, which ends every
+  // session she had.
+  const sup = await login('grace', GRACE_PW);
+  const team = async (name: string) => (await post('/api/teams', admin, { name })).json().id as string;
+  const teamA = await team('Scope Team A');
+  const teamB = await team('Scope Team B');
+  const person = async (first: string, teamId: string) =>
+    (await post('/api/staff', admin, { firstName: first, lastName: 'Scope', trade: 'general', teamId })).json().id as string;
+  const leadA = await person('Lola', teamA);
+  const techA = await person('Ade', teamA);
+  const techA2 = await person('Bisi', teamA);
+  const techB = await person('Kunle', teamB);
+  for (const [username, roleKey, staffId] of [
+    ['scope.lead', 'team_lead', leadA], ['scope.ade', 'technician', techA],
+    ['scope.bisi', 'technician', techA2], ['scope.kunle', 'technician', techB],
+  ] as const) {
+    const res = await post('/api/admin/users', admin,
+      { username, roleKey, displayName: `${username} account`, password: PW, staffId });
+    if (res.statusCode !== 201) throw new Error(`could not create ${username}: ${res.body}`);
+  }
+  await post('/api/roster', sup, { entries: [leadA, techA, techA2, techB].map((staffId) =>
+    ({ staffId, workDate: day(0), shiftPatternId: afternoon })) });
+  await post('/api/roster/publish', sup, { from: day(0), to: day(0) });
+  for (const staffId of [leadA, techA, techA2, techB]) {
+    await post('/api/roster/mark', sup, { staffId, workDate: day(0), status: 'present' });
+  }
+  const lead = await login('scope.lead', PW);
+  const ade = await login('scope.ade', PW);
+  const bisi = await login('scope.bisi', PW);
+  const kunle = await login('scope.kunle', PW);
+
+  const raise = async (title: string) =>
+    (await post('/api/jobs', sup, { title, locationId: siteId, priority: 'P3' })).json().job.id as string;
+  const bisiJob = await raise('Scope: Bisi has this one');
+  await post(`/api/jobs/${bisiJob}/assign`, sup, { staffId: techA2 });
+  const kunleJob = await raise('Scope: Kunle has this one');
+  await post(`/api/jobs/${kunleJob}/assign`, sup, { staffId: techB });
+  const poolJob = await raise('Scope: with Team A, nobody named');
+  await post(`/api/jobs/${poolJob}/assign`, sup, { teamId: teamA });
+  const openJob = await raise('Scope: nobody has this yet');
+  const adeJob = await raise('Scope: Ade has this one');
+  await post(`/api/jobs/${adeJob}/assign`, sup, { staffId: techA });
+
+  // ---- a technician: jobs in their own name, and nothing else ----------------------
+  r = await get(`/api/jobs/${bisiJob}`, ade);
+  check('a technician cannot open a colleague’s job',
+    r.statusCode === 403 && r.json().error === 'out_of_scope', r.body.slice(0, 160));
+  r = await post(`/api/jobs/${bisiJob}/accept`, ade);
+  check('or accept it', r.statusCode === 403, r.body.slice(0, 160));
+  check('and the job is left exactly as it was',
+    ((await get(`/api/jobs/${bisiJob}`, sup)).json().job as { status: string }).status === 'assigned');
+  for (const [what, url, body] of [
+    ['start it', `/api/jobs/${bisiJob}/start`, {}],
+    ['put it on hold', `/api/jobs/${bisiJob}/hold`, { reason: 'awaiting_parts' }],
+    ['complete it', `/api/jobs/${bisiJob}/complete`, { resolutionNotes: 'Not mine to finish' }],
+    ['comment on it', `/api/jobs/${bisiJob}/comment`, { note: 'Not mine to comment on' }],
+    ['log time to it', `/api/jobs/${bisiJob}/labour`, { minutes: 30 }],
+  ] as const) {
+    r = await post(url, ade, body);
+    check(`or ${what}`, r.statusCode === 403, `${r.statusCode} ${r.body.slice(0, 120)}`);
+  }
+  r = await get(`/api/attachments?entityType=work_order&entityId=${bisiJob}`, ade);
+  check('or look at its photos', r.statusCode === 403, r.body.slice(0, 120));
+  r = await get(`/api/jobs/${poolJob}`, ade);
+  check('a job with their team but in nobody’s name is not theirs to take either',
+    r.statusCode === 403, r.body.slice(0, 160));
+  r = await post(`/api/jobs/${adeJob}/accept`, ade);
+  check('while the job in their own name is theirs to accept', r.statusCode === 200, r.body.slice(0, 160));
+  r = await get('/api/jobs', ade);
+  check('and their board shows exactly the jobs in their name',
+    (r.json().jobs as { id: string }[]).map((j) => j.id).join() === adeJob,
+    (r.json().jobs as { title: string }[]).map((j) => j.title).join(' | '));
+
+  // ---- a team lead: their own team, in both directions -----------------------------
+  r = await get('/api/jobs', lead);
+  {
+    const ids = (r.json().jobs as { id: string }[]).map((j) => j.id);
+    check('a team lead’s board carries their team’s work, by name or by team',
+      [bisiJob, poolJob, adeJob].every((id) => ids.includes(id)), ids.length + ' jobs');
+    check('and the jobs nobody has yet, which are theirs to dispatch', ids.includes(openJob));
+    check('but not another team’s', !ids.includes(kunleJob));
+  }
+  check('a team lead can open a job one of their people holds',
+    (await get(`/api/jobs/${bisiJob}`, lead)).statusCode === 200);
+  r = await get(`/api/jobs/${kunleJob}`, lead);
+  check('but not one another team holds', r.statusCode === 403, r.body.slice(0, 160));
+
+  r = await get('/api/jobs/assignable', lead);
+  {
+    const offered = (r.json().staff as { staff_id: string }[]).map((x) => x.staff_id);
+    check('the people offered for assignment are their own team',
+      [leadA, techA, techA2].every((id) => offered.includes(id)) && !offered.includes(techB),
+      JSON.stringify(offered));
+  }
+  r = await post(`/api/jobs/${openJob}/assign`, lead, { staffId: techB });
+  check('a team lead cannot hand work to somebody on another team',
+    r.statusCode === 403 && r.json().error === 'out_of_scope', r.body.slice(0, 160));
+  r = await post(`/api/jobs/${openJob}/assign`, lead, { teamId: teamB });
+  check('or to another team', r.statusCode === 403, r.body.slice(0, 160));
+  r = await post(`/api/jobs/${openJob}/assign`, lead, { staffId: techA2 });
+  check('and dispatches an unassigned job to their own people', r.statusCode === 200, r.body.slice(0, 160));
+  r = await post(`/api/jobs/${kunleJob}/assign`, lead, { staffId: techA });
+  check('but cannot take a job off another team — that is a supervisor’s call',
+    r.statusCode === 403, r.body.slice(0, 160));
+
+  // Each technician finishes their own; the lead may sign off only their team's.
+  for (const [who, id] of [[bisi, bisiJob], [kunle, kunleJob]] as const) {
+    await post(`/api/jobs/${id}/accept`, who);
+    await post(`/api/jobs/${id}/start`, who);
+    r = await post(`/api/jobs/${id}/complete`, who, { resolutionNotes: 'Done and tested.' });
+    if (r.statusCode !== 200) throw new Error(`could not complete ${id}: ${r.body}`);
+  }
+  r = await post(`/api/jobs/${kunleJob}/verify`, lead);
+  check('a team lead cannot verify another team’s work', r.statusCode === 403, r.body.slice(0, 160));
+  r = await post(`/api/jobs/${bisiJob}/verify`, lead);
+  check('and verifies their own team’s', r.statusCode === 200, r.body.slice(0, 160));
+
+  // ---- the property-wide roles are untouched ----------------------------------------
+  r = await post(`/api/jobs/${kunleJob}/verify`, sup);
+  check('a supervisor still works across every team', r.statusCode === 200, r.body.slice(0, 160));
+}
+
+// --------------------------------------------------------------------------
 heading('Every call the screens make has a route behind it');
 // --------------------------------------------------------------------------
 /*
@@ -3939,6 +4207,42 @@ heading('Every call the screens make has a route behind it');
   check('the client\u2019s API paths were found', calls.size > 100, String(calls.size));
   check('and every one of them reaches a route the server registers', missing.length === 0,
     missing.join('; '));
+}
+
+// --------------------------------------------------------------------------
+heading('The client is served from the same address');
+// --------------------------------------------------------------------------
+/*
+ * One process serves the API and the built client, so a phone needs one address. Nothing
+ * checked that half — which matters most on the day @fastify/static changes under it.
+ * Run after a build; CI builds before it runs this.
+ */
+{
+  const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
+  if (!fs.existsSync(path.join(dist, 'index.html'))) {
+    console.log('  --   the client has not been built here; npm run build first to check this section');
+  } else {
+    const asset = fs.readdirSync(path.join(dist, 'assets')).find((f) => f.endsWith('.js'))!;
+    const html = (res: { statusCode: number; headers: Record<string, unknown>; body: string }) =>
+      res.statusCode === 200 && String(res.headers['content-type']).startsWith('text/html')
+        && res.body.includes('<div id="root"');
+    r = await app.inject({ method: 'GET', url: '/' });
+    check('the address on its own opens the app', html(r), `${r.statusCode} ${r.headers['content-type']}`);
+    r = await app.inject({ method: 'GET', url: '/jobs/some-job-id' });
+    check('a link into the app opens the app, and its router takes it from there', html(r));
+    r = await app.inject({ method: 'GET', url: `/assets/${asset}` });
+    check('the built scripts are served as scripts',
+      r.statusCode === 200 && /javascript/.test(String(r.headers['content-type'])));
+    r = await app.inject({ method: 'GET', url: '/api/no-such-route' });
+    check('while an unknown API path is an API 404, not the app',
+      r.statusCode === 404 && r.json().error === 'not_found');
+    for (const url of ['/assets/../../../package.json', '/assets/..%2f..%2f..%2fpackage.json',
+                       '/%2e%2e/%2e%2e/package.json', '/assets%2f..%2f..%2fREADME.md']) {
+      r = await app.inject({ method: 'GET', url });
+      check(`climbing out of the client folder reaches nothing (${url})`,
+        !r.body.includes('"workspaces"') && !r.body.includes('# FacilityFlow'), r.body.slice(0, 80));
+    }
+  }
 }
 
 // --------------------------------------------------------------------------

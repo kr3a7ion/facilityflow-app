@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { requireSignedIn } from '../auth/guard.js';
+import { assertJobInScope } from '../auth/jobScope.js';
 import { ulid } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { HttpError } from '../lib/errors.js';
@@ -57,6 +58,8 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
         throw new HttpError(403, 'forbidden',
           `Your role does not allow attaching files here (${perms.write}).`);
       }
+      // A job's photos follow the job: whoever may not work on it may not add to it.
+      if (entityType === 'work_order') assertJobInScope(app.db, req, entityId, [perms.write]);
       const saved = attachments.save(app.db, app.config, {
         propertyId: me.propertyId, userId: me.userId, entityType, entityId,
         filename, declaredMime, data: data!,
@@ -94,6 +97,7 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
       if (!me.permissions.has(perms.read)) {
         throw new HttpError(403, 'forbidden', `Your role does not allow this (${perms.read}).`);
       }
+      if (q.entityType === 'work_order') assertJobInScope(app.db, req, q.entityId!);
       return {
         attachments: attachments.list(app.db, me.propertyId, q.entityType!, q.entityId!)
           .map(({ rel_path, ...rest }) => rest),
@@ -112,6 +116,7 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
           error: 'forbidden', message: `Your role does not allow this (${perms.read}).`,
         });
       }
+      if (row.entity_type === 'work_order') assertJobInScope(app.db, req, row.entity_id);
       const abs = attachments.absolutePath(app.config, row);
       return reply
         .type(row.mime)

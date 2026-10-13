@@ -6,10 +6,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { openDb, integrityCheck } from './db/connection.js';
 import { migrate, appliedVersions } from './db/migrate.js';
 import { buildApp } from './app.js';
-import { loadConfig } from './config.js';
+import { loadConfig, defaultDataDir } from './config.js';
 import { runBackup, stageRestore, applyPendingRestore, PENDING } from './db/backup.js';
 import { runDailyBackup } from './services/scheduler.js';
 import { readHostFile, writeHostFile } from './config.js';
@@ -73,6 +74,14 @@ const app = await buildApp(db, config);
 // ---- first run --------------------------------------------------------------
 let r = await app.inject({ method: 'GET', url: '/api/health' });
 check('health responds before setup', r.statusCode === 200 && r.json().setupComplete === false);
+{
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const pkg = JSON.parse(fs.readFileSync(path.join(here, '../package.json'), 'utf8')) as { version: string };
+  check('the version reported is the one in package.json, not a copy of it', r.json().version === pkg.version,
+    `${r.json().version} vs ${pkg.version}`);
+  check('the data folder is found from the npm workspace root, wherever the shell is',
+    defaultDataDir() === path.resolve(here, '../../../data'), defaultDataDir());
+}
 
 // Submitted twice at once — a double-tap on a slow PC. Both pass the first "already set
 // up?" check before either has finished hashing the password, so the write has to ask again.
@@ -134,6 +143,18 @@ r = await app.inject({ method: 'POST', url: '/api/auth/login',
   payload: { username: 'ifeoma', password: 'another-long-password' } });
 check('new user can sign in', r.statusCode === 200);
 check('new user must change their password', r.json().mustChangePassword === true);
+const issued = { cookie: `ff_sid=${r.cookies.find((c) => c.name === 'ff_sid')?.value}` };
+
+// Until they do, the session reaches only what changing it needs — on the property network
+// too, not just behind the screen the browser draws.
+r = await app.inject({ method: 'GET', url: '/api/jobs', headers: issued });
+check('and until they do, the server refuses them everything else',
+  r.statusCode === 403 && r.json().error === 'must_change_password', r.body.slice(0, 120));
+r = await app.inject({ method: 'GET', url: '/api/me', headers: issued });
+check('except who they are, which the change screen needs', r.statusCode === 200);
+r = await app.inject({ method: 'POST', url: '/api/auth/password', headers: issued,
+  payload: { currentPassword: 'another-long-password', newPassword: 'ifeoma-chose-this-one' } });
+check('and the change itself', r.statusCode === 200, r.body.slice(0, 120));
 const tech = { cookie: `ff_sid=${r.cookies.find((c) => c.name === 'ff_sid')?.value}` };
 
 r = await app.inject({ method: 'GET', url: '/api/admin/users', headers: tech });
@@ -160,10 +181,96 @@ throws('audit_log refuses DELETE', () => db.prepare('DELETE FROM audit_log').run
 r = await app.inject({ method: 'GET', url: '/api/admin/audit', headers: tech });
 check('technician cannot read the audit log', r.statusCode === 403);
 
+// ---- signing in under pressure ----------------------------------------------
+// Each part signs in from its own address, so the per-device limit it may trip does not
+// spill into the rest of this file, which all arrives from 127.0.0.1.
+{
+  const signIn = (username: string, password: string, remoteAddress: string) =>
+    app.inject({ method: 'POST', url: '/api/auth/login', remoteAddress, payload: { username, password } });
+
+  r = await app.inject({ method: 'POST', url: '/api/admin/users', headers: admin, payload: {
+    displayName: 'Lock Test', username: 'lockme', password: 'the-right-password', roleKey: 'technician',
+  } });
+  const nobody = await signIn('no-such-person', 'whatever-it-is', '10.0.0.21');
+  for (let i = 0; i < 8; i++) r = await signIn('lockme', `wrong-${i}`, '10.0.0.21');
+  check('eight wrong passwords lock the account', (db.prepare(
+    "SELECT locked_until FROM users WHERE username = 'lockme'").get() as { locked_until: string | null })
+    .locked_until !== null);
+
+  r = await signIn('lockme', 'the-right-password', '10.0.0.21');
+  check('the person who knows the password is told it is locked, and until when',
+    r.statusCode === 423 && /Try again after/.test(String(r.json().message)), r.body.slice(0, 120));
+  r = await signIn('lockme', 'still-guessing', '10.0.0.21');
+  check('anybody guessing during the lock gets exactly what an unknown name gets',
+    r.statusCode === nobody.statusCode && r.body === nobody.body, `${r.statusCode} ${r.body}`);
+
+  db.prepare("UPDATE users SET locked_until = ? WHERE username = 'lockme'")
+    .run(new Date(Date.now() - 60_000).toISOString());
+  r = await signIn('lockme', 'one-more-mistake', '10.0.0.21');
+  check('once the lock has run out, one more mistake does not lock it again',
+    r.statusCode === 401 && (db.prepare("SELECT locked_until, failed_attempts FROM users WHERE username = 'lockme'")
+      .get() as { locked_until: string | null; failed_attempts: number }).failed_attempts === 1);
+  r = await signIn('lockme', 'the-right-password', '10.0.0.21');
+  check('and the right password works again', r.statusCode === 200, r.body.slice(0, 120));
+
+  // One device trying one password against every account never trips a per-account lock.
+  for (let i = 0; i < 30; i++) await signIn(`guess-${i}`, 'Password123!', '10.0.0.66');
+  r = await signIn('lockme', 'the-right-password', '10.0.0.66');
+  check('a device that has failed thirty times in a quarter of an hour is told to wait',
+    r.statusCode === 429 && r.json().error === 'too_many_attempts', r.body.slice(0, 120));
+  r = await signIn('lockme', 'the-right-password', '10.0.0.67');
+  check('without locking anybody out of any other device', r.statusCode === 200, r.body.slice(0, 120));
+
+  // Through the tunnel every caller arrives from this PC; the tunnel's header tells them apart.
+  const viaTunnel = (forwardedFor: string, password: string) => app.inject({
+    method: 'POST', url: '/api/auth/login', remoteAddress: '127.0.0.1',
+    headers: { 'cf-connecting-ip': forwardedFor }, payload: { username: 'nobody-here', password },
+  });
+  for (let i = 0; i < 30; i++) await viaTunnel('203.0.113.9', `guess-${i}`);
+  r = await viaTunnel('203.0.113.9', 'again');
+  check('a caller through the tunnel is counted on their own address', r.statusCode === 429);
+  r = await viaTunnel('198.51.100.4', 'first-try');
+  check('so one of them failing does not shut the tunnel for everyone else', r.statusCode === 401);
+  r = await app.inject({ method: 'POST', url: '/api/auth/login', remoteAddress: '10.0.0.66',
+    headers: { 'cf-connecting-ip': '198.51.100.99' }, payload: { username: 'lockme', password: 'the-right-password' } });
+  check('and the header cannot be used on the network to dodge the count', r.statusCode === 429);
+}
+
 // ---- self-disable guard -----------------------------------------------------
 const adminId = (await app.inject({ method: 'GET', url: '/api/me', headers: admin })).json().user.id;
 r = await app.inject({ method: 'POST', url: `/api/admin/users/${adminId}/disable`, headers: admin });
 check('an admin cannot disable their own account', r.statusCode === 400);
+
+// ---- what every response carries ----------------------------------------------
+{
+  r = await app.inject({ method: 'GET', url: '/api/health' });
+  const csp = String(r.headers['content-security-policy'] ?? '');
+  check('every response forbids other pages from framing this one',
+    /frame-ancestors 'none'/.test(csp) && r.headers['x-frame-options'] === 'DENY', csp);
+  check('runs only scripts this host served', /script-src 'self'(;|$)/.test(csp), csp);
+  check('and tells the browser not to second-guess content types',
+    r.headers['x-content-type-options'] === 'nosniff');
+  check('and never claims HTTPS for good, which would lock browsers off the plain LAN address',
+    r.headers['strict-transport-security'] === undefined);
+
+  const cookieFrom = async (remoteAddress: string, headers: Record<string, string> = {}) => {
+    const res = await app.inject({ method: 'POST', url: '/api/auth/login', remoteAddress, headers,
+      payload: { username: 'admin', password: 'correct-horse-battery' } });
+    return res.cookies.find((c) => c.name === 'ff_sid');
+  };
+  check('on the plain LAN address the session cookie works over HTTP',
+    (await cookieFrom('192.168.1.40'))?.secure !== true);
+  check('behind TLS ended on this PC — the tunnel — it is marked Secure',
+    (await cookieFrom('127.0.0.1', { 'x-forwarded-proto': 'https' }))?.secure === true);
+  check('and nobody on the network can claim TLS they did not use',
+    (await cookieFrom('192.168.1.40', { 'x-forwarded-proto': 'https' }))?.secure !== true);
+
+  const assets = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist/assets');
+  if (fs.existsSync(assets)) {
+    check('the built client ships no source maps for anybody to read the source from',
+      !fs.readdirSync(assets).some((f) => f.endsWith('.map')));
+  }
+}
 
 // ---- references -------------------------------------------------------------
 const propertyId = (db.prepare('SELECT id FROM properties LIMIT 1').get() as { id: string }).id;
@@ -247,6 +354,22 @@ check('backup keeps snapshots in the backups folder', direct.file.startsWith(con
     second === false, `first=${first} second=${second}`);
   check('so restarting the host six times a morning does not prune the folder empty',
     after <= before + 1, `${before} → ${after}`);
+}
+{
+  // "Today" is Lagos's. At 00:20 in Lagos it is still 23:20 the day before in UTC, and a
+  // snapshot from 23:50 Lagos time — yesterday, there — carries yesterday's UTC date too.
+  // Comparing UTC dates called it today's and skipped the first backup of the new day.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-daily-'));
+  fs.writeFileSync(path.join(dir, 'facilityflow-2026-03-04T22-50-00-000Z.db'), '');
+  const took = runDailyBackup(db, { ...config, backupsDir: dir }, () => {}, new Date('2026-03-04T23:20:00Z'));
+  check('just after midnight in the property, yesterday evening\u2019s snapshot does not count as today\u2019s', took);
+
+  const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-daily-'));
+  fs.writeFileSync(path.join(dir2, 'facilityflow-2026-03-04T23-10-00-000Z.db'), '');
+  const again = runDailyBackup(db, { ...config, backupsDir: dir2 }, () => {}, new Date('2026-03-05T10:00:00Z'));
+  check('while one taken ten past midnight there does, though its UTC date is the day before', !again);
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir2, { recursive: true, force: true });
 }
 
 // ---- download, and the restore path -----------------------------------------

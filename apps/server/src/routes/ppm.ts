@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../auth/guard.js';
+import { assertJobInScope } from '../auth/jobScope.js';
 import { ulid } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import * as ppm from '../services/ppm.js';
@@ -143,6 +144,7 @@ export async function ppmRoutes(app: FastifyInstance): Promise<void> {
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
     const me = req.principal!; const woId = (req.params as { id: string }).id; const at = nowIso();
+    assertJobInScope(app.db, req, woId, ['wo.update']);
     const ins = app.db.prepare(
       `INSERT INTO work_order_checklist_results (id, wo_id, item_id, result, value, note, recorded_by, recorded_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
