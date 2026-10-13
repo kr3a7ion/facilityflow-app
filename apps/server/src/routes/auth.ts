@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { nowIso, addDays } from '../lib/time.js';
+import { nowIso } from '../lib/time.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import { createSession, revokeSession, revokeAllForUser, principalFromDevice, COOKIE } from '../auth/sessions.js';
 import * as remote from '../services/remote.js';

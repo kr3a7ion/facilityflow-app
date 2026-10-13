@@ -44,7 +44,6 @@ function toKobo(input: string): number | null {
 export function Money() {
   const { me, can } = useSession();
   const qc = useQueryClient();
-  const now = new Date();
   // A supervisor records purchases without seeing the department's budget, so the page
   // opens on the first tab their role can actually read rather than on an empty one.
   const reads = can('finance.read');

@@ -6,7 +6,7 @@ import { requirePermission } from '../auth/guard.js';
 import { ulid } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { audit } from '../audit.js';
-import { ctxOf, send, seesMoney, withoutMoney } from './_helpers.js';
+import { send, seesMoney, withoutMoney } from './_helpers.js';
 
 const APT_STATUS = ['occupied', 'vacant_ready', 'vacant_dirty', 'under_maintenance', 'out_of_service'] as const;
 

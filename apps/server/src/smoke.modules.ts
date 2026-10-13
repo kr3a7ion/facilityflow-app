@@ -707,7 +707,6 @@ const bulk = r.json().id;
 check('a tank is created with a calibration chart', r.statusCode === 201 && !r.json().warning);
 
 r = await post('/api/fuel/tanks', admin, { name: 'Day tank', kind: 'day_tank', capacityL: 1000, minLevelL: 300 });
-const dayTank = r.json().id;
 check('a tank without a chart is created with a warning', typeof r.json().warning === 'string');
 
 r = await post(`/api/fuel/tanks/${bulk}/dip`, ifeoma, { litres: 7180, takenAt: iso(-7) });
@@ -729,7 +728,6 @@ r = await post('/api/fuel/deliveries', halima, {
 check('an unknown witness is refused', r.statusCode === 400);
 
 const graceUserId = (db.prepare(`SELECT id FROM users WHERE username = 'grace'`).get() as { id: string }).id;
-const hodUserId = (db.prepare(`SELECT id FROM users WHERE username = 'hod'`).get() as { id: string }).id;
 
 const halimaUserId = (db.prepare(`SELECT id FROM users WHERE username = 'halima'`).get() as { id: string }).id;
 r = await post('/api/fuel/deliveries', halima, {
@@ -2922,7 +2920,7 @@ check('a technician cannot read an import file',
 
 r = await post('/api/apartments/import/read', admin, { text: UNIT_CSV });
 check('the file is read without being told anything about it', r.statusCode === 200, r.body.slice(0, 200));
-let imp = r.json() as {
+const imp = r.json() as {
   format: string; mapping: Record<string, string>; ignored: string[]; missing: string[];
   rowsRead: number; wouldCreate: number; blocks: string[];
   rejected: { line: number; reason: string }[]; sample: { unitNo: string; block?: string;
