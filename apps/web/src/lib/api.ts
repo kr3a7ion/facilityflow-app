@@ -24,7 +24,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   const text = await res.text();
-  const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  let data: Record<string, unknown> = {};
+  try {
+    data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    // Something answered that is not this host speaking JSON — a router's login page, a
+    // proxy's error page, a captive portal. Say that, rather than surfacing a parse error
+    // nobody on the floor can act on.
+    throw new ApiError(res.status, 'not_facilityflow',
+      'Something other than FacilityFlow answered. Check you are on the office network and using the address the host PC shows.');
+  }
 
   if (!res.ok) {
     throw new ApiError(

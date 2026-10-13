@@ -2579,7 +2579,7 @@ function RemoteDoor() {
             </div>
 
             <Field label="The address the tunnel publishes"
-                   hint="Shown to whoever needs it. Setting it here does not create the tunnel — see the note below.">
+                   hint="Shown to whoever needs it, and any request for this address is treated as from outside however it arrives. Setting it here does not create the tunnel — see the note below.">
               <input className="inp" placeholder="e.g. srl-maintenance.example.com"
                      value={host ?? r.publicHost ?? ''}
                      onChange={(e) => setHost(e.target.value)}
@@ -2624,6 +2624,13 @@ function RemoteDoor() {
           Cloudflare Access in front with a list of the exact email addresses allowed —
           a named list, not a whole domain. Everything that comes through is marked as
           remote in the audit log, so an approval can always be placed on site or off it.
+        </div>
+        <div className="note mt-4">
+          <b>Using a different tunnel or a proxy?</b> Anything that adds a forwarding header,
+          or asks for the address above, is treated as outside. A tunnel that does neither —
+          one that rewrites the address to <b>localhost</b> and adds no header — looks exactly
+          like this PC's own browser and gets through as the property network. Keep its
+          default headers on, and fill in the address above.
         </div>
       </Card>
     </div>

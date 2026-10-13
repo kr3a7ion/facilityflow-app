@@ -1,5 +1,7 @@
+import os from 'node:os';
 import type { FastifyRequest } from 'fastify';
 import type { Db } from '../db/connection.js';
+import { lanAddresses } from '../config.js';
 import { nowIso } from '../lib/time.js';
 import { HttpError } from '../lib/errors.js';
 import { audit } from '../audit.js';
@@ -30,21 +32,80 @@ const PRIVATE_V4 = [
 export type Origin = 'lan' | 'remote';
 
 /**
- * Where this connection came from.
+ * Headers something in front of the app adds on the way through.
  *
- * `cloudflared` runs on the host and connects to the app over the loopback interface, so
- * a tunnelled request arrives from 127.0.0.1 and looks local. The tunnel sets
- * `CF-Connecting-IP` on everything it forwards, and its presence — not its value — is
- * what gives it away. A header cannot be used to claim the *more* trusted side, only the
- * less trusted one, which is the safe direction for a header to be able to move you in.
+ * Browsers never send these themselves; tunnels and reverse proxies do — Cloudflare its own
+ * pair, ngrok, nginx, Caddy, frp and Tailscale the X-Forwarded family or the standard
+ * Forwarded. Any one of them marks a request as having come through something, and so from
+ * outside. A header can only move a caller to the less trusted side, which is the safe
+ * direction for a header to be able to move anybody.
  */
-export function originOf(req: FastifyRequest): Origin {
-  const viaTunnel = !!(req.headers['cf-connecting-ip'] ?? req.headers['cf-ray']);
-  if (viaTunnel) return 'remote';
+const FORWARDING_HEADERS = [
+  'cf-connecting-ip', 'cf-ray', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto',
+  'forwarded', 'x-real-ip', 'true-client-ip',
+];
+
+/** The name a request asked for, lower case, without the port. */
+function requestedHost(req: FastifyRequest): string {
+  const raw = String(req.headers.host ?? '').trim().toLowerCase();
+  if (raw.startsWith('[')) return raw.slice(1, raw.indexOf(']'));   // [::1]:4700
+  return raw.replace(/:\d+$/, '');
+}
+
+/** A name this PC answers to on its own network: never a public one. */
+function isLocalName(host: string): boolean {
+  if (!host) return true;
+  if (host === 'localhost' || host.endsWith('.localhost') || host === '::1') return true;
+  if (PRIVATE_V4.some((re) => re.test(host))) return true;
+  if (/^f[cd]/.test(host) || host.startsWith('fe80:')) return true;
+  const me = os.hostname().toLowerCase();
+  if (host === me || host === `${me}.local`) return true;
+  return lanAddresses().includes(host);
+}
+
+/** The address the tunnel publishes, as set under Admin → Host PC, reduced to a host name. */
+function publishedHost(db: Db): string | null {
+  const row = db.prepare(
+    'SELECT public_host FROM remote_access_state WHERE public_host IS NOT NULL LIMIT 1'
+  ).get() as { public_host: string } | undefined;
+  if (!row?.public_host) return null;
+  const v = row.public_host.trim().toLowerCase();
+  try {
+    return new URL(v.includes('://') ? v : `http://${v}`).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where this request came from.
+ *
+ * Decided from what the request carries and the socket it arrived on, never from a header
+ * that could claim the *more* trusted side. Three signals mark it as outside the property,
+ * any one of them enough:
+ *
+ *  1. **Something forwarded it.** Every tunnel and proxy in common use says so in a header.
+ *  2. **It asked for the published address.** A browser outside asks for the name the tunnel
+ *     publishes, and keeps asking for it however many hops carry the bytes — including a raw
+ *     TCP tunnel that adds no headers at all. Set that name under Admin → Host PC.
+ *  3. **It arrived on loopback asking for a name that is not this PC's.** Something running on
+ *     this PC carried it in. The host's own browser asks for localhost or a LAN address.
+ *
+ * Otherwise the socket decides: the property's private ranges are the property network,
+ * anything else is outside.
+ *
+ * What none of this can see is a tunnel on this PC that rewrites the Host header to localhost
+ * and adds no forwarding header. Say so wherever remote access is switched on.
+ */
+export function originOf(req: FastifyRequest, db?: Db): Origin {
+  if (FORWARDING_HEADERS.some((h) => req.headers[h] !== undefined)) return 'remote';
+
+  const host = requestedHost(req);
+  if (db && host && host === publishedHost(db)) return 'remote';
 
   const ip = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '');
   if (!ip) return 'remote';
-  if (ip === '::1') return 'lan';
+  if (ip === '::1' || /^127\./.test(ip)) return isLocalName(host) ? 'lan' : 'remote';
   // IPv6 unique-local and link-local, for a property running v6 on its own network.
   if (/^f[cd]/i.test(ip) || /^fe80:/i.test(ip)) return 'lan';
   return PRIVATE_V4.some((re) => re.test(ip)) ? 'lan' : 'remote';
