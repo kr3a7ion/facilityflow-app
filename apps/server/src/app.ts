@@ -50,7 +50,20 @@ declare module 'fastify' {
   }
 }
 
-export const APP_VERSION = '0.1.0';
+/**
+ * The version, from the server's package.json — one place to bump it, rather than a
+ * constant here that the Host PC screen and the health check reported long after the
+ * package moved on.
+ */
+export const APP_VERSION: string = (() => {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(fs.readFileSync(path.join(here, '../package.json'), 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
 
 /**
  * The built client, if it has been built. Resolves the same from `dist` and from
