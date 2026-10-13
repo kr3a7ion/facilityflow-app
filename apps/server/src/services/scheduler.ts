@@ -42,6 +42,13 @@ export function runEscalationSweep(db: Db, log: (msg: string) => void = () => {}
     if (r.escalated.length) {
       log(`[escalation] ${r.escalated.length} job(s) escalated: ${r.escalated.map((e) => e.ref).join(', ')}`);
     }
+    // Said where whoever looks after the host PC will see it: a role nobody holds is a
+    // setup problem, and one that reached nobody at all is a job nobody has been told about.
+    for (const e of r.escalated.filter((x) => x.fellBack)) {
+      log(e.told
+        ? `[escalation] nobody active holds "${e.role}"; ${e.ref} went to the ${e.told} who can reassign work instead`
+        : `[escalation] !! ${e.ref} reached nobody — no active "${e.role}" and nobody who can reassign work`);
+    }
   }
   return total;
 }

@@ -221,6 +221,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | Time **on hold is excluded from the SLA**, so a store with no filters does not become a technician's problem | `workOrders.slaState` |
 | Deadlines are **computed once at creation and stored**, so editing the SLA matrix cannot rewrite history | `workOrders.create` |
 | A late job **escalates on its own**: response deadline → team lead, resolve → supervisor, a P1 at twice its deadline → HOD | `services/escalation.ts` |
+| An escalation to a role **nobody active holds** goes to everybody who can reassign work instead, says so in the job's history and on the host's log — a property with no team lead yet does not silently swallow the first step | `services/escalation.ts` |
 | PPM next-due is measured **from the due date, not the completion date**, so schedules do not drift later every cycle | `ppm.onWorkOrderVerified` |
 | PPM compliance counts **work that has actually fallen due** — a job raised for next month is not a failure, an overdue one counts before anyone closes it, and nothing judged reports “—”, not 0% | `ppm.compliance` |
 | Three consecutive generator runs above the deviation threshold **raise a job automatically** — injectors, air filter, fuel filter — before the set fails in an outage | `fuel.recordRun` |
