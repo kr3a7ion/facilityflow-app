@@ -256,6 +256,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | A snapshot is **opened and integrity-checked before it can be staged**; a corrupt file is refused rather than written over a working database | `backup.stageRestore` |
 | Money is **integer kobo**; a float throws | `lib/money.ts` |
 | A CSV export **escapes cells beginning `=`, `+`, `-` or `@`**, so opening one in Excel cannot execute something somebody typed into a job title — and it ships a BOM and CRLF so Nigerian names and the ₦ sign survive | `lib/csv.ts` |
+| Every response **forbids framing, sniffing and foreign scripts** (CSP `script-src 'self'`, `frame-ancestors 'none'`, `nosniff`); the session cookie is **Secure whenever the browser came over TLS** — the HTTPS address, or the tunnel — and plain on the LAN address where a Secure cookie would never come back; the build ships **no source maps** | `app.ts` · `auth/sessions.ts` |
 | An export needs `report.export` **and** the permission guarding the screen its data came from — it is never a side door around a read right | `routes/exports.ts` |
 | A month is a **half-open range in the property's own timezone** — Lagos midnight, not UTC midnight, and `>= from AND < to`, because a `BETWEEN` on ISO text drops whatever was recorded in the last second of the month | `lib/time.ts` |
 | An uploaded file's **declared type is not evidence** — the first bytes are checked, and SVG is not accepted at all | `services/attachments.ts` |

@@ -2,7 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { nowIso, addDays } from '../lib/time.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
-import { createSession, revokeSession, revokeAllForUser, principalFromDevice, COOKIE } from '../auth/sessions.js';
+import {
+  createSession, revokeSession, revokeAllForUser, principalFromDevice, sessionCookie, COOKIE,
+} from '../auth/sessions.js';
 import * as remote from '../services/remote.js';
 import { requireSignedIn } from '../auth/guard.js';
 import { audit } from '../audit.js';
@@ -100,12 +102,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       origin: req.origin,
     });
 
-    reply.setCookie(COOKIE, session.id, {
-      httpOnly: true, sameSite: 'lax', path: '/',
-      // secure:false is deliberate — the LAN has no certificate. See the spec, §03.
-      secure: false,
-      expires: new Date(session.expiresAt),
-    });
+    reply.setCookie(COOKIE, session.id, sessionCookie(req, session.expiresAt));
 
     return {
       ok: true,
@@ -152,9 +149,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       // Same origin as the request, so a password changed from outside is still marked remote.
       const s = createSession(app.db, me.userId, app.config.sessionDays, req.ip,
                               req.headers['user-agent'], req.origin);
-      reply.setCookie(COOKIE, s.id, {
-        httpOnly: true, sameSite: 'lax', path: '/', secure: false, expires: new Date(s.expiresAt),
-      });
+      reply.setCookie(COOKIE, s.id, sessionCookie(req, s.expiresAt));
     }
 
     audit(app.db, {
