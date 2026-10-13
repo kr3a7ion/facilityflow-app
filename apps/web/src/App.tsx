@@ -1,24 +1,60 @@
+import { lazy, Suspense, type ComponentType } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ApiError } from './lib/api';
 import { useSession } from './lib/session';
 import { Shell } from './components/Shell';
 import { Login } from './pages/Login';
-import { Setup } from './pages/Setup';
-import { Overview } from './pages/Overview';
-import { Jobs } from './pages/Jobs';
-import { JobCard } from './pages/JobCard';
-import { Roster } from './pages/Roster';
-import { Power } from './pages/Power';
-import { Apartments } from './pages/Apartments';
-import { Handover } from './pages/Handover';
-import { Stores } from './pages/Stores';
-import { Assets } from './pages/Assets';
-import { Ppm } from './pages/Ppm';
-import { Safety } from './pages/Safety';
-import { Money } from './pages/Money';
-import { Admin } from './pages/Admin';
 import { Icon } from './components/Icon';
 import { ChangePassword } from './components/ChangePassword';
+
+const RELOADED = 'ff-reloaded-for-update';
+
+/**
+ * A screen, fetched the first time somebody opens it.
+ *
+ * The client was one 630 kB script, so a technician's phone on weak plant-room wifi
+ * downloaded Admin, Money and Power before it could show the job board. Each screen is its
+ * own file now, fetched on first visit and cached after.
+ *
+ * The trap in that is an update: a tab left open across one still holds the old page, which
+ * names script files the host no longer has. A screen that fails to load reloads the page
+ * once to pick up the new build, rather than leaving a broken screen; a second failure in
+ * the same tab is shown, because then it is not an update.
+ */
+function screen<K extends string>(
+  load: () => Promise<{ [P in K]: ComponentType }>, name: K,
+) {
+  return lazy(async () => {
+    try {
+      const m = await load();
+      try { sessionStorage.removeItem(RELOADED); } catch { /* private mode */ }
+      return { default: m[name] };
+    } catch (err) {
+      let again = false;
+      try { again = sessionStorage.getItem(RELOADED) === '1'; sessionStorage.setItem(RELOADED, '1'); } catch { again = true; }
+      if (!again) {
+        window.location.reload();
+        return new Promise<never>(() => {});
+      }
+      throw err;
+    }
+  });
+}
+
+const Setup = screen(() => import('./pages/Setup'), 'Setup');
+const Overview = screen(() => import('./pages/Overview'), 'Overview');
+const Jobs = screen(() => import('./pages/Jobs'), 'Jobs');
+const JobCard = screen(() => import('./pages/JobCard'), 'JobCard');
+const Roster = screen(() => import('./pages/Roster'), 'Roster');
+const Power = screen(() => import('./pages/Power'), 'Power');
+const Apartments = screen(() => import('./pages/Apartments'), 'Apartments');
+const Handover = screen(() => import('./pages/Handover'), 'Handover');
+const Stores = screen(() => import('./pages/Stores'), 'Stores');
+const Assets = screen(() => import('./pages/Assets'), 'Assets');
+const Ppm = screen(() => import('./pages/Ppm'), 'Ppm');
+const Safety = screen(() => import('./pages/Safety'), 'Safety');
+const Money = screen(() => import('./pages/Money'), 'Money');
+const Admin = screen(() => import('./pages/Admin'), 'Admin');
 
 /**
  * Land people on the first screen their role can actually open. A technician has no
@@ -94,7 +130,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/setup" element={<Setup />} />
+      <Route path="/setup" element={<Suspense fallback={<Booting />}><Setup /></Suspense>} />
       <Route element={<Private />}>
         <Route index element={<Home />} />
         <Route path="jobs" element={<Jobs />} />

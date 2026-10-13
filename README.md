@@ -195,6 +195,13 @@ tablet at the store counter, where P1 is a red edge you find without reading any
 
 Three decisions worth knowing:
 
+**Each screen loads the first time it is opened.** The shell, sign-in and the live
+connection come in one script of about 100 kB compressed; every screen is its own file after
+that, so a phone on weak plant-room wifi reaches the job board without first downloading
+Admin and Power. A tab left open across an update reloads itself once when a screen it asks
+for no longer exists, and a screen that still cannot load says so in place, leaving the rest
+of the app working.
+
 **No CSS framework.** The design system is a single hand-written stylesheet carried
 over unchanged from the approved prototype, so what was signed off is what renders.
 Tailwind can be added later without touching the markup.
