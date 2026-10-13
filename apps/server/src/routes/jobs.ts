@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission, scopeOf } from '../auth/guard.js';
+import { assertJobInScope, jobScopeClause, teamOfStaff } from '../auth/jobScope.js';
+import { HttpError } from '../lib/errors.js';
 import * as jobs from '../services/jobs.js';
 import * as slaRules from '../services/slaRules.js';
 import { availableStaff } from '../services/roster.js';
@@ -104,20 +106,12 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    if (scope === 'own' && me.staffId) { where.push('w.assigned_to_staff_id = ?'); args.push(me.staffId); }
-    else if (scope === 'own') { where.push('w.created_by = ?'); args.push(me.userId); }
-    else if (scope === 'team' && me.staffId) {
-      where.push(`(w.assigned_to_staff_id = ? OR w.assigned_team_id =
-        (SELECT team_id FROM staff WHERE id = ?))`);
-      args.push(me.staffId, me.staffId);
-    } else if (scope === 'team') {
-      // A team lead whose account was never linked to a staff record has no team to be
-      // narrowed to. Falling through with no clause at all would have quietly widened a
-      // team-scoped grant into the whole property, so it narrows to what they raised
-      // instead: wrong in the harmless direction, and visible on the Users tab as the
-      // missing link it actually is.
-      where.push('w.created_by = ?');
-      args.push(me.userId);
+    // The same clause every single-job route checks, so the board never lists a job its
+    // reader would be refused on opening — or hides one they may act on.
+    {
+      const clause = jobScopeClause(me, scope);
+      where.push(clause.sql);
+      args.push(...clause.args);
     }
     if (q.status) { where.push('w.status = ?'); args.push(q.status); }
     else if (q.view !== 'all') { where.push(`w.status NOT IN ('closed','cancelled')`); }
@@ -162,6 +156,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/jobs/:id', { preHandler: requirePermission('wo.read') }, async (req, reply) => {
     const me = req.principal!;
     return send(reply, () => {
+      assertJobInScope(app.db, req, (req.params as { id: string }).id);
       const wo = jobs.get(app.db, me.propertyId, (req.params as { id: string }).id);
       const costs = me.permissions.has('wo.cost.read');
       // The `cost` block below was gated from the start; the raw `job` row beside it was
@@ -206,7 +201,13 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/jobs/assignable', { preHandler: requirePermission('wo.assign') }, async (req) => {
     const me = req.principal!;
-    const staff = availableStaff(app.db, me.propertyId);
+    const present = availableStaff(app.db, me.propertyId);
+    // A team lead dispatches to their own people; offering the whole roster would only
+    // produce refusals.
+    const myTeam = scopeOf(req, 'wo.assign') === 'team' ? teamOfStaff(app.db, me.staffId) : null;
+    const staff = scopeOf(req, 'wo.assign') === 'team'
+      ? present.filter((p) => p.staff_id === me.staffId || (myTeam !== null && p.team_id === myTeam))
+      : present;
     return {
       staff,
       note: staff.length ? undefined
@@ -219,16 +220,39 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
       .safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
     const { staffId, teamId, note } = body.data;
-    return send(reply, () => ({
-      job: jobs.assign(app.db, ctxOf(req), (req.params as { id: string }).id, { staffId, teamId }, note),
-    }));
+    const me = req.principal!;
+    const id = (req.params as { id: string }).id;
+    return send(reply, () => {
+      assertJobInScope(app.db, req, id, ['wo.assign']);
+      // Within the team in both directions: the job has to be theirs to move, and so does
+      // the person or team it is moved to. Handing work to another team is a supervisor's call.
+      if (scopeOf(req, 'wo.assign') === 'team') {
+        const myTeam = teamOfStaff(app.db, me.staffId);
+        const ok = staffId
+          ? staffId === me.staffId || (myTeam !== null && teamOfStaff(app.db, staffId) === myTeam)
+          : !!teamId && myTeam !== null && teamId === myTeam;
+        if (!ok) {
+          throw new HttpError(403, 'out_of_scope',
+            'You can assign work within your own team. A supervisor can give it to another team.');
+        }
+      }
+      return { job: jobs.assign(app.db, ctxOf(req), id, { staffId, teamId }, note) };
+    });
   });
 
   app.post('/api/jobs/:id/accept', { preHandler: requirePermission('wo.accept') }, async (req, reply) =>
-    send(reply, () => ({ job: jobs.accept(app.db, ctxOf(req), (req.params as { id: string }).id) })));
+    send(reply, () => {
+      const id = (req.params as { id: string }).id;
+      assertJobInScope(app.db, req, id, ['wo.accept']);
+      return { job: jobs.accept(app.db, ctxOf(req), id) };
+    }));
 
   app.post('/api/jobs/:id/start', { preHandler: requirePermission('wo.update') }, async (req, reply) =>
-    send(reply, () => ({ job: jobs.start(app.db, ctxOf(req), (req.params as { id: string }).id) })));
+    send(reply, () => {
+      const id = (req.params as { id: string }).id;
+      assertJobInScope(app.db, req, id, ['wo.update']);
+      return { job: jobs.start(app.db, ctxOf(req), id) };
+    }));
 
   app.post('/api/jobs/:id/hold', { preHandler: requirePermission('wo.hold') }, async (req, reply) => {
     const body = z.object({
@@ -236,13 +260,19 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
       note: z.string().max(500).optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
-    return send(reply, () => ({
-      job: jobs.hold(app.db, ctxOf(req), (req.params as { id: string }).id, body.data.reason, body.data.note),
-    }));
+    return send(reply, () => {
+      const id = (req.params as { id: string }).id;
+      assertJobInScope(app.db, req, id, ['wo.hold']);
+      return { job: jobs.hold(app.db, ctxOf(req), id, body.data.reason, body.data.note) };
+    });
   });
 
   app.post('/api/jobs/:id/resume', { preHandler: requirePermission('wo.hold') }, async (req, reply) =>
-    send(reply, () => ({ job: jobs.resume(app.db, ctxOf(req), (req.params as { id: string }).id) })));
+    send(reply, () => {
+      const id = (req.params as { id: string }).id;
+      assertJobInScope(app.db, req, id, ['wo.hold']);
+      return { job: jobs.resume(app.db, ctxOf(req), id) };
+    }));
 
   app.post('/api/jobs/:id/complete', { preHandler: requirePermission('wo.complete') }, async (req, reply) => {
     const body = z.object({
@@ -254,6 +284,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'invalid', message: 'Say what you did before marking it complete.' });
     }
     const id = (req.params as { id: string }).id;
+    assertJobInScope(app.db, req, id, ['wo.complete']);
 
     // A planned job whose critical steps were never ticked is the exact case a checklist
     // exists to prevent: signed off as serviced, with no record that the thing that fails
@@ -279,23 +310,31 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/jobs/:id/verify', { preHandler: requirePermission('wo.verify') }, async (req, reply) => {
     const note = (req.body as { note?: string } | undefined)?.note;
-    return send(reply, () => ({ job: jobs.verify(app.db, ctxOf(req), (req.params as { id: string }).id, note) }));
+    return send(reply, () => {
+      const id = (req.params as { id: string }).id;
+      assertJobInScope(app.db, req, id, ['wo.verify']);
+      return { job: jobs.verify(app.db, ctxOf(req), id, note) };
+    });
   });
 
   app.post('/api/jobs/:id/reopen', { preHandler: requirePermission('wo.assign') }, async (req, reply) => {
     const body = z.object({ reason: z.string().min(3).max(500) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid', message: 'Give a reason for reopening.' });
-    return send(reply, () => ({
-      job: jobs.reopen(app.db, ctxOf(req), (req.params as { id: string }).id, body.data.reason),
-    }));
+    return send(reply, () => {
+      const id = (req.params as { id: string }).id;
+      assertJobInScope(app.db, req, id, ['wo.assign']);
+      return { job: jobs.reopen(app.db, ctxOf(req), id, body.data.reason) };
+    });
   });
 
   app.post('/api/jobs/:id/cancel', { preHandler: requirePermission('wo.cancel') }, async (req, reply) => {
     const body = z.object({ reason: z.string().min(3).max(500) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid', message: 'Give a reason for cancelling.' });
-    return send(reply, () => ({
-      job: jobs.cancel(app.db, ctxOf(req), (req.params as { id: string }).id, body.data.reason),
-    }));
+    return send(reply, () => {
+      const id = (req.params as { id: string }).id;
+      assertJobInScope(app.db, req, id, ['wo.cancel']);
+      return { job: jobs.cancel(app.db, ctxOf(req), id, body.data.reason) };
+    });
   });
 
   // ---- labour, parts, comments ----------------------------------------------
@@ -307,6 +346,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     const staffId = body.data.staffId ?? me.staffId;
     if (!staffId) return reply.code(400).send({ error: 'no_staff', message: 'This account is not linked to a staff record.' });
     return send(reply, () => {
+      assertJobInScope(app.db, req, (req.params as { id: string }).id, ['wo.update']);
       jobs.logLabour(app.db, ctxOf(req), (req.params as { id: string }).id, staffId, body.data.minutes);
       return { job: jobs.get(app.db, me.propertyId, (req.params as { id: string }).id) };
     });
@@ -315,8 +355,10 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/jobs/:id/parts', { preHandler: requirePermission('stock.issue') }, async (req, reply) => {
     const body = z.object({ itemId: z.string(), qty: z.number().positive() }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
-    return send(reply, () =>
-      issueToJob(app.db, ctxOf(req), (req.params as { id: string }).id, body.data.itemId, body.data.qty), 201);
+    return send(reply, () => {
+      assertJobInScope(app.db, req, (req.params as { id: string }).id, ['stock.issue']);
+      return issueToJob(app.db, ctxOf(req), (req.params as { id: string }).id, body.data.itemId, body.data.qty);
+    }, 201);
   });
 
   app.post('/api/jobs/:id/comment', { preHandler: requirePermission('wo.update') }, async (req, reply) => {
@@ -324,6 +366,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     const body = z.object({ note: z.string().min(1).max(2000) }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid', message: 'Write something first.' });
     return send(reply, () => {
+      assertJobInScope(app.db, req, (req.params as { id: string }).id, ['wo.update']);
       const wo = jobs.get(app.db, me.propertyId, (req.params as { id: string }).id);
       app.db.prepare(
         `INSERT INTO work_order_events (id, wo_id, at, actor_id, actor_name, event_type, from_status, to_status, note)
