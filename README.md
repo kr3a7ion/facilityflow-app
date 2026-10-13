@@ -262,6 +262,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | An uploaded file's **declared type is not evidence** — the first bytes are checked, and SVG is not accepted at all | `services/attachments.ts` |
 | Attachments **inherit the permission of what they hang off** — there is no separate "can see photos" right to drift out of step | `services/attachments.ts` |
 | Resetting a password **signs that person out of every device** and forces a change | `routes/admin.ts` |
+| Until a temporary password is changed, the **server** refuses that session everything but the change itself — on the property network too, not only behind the screen the browser draws | `app.ts` |
 | The **administrator role cannot be edited down**, and role changes are audited with the codes before and after | `routes/admin.ts` |
 | A malformed **SLA matrix is refused**, and editing it never rewrites a deadline somebody was already judged against | `routes/admin.ts` |
 

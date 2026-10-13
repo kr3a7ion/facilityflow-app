@@ -134,6 +134,18 @@ r = await app.inject({ method: 'POST', url: '/api/auth/login',
   payload: { username: 'ifeoma', password: 'another-long-password' } });
 check('new user can sign in', r.statusCode === 200);
 check('new user must change their password', r.json().mustChangePassword === true);
+const issued = { cookie: `ff_sid=${r.cookies.find((c) => c.name === 'ff_sid')?.value}` };
+
+// Until they do, the session reaches only what changing it needs — on the property network
+// too, not just behind the screen the browser draws.
+r = await app.inject({ method: 'GET', url: '/api/jobs', headers: issued });
+check('and until they do, the server refuses them everything else',
+  r.statusCode === 403 && r.json().error === 'must_change_password', r.body.slice(0, 120));
+r = await app.inject({ method: 'GET', url: '/api/me', headers: issued });
+check('except who they are, which the change screen needs', r.statusCode === 200);
+r = await app.inject({ method: 'POST', url: '/api/auth/password', headers: issued,
+  payload: { currentPassword: 'another-long-password', newPassword: 'ifeoma-chose-this-one' } });
+check('and the change itself', r.statusCode === 200, r.body.slice(0, 120));
 const tech = { cookie: `ff_sid=${r.cookies.find((c) => c.name === 'ff_sid')?.value}` };
 
 r = await app.inject({ method: 'GET', url: '/api/admin/users', headers: tech });

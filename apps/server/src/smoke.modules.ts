@@ -76,7 +76,17 @@ console.log(`\nFacilityFlow module checks\ndata dir: ${dir}`);
 // helpers
 // --------------------------------------------------------------------------
 type Hdr = { cookie: string };
-async function login(username: string, password: string): Promise<Hdr> {
+/**
+ * Sign in as a fixture account.
+ *
+ * Every account here is created by an administrator, so every one starts on a temporary
+ * password the server holds behind the change screen. Fixture accounts are treated as past
+ * that first sign-in, so the sections below can exercise what they are about; the change
+ * itself is exercised through the API in "A person can change their own password".
+ * `asIssued` signs in on the password as it was handed out, flag and all.
+ */
+async function login(username: string, password: string, { asIssued = false } = {}): Promise<Hdr> {
+  if (!asIssued) db.prepare('UPDATE users SET must_change_password = 0 WHERE username = ?').run(username);
   const r = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username, password } });
   const c = r.cookies.find((x) => x.name === 'ff_sid');
   if (!c) throw new Error(`login failed for ${username}: ${r.body}`);
@@ -1855,10 +1865,20 @@ r = await post('/api/admin/users', admin, {
   displayName: 'Blessing Nwosu', username: 'blessing', password: PW, roleKey: 'requester',
 });
 check('a new account is created needing a password change', r.statusCode === 201);
-const blessing = await login('blessing', PW);
+const blessing = await login('blessing', PW, { asIssued: true });
 check('and the flag reaches the client that has to act on it',
   ((await get('/api/me', blessing)).json().user as { mustChangePassword: boolean })
     .mustChangePassword === true);
+
+// The browser draws a wall here; the server holds it too, so the wall is not only as good
+// as the client drawing it.
+r = await post('/api/requests', blessing, { description: 'Lift stuck on the third floor' });
+check('until it is changed, the account cannot raise anything on the property network',
+  r.statusCode === 403 && r.json().error === 'must_change_password', r.body.slice(0, 140));
+r = await get('/api/jobs', blessing);
+check('or read anything', r.statusCode === 403);
+r = await get('/api/events', blessing);
+check('or listen for anything', r.statusCode === 403);
 
 r = await post('/api/auth/password', blessing, {
   currentPassword: 'not-the-password', newPassword: 'a-brand-new-password',
@@ -1891,6 +1911,8 @@ r = await post('/api/auth/login', { cookie: '' } as Hdr,
   { username: 'blessing', password: 'a-brand-new-password' });
 check('and the new password is the one that works',
   r.statusCode === 200 && r.json().mustChangePassword === false);
+check('and with it, the account can get on with its work',
+  (await get('/api/jobs', stillHere)).statusCode === 200);
 r = await post('/api/auth/login', { cookie: '' } as Hdr, { username: 'blessing', password: PW });
 check('while the old one no longer does', r.statusCode === 401);
 
