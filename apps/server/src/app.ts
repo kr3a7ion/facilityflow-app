@@ -168,6 +168,34 @@ export async function buildApp(
     }
   });
 
+  /**
+   * A temporary password is not an identity, on the property network either.
+   *
+   * Every account starts on a password an administrator chose and typed, and every reset
+   * puts it back on one. The browser walls those sessions off behind the change-password
+   * screen, but the server answered them in full, so the wall was only as good as the
+   * client drawing it: anything that spoke to the API directly, or a client that failed to
+   * draw it, could raise, assign and sign off work as that person on a password somebody
+   * else knows — in a log that is append-only and names them. Until the password is
+   * changed a session reaches only what the change itself needs.
+   *
+   * From outside the property the remote boundary below already refuses such an account
+   * outright. A paired phone is never held here: its token has no password behind it.
+   */
+  const BEFORE_A_NEW_PASSWORD = new Set([
+    'GET /api/me', 'POST /api/auth/password', 'POST /api/auth/logout', 'POST /api/auth/login',
+    'GET /api/health', 'GET /api/setup/status',
+  ]);
+  app.addHook('preHandler', async (req, reply) => {
+    if (!req.principal?.mustChangePassword || req.origin === 'remote') return;
+    if (!req.url.startsWith('/api/')) return;
+    if (BEFORE_A_NEW_PASSWORD.has(`${req.method} ${req.routeOptions.url ?? ''}`)) return;
+    return reply.code(403).send({
+      error: 'must_change_password',
+      message: 'Change the password you were given before doing anything else.',
+    });
+  });
+
   app.setErrorHandler((err: FastifyError, req, reply) => {
     /*
      * A service refusal carries `status`; fastify's own errors carry `statusCode`. Only
