@@ -93,12 +93,13 @@ export interface RouteEntry {
  * A phone's token stands for its owner with no password behind it, never expires, and
  * lives in the phone's own storage. It used to carry the owner's whole role, so an
  * administrator's lost phone was a permanent administrator credential that never had to
- * know a password. The app only ever listens, reads what it rings about, answers, accepts
- * and unpairs itself — so that is all the token opens. Everything else is for the website,
- * behind a password.
+ * know a password. The app only ever listens, reads what it rings about and the person's
+ * own notices, answers, accepts and unpairs itself — so that is all the token opens. It
+ * reads notices but does not mark them read: the bell on the website is still the record of
+ * what the person has looked at. Everything else is for the website, behind a password.
  */
 export const PHONE_ROUTES = new Set([
-  'GET /api/events', 'GET /api/me', 'GET /api/me/outstanding',
+  'GET /api/events', 'GET /api/me', 'GET /api/me/outstanding', 'GET /api/notifications',
   'GET /api/me/rings', 'POST /api/me/rings/:id/ack',
   'GET /api/alerts/emergency', 'POST /api/alerts/emergency/:id/ack',
   'POST /api/jobs/:id/accept', 'DELETE /api/me/devices/:id',

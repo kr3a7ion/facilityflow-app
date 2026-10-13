@@ -155,7 +155,7 @@ property's timezone.
 | POST | `/api/handover` | `handover.write` |  |
 | POST | `/api/handover/:id/acknowledge` | `handover.acknowledge` |  |
 | GET | `/api/handover` | `handover.write` |  |
-| GET | `/api/notifications` | *signed in* |  |
+| GET | `/api/notifications` | *signed in* | yes |
 | POST | `/api/notifications/read` | *signed in* |  |
 
 ## Power and fuel

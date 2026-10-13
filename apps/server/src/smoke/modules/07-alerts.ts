@@ -552,6 +552,23 @@ check('and the rings and emergencies it is meant to ring about',
   (await get('/api/me/rings', phone)).statusCode === 200
   && (await get('/api/alerts/emergency', phone)).statusCode === 200);
 
+/*
+ * Escalations, mains failure, a job taken away or sent back: the phone was nudged that
+ * something had happened and refused when it asked what. It reads the person's own notices
+ * now, the same ones the bell shows — and leaves marking them read to the website.
+ */
+r = await get('/api/notifications', phone);
+check('the phone can read the notices behind the nudges it is sent',
+  r.statusCode === 200 && Array.isArray(r.json().notifications), r.body.slice(0, 140));
+check('the same notices the website shows that person, loudness and all',
+  JSON.stringify((r.json().notifications as { id: string }[]).map((n) => n.id))
+    === JSON.stringify(((await get('/api/notifications', ifeoma)).json().notifications as { id: string }[])
+      .map((n) => n.id))
+  && (r.json().notifications as Record<string, unknown>[]).every((n) => 'level' in n));
+r = await post('/api/notifications/read', phone);
+check('but cannot mark them read: the bell stays the record of what the person has seen',
+  r.statusCode === 403 && r.json().error === 'not_for_phones', r.body.slice(0, 140));
+
 // The token has no password behind it and never expires, so it opens what the app does
 // and nothing else. A lost phone must not be a standing key to the whole system.
 r = await get('/api/jobs', phone);
