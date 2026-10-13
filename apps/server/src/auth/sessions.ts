@@ -1,3 +1,4 @@
+import type { FastifyRequest } from 'fastify';
 import type { Db } from '../db/connection.js';
 import { sessionId } from '../lib/ids.js';
 import { nowIso, addDays } from '../lib/time.js';
@@ -18,6 +19,35 @@ export interface Principal {
   mustChangePassword: boolean;
   permissions: Set<string>;
   scopes: Record<string, string>;
+}
+
+/**
+ * Whether the browser reached this host over TLS.
+ *
+ * Directly, on the HTTPS server; or through something on this PC that terminated TLS in
+ * front of it — the Cloudflare tunnel, or a reverse proxy — which says so in
+ * X-Forwarded-Proto. That header is believed only on a loopback connection: from anywhere
+ * else it is whatever the caller typed.
+ */
+export function arrivedOverTls(req: FastifyRequest): boolean {
+  if (req.protocol === 'https') return true;
+  const socket = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '');
+  return (socket === '127.0.0.1' || socket === '::1') && req.headers['x-forwarded-proto'] === 'https';
+}
+
+/**
+ * The session cookie's options.
+ *
+ * Secure whenever the browser came over TLS, so a session opened through the tunnel or on
+ * the HTTPS address is never sent back over plain HTTP. Not Secure on the plain LAN
+ * address, because there a Secure cookie would simply never be returned and nobody could
+ * stay signed in.
+ */
+export function sessionCookie(req: FastifyRequest, expiresAt: string) {
+  return {
+    httpOnly: true, sameSite: 'lax' as const, path: '/',
+    secure: arrivedOverTls(req), expires: new Date(expiresAt),
+  };
 }
 
 export function createSession(

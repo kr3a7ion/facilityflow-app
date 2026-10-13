@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { openDb, integrityCheck } from './db/connection.js';
 import { migrate, appliedVersions } from './db/migrate.js';
 import { buildApp } from './app.js';
@@ -231,6 +232,37 @@ check('technician cannot read the audit log', r.statusCode === 403);
 const adminId = (await app.inject({ method: 'GET', url: '/api/me', headers: admin })).json().user.id;
 r = await app.inject({ method: 'POST', url: `/api/admin/users/${adminId}/disable`, headers: admin });
 check('an admin cannot disable their own account', r.statusCode === 400);
+
+// ---- what every response carries ----------------------------------------------
+{
+  r = await app.inject({ method: 'GET', url: '/api/health' });
+  const csp = String(r.headers['content-security-policy'] ?? '');
+  check('every response forbids other pages from framing this one',
+    /frame-ancestors 'none'/.test(csp) && r.headers['x-frame-options'] === 'DENY', csp);
+  check('runs only scripts this host served', /script-src 'self'(;|$)/.test(csp), csp);
+  check('and tells the browser not to second-guess content types',
+    r.headers['x-content-type-options'] === 'nosniff');
+  check('and never claims HTTPS for good, which would lock browsers off the plain LAN address',
+    r.headers['strict-transport-security'] === undefined);
+
+  const cookieFrom = async (remoteAddress: string, headers: Record<string, string> = {}) => {
+    const res = await app.inject({ method: 'POST', url: '/api/auth/login', remoteAddress, headers,
+      payload: { username: 'admin', password: 'correct-horse-battery' } });
+    return res.cookies.find((c) => c.name === 'ff_sid');
+  };
+  check('on the plain LAN address the session cookie works over HTTP',
+    (await cookieFrom('192.168.1.40'))?.secure !== true);
+  check('behind TLS ended on this PC — the tunnel — it is marked Secure',
+    (await cookieFrom('127.0.0.1', { 'x-forwarded-proto': 'https' }))?.secure === true);
+  check('and nobody on the network can claim TLS they did not use',
+    (await cookieFrom('192.168.1.40', { 'x-forwarded-proto': 'https' }))?.secure !== true);
+
+  const assets = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist/assets');
+  if (fs.existsSync(assets)) {
+    check('the built client ships no source maps for anybody to read the source from',
+      !fs.readdirSync(assets).some((f) => f.endsWith('.map')));
+  }
+}
 
 // ---- references -------------------------------------------------------------
 const propertyId = (db.prepare('SELECT id FROM properties LIMIT 1').get() as { id: string }).id;

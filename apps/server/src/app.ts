@@ -241,6 +241,32 @@ export async function buildApp(
     });
   });
 
+  /*
+   * Headers every response carries.
+   *
+   * The client is all this host's own files — bundled fonts, no CDN, no inline script — so
+   * the policy can be strict about scripts: nothing runs that this host did not serve, and
+   * no other page can frame this one to make somebody click Verify or Approve without
+   * seeing it. Styles allow inline because the QR labels and a few components set style
+   * attributes; images allow data: and blob: for the same reason the browser builds them.
+   *
+   * No Strict-Transport-Security: plain HTTP on the LAN address is the address every
+   * device in the building uses, and HSTS would make a browser refuse it for a year.
+   */
+  const CSP = [
+    "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:", "font-src 'self' data:", "connect-src 'self'",
+    "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+  app.addHook('onSend', async (_req, reply, payload) => {
+    reply.header('content-security-policy', CSP);
+    reply.header('x-content-type-options', 'nosniff');
+    reply.header('x-frame-options', 'DENY');
+    reply.header('referrer-policy', 'same-origin');
+    return payload;
+  });
+
   // One process serves the API and the client, so a phone on the office wifi only
   // ever needs one address. In development the client runs on its own Vite port and
   // proxies /api here instead.
