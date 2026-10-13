@@ -2453,6 +2453,21 @@ check('with exactly the same permissions, not a parallel set',
 
 r = await get('/api/me/outstanding', phone);
 check('and can read the work it is meant to ring about', r.statusCode === 200);
+check('and the rings and emergencies it is meant to ring about',
+  (await get('/api/me/rings', phone)).statusCode === 200
+  && (await get('/api/alerts/emergency', phone)).statusCode === 200);
+
+// The token has no password behind it and never expires, so it opens what the app does
+// and nothing else. A lost phone must not be a standing key to the whole system.
+r = await get('/api/jobs', phone);
+check('but the phone\u2019s token cannot read the job board',
+  r.statusCode === 403 && r.json().error === 'not_for_phones', r.body.slice(0, 140));
+r = await post('/api/jobs', phone, { title: 'Raised with a phone token', locationId: siteId, priority: 'P3' });
+check('or raise work', r.statusCode === 403, r.body.slice(0, 140));
+r = await get('/api/stock', phone);
+check('or reach anything else its owner\u2019s role could', r.statusCode === 403, r.body.slice(0, 140));
+check('while the same person on the website still can',
+  (await get('/api/jobs', ifeoma)).statusCode === 200);
 
 r = await get('/api/me', { authorization: 'Bearer not-a-real-token' } as unknown as Hdr);
 check('a forged token is nobody', r.statusCode === 401);
@@ -2497,6 +2512,17 @@ check('and its token dies with it, at once',
 
 r = await app.inject({ method: 'DELETE', url: `/api/me/devices/${paired.deviceId}`, headers: grace });
 check('nobody can unpair somebody else\u2019s phone through the path', r.statusCode === 404);
+
+// The app's own Unpair tells the host, with the phone's own token.
+{
+  const code = (await post('/api/me/pairing-code', ifeoma)).json().code as string;
+  const second = (await post('/api/devices/pair', { cookie: '' } as Hdr,
+    { code, deviceName: 'Ifeoma second phone', platform: 'android' })).json() as { deviceId: string; token: string };
+  const own: Hdr = { authorization: `Bearer ${second.token}` } as unknown as Hdr;
+  r = await app.inject({ method: 'DELETE', url: `/api/me/devices/${second.deviceId}`, headers: own });
+  check('a phone can unpair itself', r.statusCode === 200, r.body.slice(0, 140));
+  check('and its token stops working', (await get('/api/me', own)).statusCode === 401);
+}
 
 // --------------------------------------------------------------------------
 heading('Money is only for the people whose job it is');

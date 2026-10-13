@@ -120,6 +120,31 @@ export async function buildApp(
   });
 
   /**
+   * What a paired phone may do: what the alert app does, and nothing else.
+   *
+   * A phone's token stands for its owner with no password behind it, never expires, and
+   * lives in the phone's own storage. It used to carry the owner's whole role, so an
+   * administrator's lost phone was a permanent administrator credential that never had to
+   * know a password. The app only ever listens, reads what it rings about, answers, accepts
+   * and unpairs itself — so that is all the token opens. Everything else is for the website,
+   * behind a password.
+   */
+  const PHONE_ROUTES = new Set([
+    'GET /api/events', 'GET /api/me', 'GET /api/me/outstanding',
+    'GET /api/me/rings', 'POST /api/me/rings/:id/ack',
+    'GET /api/alerts/emergency', 'POST /api/alerts/emergency/:id/ack',
+    'POST /api/jobs/:id/accept', 'DELETE /api/me/devices/:id',
+  ]);
+  app.addHook('preHandler', async (req, reply) => {
+    if (!req.deviceId) return;
+    if (PHONE_ROUTES.has(`${req.method} ${req.routeOptions.url ?? ''}`)) return;
+    return reply.code(403).send({
+      error: 'not_for_phones',
+      message: 'A paired phone can only do what the alert app does. Use the website for this.',
+    });
+  });
+
+  /**
    * The remote boundary.
    *
    * Runs after the principal is known and before any route. Four rules, in the order a
