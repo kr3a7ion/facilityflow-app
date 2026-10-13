@@ -258,6 +258,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | A CSV export **escapes cells beginning `=`, `+`, `-` or `@`**, so opening one in Excel cannot execute something somebody typed into a job title — and it ships a BOM and CRLF so Nigerian names and the ₦ sign survive | `lib/csv.ts` |
 | An export needs `report.export` **and** the permission guarding the screen its data came from — it is never a side door around a read right | `routes/exports.ts` |
 | A month is a **half-open range in the property's own timezone** — Lagos midnight, not UTC midnight, and `>= from AND < to`, because a `BETWEEN` on ISO text drops whatever was recorded in the last second of the month | `lib/time.ts` |
+| A file can only be attached to a record that **exists, in this property** — checked before a byte reaches the disk, so nothing hangs off an id that never existed | `services/attachments.ts` |
 | An uploaded file's **declared type is not evidence** — the first bytes are checked, and SVG is not accepted at all | `services/attachments.ts` |
 | Attachments **inherit the permission of what they hang off** — there is no separate "can see photos" right to drift out of step | `services/attachments.ts` |
 | Resetting a password **signs that person out of every device** and forces a change | `routes/admin.ts` |

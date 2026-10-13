@@ -1151,6 +1151,29 @@ heading('Photos and attachments');
                          payload: nonsense.body });
   check('files cannot be attached to an unknown kind of thing', r.statusCode === 400);
 
+  // A record that does not exist: refused before a byte reaches the disk.
+  const filesOnDisk = (): number => {
+    const walk = (d: string): number => !fs.existsSync(d) ? 0 : fs.readdirSync(d, { withFileTypes: true })
+      .reduce((n, e) => n + (e.isDirectory() ? walk(path.join(d, e.name)) : 1), 0);
+    return walk(config.attachmentsDir);
+  };
+  const before = filesOnDisk();
+  const orphan = multipart({ entityType: 'work_order', entityId: 'no-such-job' },
+                           { name: 'a.png', type: 'image/png', data: PNG });
+  r = await app.inject({ method: 'POST', url: '/api/attachments', headers: { ...ifeoma, ...orphan.headers },
+                         payload: orphan.body });
+  check('a file cannot be attached to a record that does not exist',
+    r.statusCode === 404 && r.json().error === 'no_such_record', r.body.slice(0, 120));
+  check('and nothing is left on disk or in the table for it',
+    filesOnDisk() === before
+    && (db.prepare("SELECT COUNT(*) AS n FROM attachments WHERE entity_id = 'no-such-job'").get() as { n: number }).n === 0);
+
+  const ghost = multipart({ entityType: 'unit_inspection', entityId: 'x' },
+                          { name: 'a.png', type: 'image/png', data: PNG });
+  r = await app.inject({ method: 'POST', url: '/api/attachments', headers: { ...admin, ...ghost.headers },
+                         payload: ghost.body });
+  check('nor to a kind of record the system does not have', r.statusCode === 400, r.body.slice(0, 120));
+
   // The boundary lives in the header, so build the body and header together.
   const fieldsOnly = multipart({ entityType: 'work_order', entityId: job.id });
   r = await app.inject({ method: 'POST', url: '/api/attachments',
