@@ -34,7 +34,7 @@ npm install          # Node 22+
 npm run seed         # a whole demo property, see below
 npm run build        # client then server
 npm start            # http://localhost:4700 — API and UI on one address
-npm run smoke        # 937 end-to-end checks against throwaway databases
+npm run smoke        # the end-to-end checks, against throwaway databases
 ```
 
 For client work, `npm run dev` (server, port 4700) and `npm run dev:web` (Vite on
@@ -217,6 +217,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | Rule | Where |
 |---|---|
 | A job can only be assigned to someone **marked present today** | `services/roster.ts` · `workOrders.assign` |
+| A technician works **only the jobs in their own name** — not a colleague's, not a team-pool job nobody has been named on; a team lead **assigns, verifies and sees within their own team**, plus the jobs nobody has been given yet. The board and every route that takes a job id apply the same rule | `auth/jobScope.ts` |
 | The person who **completes** a job never **verifies** it — checked in the service *and* by a table constraint | `workOrders.verify` · `0004` |
 | Time **on hold is excluded from the SLA**, so a store with no filters does not become a technician's problem | `workOrders.slaState` |
 | Deadlines are **computed once at creation and stored**, so editing the SLA matrix cannot rewrite history | `workOrders.create` |
@@ -271,8 +272,8 @@ apps/server/src
   config.ts        data dir (anchored to the repo, not the shell's cwd), port, policy
   app.ts           fastify instance, principal resolution, error shape
   main.ts          entry point; prints the LAN addresses to hand out
-  smoke.ts         86 checks — schema, auth, RBAC, audit, backup and restore
-  smoke.modules.ts 851 checks — every rule in the table above, through HTTP,
+  smoke.ts         schema, auth, RBAC, audit, backup and restore
+  smoke.modules.ts every rule in the table above, through HTTP,
                    plus the payload shape each screen depends on
 apps/web/src
   lib/             fetch wrapper, formatting, session context
