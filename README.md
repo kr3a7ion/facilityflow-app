@@ -254,6 +254,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | An applied migration that has been edited **stops the server**, rather than letting field databases diverge | `db/migrate.ts` |
 | A restore is **staged and applied at boot**, never swapped under a live WAL connection, and the current database is copied out of the way first — so restoring the wrong snapshot is survivable | `db/backup.ts` · `main.ts` |
 | A snapshot is **opened and integrity-checked before it can be staged**; a corrupt file is refused rather than written over a working database | `backup.stageRestore` |
+| Signing in **gives nothing away**: an unknown name takes as long and reads the same as a wrong password, a lock is only revealed to somebody who typed the right one, a lock that has run out starts the count again, and a device that fails thirty times in fifteen minutes is made to wait — counted per caller through the tunnel | `routes/auth.ts` |
 | Money is **integer kobo**; a float throws | `lib/money.ts` |
 | A CSV export **escapes cells beginning `=`, `+`, `-` or `@`**, so opening one in Excel cannot execute something somebody typed into a job title — and it ships a BOM and CRLF so Nigerian names and the ₦ sign survive | `lib/csv.ts` |
 | An export needs `report.export` **and** the permission guarding the screen its data came from — it is never a side door around a read right | `routes/exports.ts` |

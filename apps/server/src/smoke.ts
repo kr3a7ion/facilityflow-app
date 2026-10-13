@@ -160,6 +160,61 @@ throws('audit_log refuses DELETE', () => db.prepare('DELETE FROM audit_log').run
 r = await app.inject({ method: 'GET', url: '/api/admin/audit', headers: tech });
 check('technician cannot read the audit log', r.statusCode === 403);
 
+// ---- signing in under pressure ----------------------------------------------
+// Each part signs in from its own address, so the per-device limit it may trip does not
+// spill into the rest of this file, which all arrives from 127.0.0.1.
+{
+  const signIn = (username: string, password: string, remoteAddress: string) =>
+    app.inject({ method: 'POST', url: '/api/auth/login', remoteAddress, payload: { username, password } });
+
+  r = await app.inject({ method: 'POST', url: '/api/admin/users', headers: admin, payload: {
+    displayName: 'Lock Test', username: 'lockme', password: 'the-right-password', roleKey: 'technician',
+  } });
+  const nobody = await signIn('no-such-person', 'whatever-it-is', '10.0.0.21');
+  for (let i = 0; i < 8; i++) r = await signIn('lockme', `wrong-${i}`, '10.0.0.21');
+  check('eight wrong passwords lock the account', (db.prepare(
+    "SELECT locked_until FROM users WHERE username = 'lockme'").get() as { locked_until: string | null })
+    .locked_until !== null);
+
+  r = await signIn('lockme', 'the-right-password', '10.0.0.21');
+  check('the person who knows the password is told it is locked, and until when',
+    r.statusCode === 423 && /Try again after/.test(String(r.json().message)), r.body.slice(0, 120));
+  r = await signIn('lockme', 'still-guessing', '10.0.0.21');
+  check('anybody guessing during the lock gets exactly what an unknown name gets',
+    r.statusCode === nobody.statusCode && r.body === nobody.body, `${r.statusCode} ${r.body}`);
+
+  db.prepare("UPDATE users SET locked_until = ? WHERE username = 'lockme'")
+    .run(new Date(Date.now() - 60_000).toISOString());
+  r = await signIn('lockme', 'one-more-mistake', '10.0.0.21');
+  check('once the lock has run out, one more mistake does not lock it again',
+    r.statusCode === 401 && (db.prepare("SELECT locked_until, failed_attempts FROM users WHERE username = 'lockme'")
+      .get() as { locked_until: string | null; failed_attempts: number }).failed_attempts === 1);
+  r = await signIn('lockme', 'the-right-password', '10.0.0.21');
+  check('and the right password works again', r.statusCode === 200, r.body.slice(0, 120));
+
+  // One device trying one password against every account never trips a per-account lock.
+  for (let i = 0; i < 30; i++) await signIn(`guess-${i}`, 'Password123!', '10.0.0.66');
+  r = await signIn('lockme', 'the-right-password', '10.0.0.66');
+  check('a device that has failed thirty times in a quarter of an hour is told to wait',
+    r.statusCode === 429 && r.json().error === 'too_many_attempts', r.body.slice(0, 120));
+  r = await signIn('lockme', 'the-right-password', '10.0.0.67');
+  check('without locking anybody out of any other device', r.statusCode === 200, r.body.slice(0, 120));
+
+  // Through the tunnel every caller arrives from this PC; the tunnel's header tells them apart.
+  const viaTunnel = (forwardedFor: string, password: string) => app.inject({
+    method: 'POST', url: '/api/auth/login', remoteAddress: '127.0.0.1',
+    headers: { 'cf-connecting-ip': forwardedFor }, payload: { username: 'nobody-here', password },
+  });
+  for (let i = 0; i < 30; i++) await viaTunnel('203.0.113.9', `guess-${i}`);
+  r = await viaTunnel('203.0.113.9', 'again');
+  check('a caller through the tunnel is counted on their own address', r.statusCode === 429);
+  r = await viaTunnel('198.51.100.4', 'first-try');
+  check('so one of them failing does not shut the tunnel for everyone else', r.statusCode === 401);
+  r = await app.inject({ method: 'POST', url: '/api/auth/login', remoteAddress: '10.0.0.66',
+    headers: { 'cf-connecting-ip': '198.51.100.99' }, payload: { username: 'lockme', password: 'the-right-password' } });
+  check('and the header cannot be used on the network to dodge the count', r.statusCode === 429);
+}
+
 // ---- self-disable guard -----------------------------------------------------
 const adminId = (await app.inject({ method: 'GET', url: '/api/me', headers: admin })).json().user.id;
 r = await app.inject({ method: 'POST', url: `/api/admin/users/${adminId}/disable`, headers: admin });

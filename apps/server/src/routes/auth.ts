@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify';
+import crypto from 'node:crypto';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { nowIso, addDays } from '../lib/time.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
@@ -13,6 +14,63 @@ const PasswordBody = z.object({ currentPassword: z.string().min(1), newPassword:
 const MAX_ATTEMPTS = 8;
 const LOCK_MINUTES = 15;
 
+/**
+ * A digest to check a password against when the username does not exist.
+ *
+ * Without it an unknown name answered at once and a real one only after argon2 had run, so
+ * the time a refusal took said which usernames were real — the very thing the identical
+ * message was there to hide. Made once, from a password nobody knows.
+ */
+let decoy: Promise<string> | null = null;
+const decoyDigest = (): Promise<string> =>
+  (decoy ??= hashPassword(crypto.randomBytes(24).toString('base64url')));
+
+/**
+ * Failed sign-ins per source, across every username.
+ *
+ * The per-account lock stops somebody guessing one person's password; it does nothing
+ * about trying one common password against every account, and it hands anybody on the
+ * network a way to lock the administrator out by typing badly on purpose. A source that
+ * fails this often in this long is refused before any account is looked at.
+ */
+const SOURCE_LIMIT = 30;
+const SOURCE_WINDOW_MS = 15 * 60_000;
+const failuresBySource = new Map<string, { n: number; since: number }>();
+
+/**
+ * Who is asking, for counting purposes.
+ *
+ * Through the tunnel every request reaches the app from cloudflared on this PC, so the
+ * socket alone would count every outside caller as one — one attacker would lock out
+ * every travelling supervisor. The tunnel's header separates them, and it is believed only
+ * on a loopback connection, so nobody on the network can rename themselves to dodge the count.
+ */
+function sourceOf(req: FastifyRequest): string {
+  const socket = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '');
+  const forwarded = req.headers['cf-connecting-ip'];
+  if ((socket === '127.0.0.1' || socket === '::1') && typeof forwarded === 'string' && forwarded) {
+    return `tunnel:${forwarded}`;
+  }
+  return socket || 'unknown';
+}
+
+/** Minutes until this source may try again, or 0. */
+function sourceBlockedFor(source: string, now: number): number {
+  const f = failuresBySource.get(source);
+  if (!f || now - f.since > SOURCE_WINDOW_MS) return 0;
+  return f.n >= SOURCE_LIMIT ? Math.ceil((f.since + SOURCE_WINDOW_MS - now) / 60_000) : 0;
+}
+
+function recordSourceFailure(source: string, now: number): void {
+  const f = failuresBySource.get(source);
+  if (!f || now - f.since > SOURCE_WINDOW_MS) failuresBySource.set(source, { n: 1, since: now });
+  else f.n += 1;
+  // A long-running host must not keep every address it has ever seen.
+  if (failuresBySource.size > 1000) {
+    for (const [k, v] of failuresBySource) if (now - v.since > SOURCE_WINDOW_MS) failuresBySource.delete(k);
+  }
+}
+
 interface UserRow {
   id: string; property_id: string; display_name: string; password_hash: string;
   is_active: number; failed_attempts: number; locked_until: string | null; must_change_password: number;
@@ -24,6 +82,15 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) return reply.code(400).send({ error: 'invalid', message: 'Enter a username and password.' });
     const { username, password } = parsed.data;
 
+    const source = sourceOf(req);
+    const wait = sourceBlockedFor(source, Date.now());
+    if (wait) {
+      return reply.code(429).send({
+        error: 'too_many_attempts',
+        message: `Too many failed sign-ins from this device. Try again in ${wait} minute${wait === 1 ? '' : 's'}.`,
+      });
+    }
+
     const user = app.db.prepare(
       `SELECT id, property_id, display_name, password_hash, is_active, failed_attempts, locked_until, must_change_password
          FROM users WHERE username = ?`
@@ -32,18 +99,40 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     // Same response for unknown user and wrong password: never confirm which usernames exist.
     const generic = { error: 'invalid_credentials', message: 'That username and password do not match.' };
 
-    if (!user || user.is_active !== 1) return reply.code(401).send(generic);
-
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      return reply.code(423).send({
-        error: 'locked',
-        message: `Too many attempts. Try again after ${new Date(user.locked_until).toLocaleTimeString()}.`,
-      });
+    if (!user || user.is_active !== 1) {
+      await verifyPassword(await decoyDigest(), password);
+      recordSourceFailure(source, Date.now());
+      return reply.code(401).send(generic);
     }
 
     const ok = await verifyPassword(user.password_hash, password);
+    const locked = !!user.locked_until && new Date(user.locked_until) > new Date();
+
+    if (locked) {
+      // Only somebody who knows the password learns the account is locked. Anybody else
+      // gets the answer any wrong password gets, so a lock confirms no username to a
+      // stranger, and guessing during it neither extends it nor gets anywhere.
+      if (!ok) {
+        recordSourceFailure(source, Date.now());
+        audit(app.db, {
+          propertyId: user.property_id, userId: user.id, actorName: user.display_name,
+          action: 'auth.login.failed', entityType: 'user', entityId: user.id,
+          after: { attempts: user.failed_attempts, locked: true, duringLock: true }, ip: req.ip,
+        });
+        return reply.code(401).send(generic);
+      }
+      return reply.code(423).send({
+        error: 'locked',
+        message: `Too many attempts. Try again after ${new Date(user.locked_until!).toLocaleTimeString()}.`,
+      });
+    }
+
     if (!ok) {
-      const attempts = user.failed_attempts + 1;
+      recordSourceFailure(source, Date.now());
+      // A lock that has run out starts the count again. Carrying the old total forward
+      // meant every single mistake after the first lock locked the account for another
+      // fifteen minutes.
+      const attempts = (user.locked_until ? 0 : user.failed_attempts) + 1;
       const lock = attempts >= MAX_ATTEMPTS
         ? new Date(Date.now() + LOCK_MINUTES * 60_000).toISOString()
         : null;
