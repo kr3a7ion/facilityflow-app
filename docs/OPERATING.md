@@ -437,7 +437,8 @@ Everything a technician does, plus:
 - **Assign within your team.** Your job board shows your own work and your team's. "Your
   team" is the one you are on and any team you are named lead of under Admin → Staff.
 - **A job handed to your team rings you** — phone and screen — until you put it in somebody's
-  name (the **Assign** button on the banner opens it) or accept it yourself. Nobody else on
+  name (the **Assign** button on the banner opens it) or accept it yourself, which puts it in
+  your name. Nobody else on
   the team is rung for it, because a technician can only act on a job in their own name.
 - **Verify your team's work** — as long as you did not complete it yourself.
 - **Raise requisitions** when the store does not hold what you need. You see your own and

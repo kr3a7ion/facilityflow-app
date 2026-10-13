@@ -330,14 +330,25 @@ export function assign(
 export function accept(db: Db, ctx: Ctx, id: string): WorkOrder {
   const wo = get(db, ctx.propertyId, id);
   guard(wo, 'accepted');
+  /*
+   * A job handed to a team, with nobody's name on it, becomes the name of whoever accepts
+   * it — in practice the team lead, whose phone rang for it. Accepted with no name, it
+   * stopped ringing, left the duty board and escaped escalation, while no technician could
+   * work it: they act only on jobs in their own name.
+   */
+  const takenBy = !wo.assigned_to_staff_id && wo.assigned_team_id && ctx.userId
+    ? (db.prepare('SELECT staff_id FROM users WHERE id = ?').get(ctx.userId) as
+        { staff_id: string | null } | undefined)?.staff_id ?? null
+    : null;
   const at = nowIso();
   db.transaction(() => {
     db.prepare(
-      `UPDATE work_orders SET status = 'accepted', responded_at = COALESCE(responded_at, ?), updated_at = ?
+      `UPDATE work_orders SET status = 'accepted', responded_at = COALESCE(responded_at, ?),
+              assigned_to_staff_id = COALESCE(assigned_to_staff_id, ?), updated_at = ?
         WHERE id = ?`
-    ).run(at, at, id);
+    ).run(at, takenBy, at, id);
     event(db, ctx, id, 'accepted', wo.status, 'accepted', null,
-          { respondedInMinutes: minutesBetween(wo.reported_at, at) });
+          { respondedInMinutes: minutesBetween(wo.reported_at, at), ...(takenBy ? { takenBy } : {}) });
   })();
   return get(db, ctx.propertyId, id);
 }

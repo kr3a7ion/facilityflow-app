@@ -130,6 +130,10 @@ check('and the team now reports who leads it',
   r = await post(`/api/jobs/${picked.id}/accept`, musaAgain);
   check('a lead who takes the team’s job stops it ringing too',
     r.statusCode === 200 && !(await waitingFor(musaAgain)).some((w) => w.id === picked.id), r.body.slice(0, 160));
+  check('and taking it puts it in their name, so it is somebody’s to do rather than nobody’s',
+    r.json().job?.assigned_to_staff_id === musaStaff?.id, JSON.stringify(r.json().job?.assigned_to_staff_id));
+  r = await post(`/api/jobs/${picked.id}/start`, musaAgain);
+  check('so the lead can carry on and start it', r.statusCode === 200, r.body.slice(0, 160));
 }
 
 r = await post('/api/jobs', grace, {
