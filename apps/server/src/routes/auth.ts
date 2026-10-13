@@ -7,6 +7,8 @@ import {
   createSession, revokeSession, revokeAllForUser, principalFromDevice, sessionCookie, COOKIE,
 } from '../auth/sessions.js';
 import * as remote from '../services/remote.js';
+import * as devices from '../services/devices.js';
+import * as bus from '../services/bus.js';
 import { requireSignedIn } from '../auth/guard.js';
 import { audit } from '../audit.js';
 
@@ -231,9 +233,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       'UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = ? WHERE id = ?'
     ).run(digest, nowIso(), me.userId);
 
-    // Changing a password signs out every other device.
+    // Changing a password signs out every other device — paired phones included, which
+    // hold a token with no password behind it and so outlived every change until now.
     const keep = req.cookies[COOKIE];
     revokeAllForUser(app.db, me.userId);
+    const phones = devices.revokeAllForUser(app.db, me.userId, me.userId);
+    // Every open stream too. This browser reconnects on the session made just below.
+    bus.disconnect({ userId: me.userId });
     if (keep) {
       // Same origin as the request, so a password changed from outside is still marked remote.
       const s = createSession(app.db, me.userId, app.config.sessionDays, req.ip,
@@ -244,7 +250,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     audit(app.db, {
       propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
       action: 'auth.password.changed', entityType: 'user', entityId: me.userId, ip: req.ip,
+      after: { phonesUnpaired: phones },
     });
-    return { ok: true, message: 'Password changed. Other devices have been signed out.' };
+    return {
+      ok: true,
+      phonesUnpaired: phones,
+      message: phones
+        ? `Password changed. Other devices have been signed out, and ${phones === 1 ? 'your paired phone needs' : `your ${phones} paired phones need`} pairing again.`
+        : 'Password changed. Other devices have been signed out.',
+    };
   });
 }

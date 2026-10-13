@@ -20,6 +20,8 @@ import * as slaRules from '../services/slaRules.js';
 import * as alertRouting from '../services/alertRouting.js';
 import { certPaths, caFingerprint, expiryOf, namesOf } from '../services/tls.js';
 import * as mirror from '../services/mirror.js';
+import * as devices from '../services/devices.js';
+import * as bus from '../services/bus.js';
 import { isHttpError } from '../lib/errors.js';
 
 const NewUser = z.object({
@@ -233,12 +235,15 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (r.changes === 0) return reply.code(404).send({ error: 'not_found' });
 
     const revoked = revokeAllForUser(app.db, id);
+    // Phones too, or re-enabling the account would bring every old phone back with it.
+    const phones = devices.revokeAllForUser(app.db, id, me.userId);
+    bus.disconnect({ userId: id });
     audit(app.db, {
       propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
       action: 'user.disabled', entityType: 'user', entityId: id,
-      after: { sessionsRevoked: revoked }, ip: req.ip,
+      after: { sessionsRevoked: revoked, phonesUnpaired: phones }, ip: req.ip,
     });
-    return { ok: true, sessionsRevoked: revoked };
+    return { ok: true, sessionsRevoked: revoked, phonesUnpaired: phones };
   });
 
   // ---- the host PC itself ----------------------------------------------------
@@ -713,13 +718,17 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
           locked_until = NULL, updated_at = ? WHERE id = ?`
       ).run(digest, at, id);
       const revoked = revokeAllForUser(app.db, id);
+      // "Signs them out of every device" has to include the phone, the one device with
+      // no password behind it — the likeliest reason for a reset is a lost one.
+      const phones = devices.revokeAllForUser(app.db, id, me.userId);
+      bus.disconnect({ userId: id });
 
       audit(app.db, {
         propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
         action: 'user.password.reset', entityType: 'user', entityId: id,
-        after: { username: user.username, sessionsRevoked: revoked }, ip: req.ip,
+        after: { username: user.username, sessionsRevoked: revoked, phonesUnpaired: phones }, ip: req.ip,
       });
-      return { ok: true, sessionsRevoked: revoked, mustChangePassword: true };
+      return { ok: true, sessionsRevoked: revoked, phonesUnpaired: phones, mustChangePassword: true };
     });
 
   app.post('/api/admin/users/:id/enable', { preHandler: requirePermission('admin.users.manage') },

@@ -40,16 +40,48 @@ export interface Event {
 
 interface Subscriber {
   userId: string;
+  /** The paired phone behind this stream, or null for a browser. */
+  deviceId: string | null;
   send: (e: Event) => void;
+  /** Ends the stream from this end. */
+  close?: () => void;
 }
 
 let nextId = 1;
 const subscribers = new Map<number, Subscriber>();
 
-export function subscribe(userId: string, send: (e: Event) => void): () => void {
+export function subscribe(
+  userId: string, send: (e: Event) => void,
+  opts: { deviceId?: string | null; close?: () => void } = {},
+): () => void {
   const id = nextId++;
-  subscribers.set(id, { userId, send });
+  subscribers.set(id, { userId, deviceId: opts.deviceId ?? null, send, close: opts.close });
   return () => { subscribers.delete(id); };
+}
+
+/**
+ * End every live stream for one person, or for one paired phone.
+ *
+ * Revoking a credential stopped its next request but not a stream it already had open: a
+ * phone unpaired on the website went on hearing every event, and a ring sent afterwards
+ * counted it as a device reached. Taken off the list here at once, so a count made straight
+ * after is already true. A client that still holds a valid credential simply reconnects —
+ * which is how the browser whose own password change replaced its session carries on.
+ */
+export function disconnect(match: { userId: string } | { deviceId: string }): number {
+  let n = 0;
+  for (const [id, s] of subscribers) {
+    const hit = 'userId' in match ? s.userId === match.userId : s.deviceId === match.deviceId;
+    if (!hit) continue;
+    subscribers.delete(id);
+    n += 1;
+    try {
+      s.close?.();
+    } catch {
+      // Already gone.
+    }
+  }
+  return n;
 }
 
 function deliver(e: Event, match: (s: Subscriber) => boolean): void {
