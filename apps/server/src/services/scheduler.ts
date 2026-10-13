@@ -6,7 +6,8 @@ import { tick } from './escalation.js';
 import { generateDue, remindDue } from './ppm.js';
 import { pruneSessions } from '../auth/sessions.js';
 import { runBackup } from '../db/backup.js';
-import type { Config } from '../config.js';
+import { readHostFile, type Config } from '../config.js';
+import { runMirror } from './mirror.js';
 import type { Ctx } from './workOrders.js';
 
 /**
@@ -106,6 +107,13 @@ export function startScheduler(db: Db, opts: SchedulerOptions = {}): SchedulerHa
   const backup = () => {
     if (!opts.config) return 0;
     runDailyBackup(db, opts.config, log);
+    // Then the copy off this PC, if there is somewhere to put one. In the background: a
+    // first run with years of photographs takes minutes, and nothing should wait for it.
+    const folder = readHostFile(opts.config.dataDir).backupMirror;
+    if (folder) {
+      void runMirror(opts.config, folder).then((m) =>
+        log(m.ok ? `[backup] second copy: ${m.message}` : `[backup] !! second copy failed: ${m.message}`));
+    }
     return 0;
   };
 

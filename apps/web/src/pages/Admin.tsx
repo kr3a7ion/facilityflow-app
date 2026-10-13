@@ -1153,8 +1153,10 @@ function Backups() {
   const [restoring, setRestoring] = useState<BackupFile | null>(null);
 
   const backups = useQuery<{ directory: string; keep: number; pending: boolean;
-                             backups: BackupFile[] }>({
+                             backups: BackupFile[]; mirror: MirrorInfo }>({
     queryKey: ['admin-backups'], queryFn: () => api.get('/api/admin/backups'),
+    // While a copy runs, watch it finish.
+    refetchInterval: (q) => (q.state.data?.mirror.running ? 3000 : false),
   });
   const run = useMutation({
     mutationFn: () => api.post('/api/admin/backup'),
@@ -1220,6 +1222,8 @@ function Backups() {
             )}
       </Card>
 
+      {backups.data && <SecondCopy mirror={backups.data.mirror} keep={backups.data.keep} />}
+
       <div className="note warn mt-6">
         Keeping the last {backups.data?.keep ?? 14} in <code>{backups.data?.directory ?? 'the data folder'}</code>.
         Every snapshot is reopened and integrity-checked as it is written.
@@ -1236,6 +1240,88 @@ function Backups() {
                        }} />
       )}
     </>
+  );
+}
+
+interface MirrorInfo {
+  folder: string | null;
+  running: boolean;
+  last: { at: string; ok: boolean; message: string; photosThere: number } | null;
+}
+
+/**
+ * The copy that survives this PC.
+ *
+ * Every snapshot above sits on the same disk as the database, and none of them hold the
+ * photographs. A folder named here — a USB drive left in the PC, a share on another
+ * machine — gets the newest snapshot and every attachment, once a day, on its own.
+ */
+function SecondCopy({ mirror, keep }: { mirror: MirrorInfo; keep: number }) {
+  const qc = useQueryClient();
+  const { can } = useSession();
+  const [folder, setFolder] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const done = async (text: string) => {
+    setMsg({ text });
+    setFolder(null);
+    await qc.invalidateQueries({ queryKey: ['admin-backups'] });
+  };
+  const save = useMutation({
+    mutationFn: (next: string | null) =>
+      api.put<{ message: string }>('/api/admin/backups/mirror', { folder: next }),
+    onSuccess: (r) => done(r.message),
+    onError: (e) => setMsg({ text: (e as ApiError).message, bad: true }),
+  });
+  const run = useMutation({
+    mutationFn: () => api.post<{ message: string }>('/api/admin/backups/mirror/run'),
+    onSuccess: (r) => done(r.message),
+    onError: (e) => setMsg({ text: (e as ApiError).message, bad: true }),
+  });
+  const value = folder ?? mirror.folder ?? '';
+
+  return (
+    <Card title="A second copy, off this PC" className="mt-6"
+          right={mirror.folder && (
+            <Btn size="sm" disabled={run.isPending || mirror.running} onClick={() => run.mutate()}>
+              {mirror.running ? 'Copying…' : 'Copy now'}
+            </Btn>
+          )}>
+      {msg && <div className={`note ${msg.bad ? 'crit' : ''} mb-5`} role="status">{msg.text}</div>}
+      <Field label="Folder"
+             hint={`A USB drive or a share on another machine. Gets the newest snapshot and every photo once a day, and keeps the last ${keep} snapshots.`}>
+        <input className="inp mono" placeholder="e.g. E:\FacilityFlow or \\NAS\backups"
+               value={value} disabled={!can('admin.settings.manage')}
+               onChange={(e) => setFolder(e.target.value)} />
+      </Field>
+      {can('admin.settings.manage') && (
+        <div className="mt-4">
+          <Btn size="sm" tone="pri" disabled={save.isPending || folder === null}
+               onClick={() => save.mutate(value.trim() || null)}>Save</Btn>
+          {mirror.folder && (
+            <Btn className="ml-3" size="sm" disabled={save.isPending}
+                 onClick={() => save.mutate(null)}>Stop copying</Btn>
+          )}
+        </div>
+      )}
+      {mirror.folder && (
+        <p className="t-sm mt-5 mb-0">
+          {mirror.running ? 'Copying now…'
+            : mirror.last
+              ? <>
+                  <Chip tone={mirror.last.ok ? 'ok' : 'crit'}>{mirror.last.ok ? 'copied' : 'failed'}</Chip>{' '}
+                  {when(mirror.last.at)} — {mirror.last.message}
+                  {mirror.last.ok && ` ${mirror.last.photosThere} file${mirror.last.photosThere === 1 ? '' : 's'} in the copy.`}
+                </>
+              : 'Not copied yet.'}
+        </p>
+      )}
+      {!mirror.folder && (
+        <p className="t-sm c-3 mt-5 mb-0">
+          No second copy is set. Until there is one, a dead disk, a theft or a fire takes every
+          record and every photo with it.
+        </p>
+      )}
+    </Card>
   );
 }
 

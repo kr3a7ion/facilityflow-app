@@ -65,6 +65,11 @@ export interface HostFile {
   https?: boolean;
   /** The port HTTPS answers on. Defaults to the HTTP port plus one. */
   httpsPort?: number;
+  /**
+   * A folder off this PC — a USB drive, a share — that the daily sweep copies the newest
+   * snapshot and every attachment into. Unset means no second copy.
+   */
+  backupMirror?: string;
 }
 
 export const HOST_FILE = 'host.json';
@@ -104,6 +109,9 @@ export function readHostFile(dataDir: string): HostFile {
     const httpsPort = Number(parsed?.httpsPort);
     if (Number.isFinite(httpsPort) && httpsPort >= 1024 && httpsPort <= 65535) {
       out.httpsPort = Math.floor(httpsPort);
+    }
+    if (typeof parsed?.backupMirror === 'string' && path.isAbsolute(parsed.backupMirror)) {
+      out.backupMirror = parsed.backupMirror;
     }
     return out;
   } catch {

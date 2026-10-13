@@ -19,6 +19,8 @@ import * as remote from '../services/remote.js';
 import * as slaRules from '../services/slaRules.js';
 import * as alertRouting from '../services/alertRouting.js';
 import { certPaths, caFingerprint, expiryOf, namesOf } from '../services/tls.js';
+import * as mirror from '../services/mirror.js';
+import { isHttpError } from '../lib/errors.js';
 
 const NewUser = z.object({
   displayName: z.string().min(2).max(80),
@@ -980,8 +982,61 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       pending: pendingRestore(app.config) ? true : false,
       note: 'A backup is only a backup once you have restored it. Download one and keep it '
           + 'somewhere other than this PC — a snapshot on the same disk does not survive a dead machine.',
+      mirror: {
+        folder: readHostFile(app.config.dataDir).backupMirror ?? null,
+        last: mirror.lastMirror(app.config),
+        running: mirror.mirrorRunning(),
+      },
     };
   });
+
+  /**
+   * Where the second copy goes — or that there is none.
+   *
+   * admin.settings.manage rather than admin.backup.run: this names a place on the host PC
+   * the server will write to from now on, which is a setting about the machine.
+   */
+  app.put('/api/admin/backups/mirror', { preHandler: requirePermission('admin.settings.manage') },
+    async (req, reply) => {
+      const body = z.object({ folder: z.string().max(400).nullable() }).safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+      const me = req.principal!;
+      const before = readHostFile(app.config.dataDir);
+      let folder: string | null = null;
+      if (body.data.folder !== null && body.data.folder.trim()) {
+        try {
+          folder = await mirror.checkMirrorFolder(app.config, body.data.folder);
+        } catch (err) {
+          if (isHttpError(err)) return reply.code(err.status).send({ error: err.code, message: err.message });
+          throw err;
+        }
+      }
+      const next = { ...before };
+      if (folder) next.backupMirror = folder; else delete next.backupMirror;
+      writeHostFile(app.config.dataDir, next);
+      audit(app.db, {
+        propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+        action: 'backup.mirror.changed', entityType: 'host', entityId: 'config',
+        before: { folder: before.backupMirror ?? null }, after: { folder }, ip: req.ip,
+      });
+      if (folder) void mirror.runMirror(app.config, folder);
+      return {
+        ok: true, folder,
+        message: folder
+          ? 'Saved. The first copy has started and runs in the background; this screen shows when it finishes.'
+          : 'Saved. There is no second copy any more.',
+      };
+    });
+
+  app.post('/api/admin/backups/mirror/run', { preHandler: requirePermission('admin.backup.run') },
+    async (_req, reply) => {
+      const folder = readHostFile(app.config.dataDir).backupMirror;
+      if (!folder) {
+        return reply.code(409).send({ error: 'no_folder', message: 'Choose a folder for the second copy first.' });
+      }
+      void mirror.runMirror(app.config, folder);
+      return reply.code(202).send({ ok: true, message: 'Copying now. This screen shows when it finishes.' });
+    });
 
   /**
    * Getting a backup OFF this PC. A nightly snapshot sitting on the same disk as the

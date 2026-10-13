@@ -383,6 +383,16 @@ Admin → Backups lists them, and every one can be **downloaded**. Do that. A sn
 sitting on the same disk as the database survives a mistake, but not a dead machine, a
 theft or a fire — and those are the cases worth planning for.
 
+**Or let the host carry it off.** Under Admin → Backups, *A second copy, off this PC* takes a
+folder — a USB drive left in the PC, a share on another machine — and the daily sweep copies
+the newest snapshot and every attachment into it (`services/mirror.ts`). That is the only
+place the photographs leave this disk: they live beside the database, not in it, so no
+snapshot holds them. Attachments never change once written, so each run copies only what is
+new, onto a `.part` name renamed into place so a pulled drive cannot leave a short file
+looking whole. The copy keeps the same number of snapshots as `FF_BACKUP_KEEP` and never
+deletes a photo. The folder is saved in `host.json`, refused if it is relative, unreachable,
+read-only or inside `data/`, and the last run's result is on the card.
+
 Restoring is deliberately three steps:
 
 1. **Stage it.** Pick a snapshot, type `RESTORE`. The file is integrity-checked, the live
