@@ -102,6 +102,21 @@ notices.
 Scheduled Tasks rather than a service wrapper like NSSM: it is already on every Windows
 machine, which is the point when the host has no route to the internet.
 
+The task runs as **NETWORK SERVICE**, a built-in account with no rights over the rest of the
+PC: the installer gives it read access to this folder and to Node, and write access to
+`data\` only. A web server answering the whole office — and the internet, through a tunnel —
+should not run as SYSTEM, the most powerful account on the machine. If a particular PC will
+not run it that way, `install-host.ps1 -Account SYSTEM` puts it back as it was; the installer
+says so when the server does not answer. If the second backup copy goes to a share on
+another machine, that share has to let this PC's computer account write.
+
+The ports come from `data\host.json` — the ones the server will actually use — so after
+changing the port under Admin → Host PC or option 7 of the menu, running option 3 again opens
+the new one and removes the old. The HTTPS port (the HTTP port plus one unless set) is opened
+alongside it. The rules cover private and domain networks only; if Windows has classed the
+office network as **Public**, the installer says so and prints the one command that fixes it,
+rather than opening the port to every network the PC ever joins.
+
 Logs land in `data\logs\host-<date>.log`. To stop it: `Stop-ScheduledTask -TaskName
 FacilityFlow`. To remove it entirely, `uninstall-host.ps1` in the same folder — it takes
 the task and firewall rule away and does not touch `data\`.

@@ -229,7 +229,9 @@ if not exist "data" mkdir "data"
 rem  ConvertTo-Json rather than echoing braces: batch escaping around quotes and
 rem  redirects is exactly where a file like this quietly writes something that is
 rem  not JSON, and the server would then ignore it without saying why.
-powershell -NoProfile -Command "@{port=%newport%} | ConvertTo-Json | Set-Content -Path 'data\host.json' -Encoding ASCII"
+rem  The rest of the file is kept: it also holds the address to hand out, the HTTPS
+rem  switch and the second-copy folder, and writing the port alone erased them all.
+powershell -NoProfile -Command "$f='data\host.json'; $h=[ordered]@{}; if (Test-Path $f) { try { (Get-Content $f -Raw | ConvertFrom-Json).psobject.Properties | ForEach-Object { $h[$_.Name]=$_.Value } } catch {} }; $h['port']=%newport%; $h | ConvertTo-Json | Set-Content -Path $f -Encoding ASCII"
 if errorlevel 1 (
   echo   Could not write data\host.json. The port is unchanged.
   goto done

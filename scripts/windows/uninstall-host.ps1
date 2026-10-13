@@ -5,7 +5,7 @@
       powershell -ExecutionPolicy Bypass -File .\scripts\windows\uninstall-host.ps1
 #>
 [CmdletBinding()]
-param([int]$Port = 4700, [string]$TaskName = 'FacilityFlow')
+param([string]$TaskName = 'FacilityFlow')
 
 $ErrorActionPreference = 'Stop'
 $isAdmin = ([Security.Principal.WindowsPrincipal] `
@@ -21,7 +21,9 @@ if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
   Write-Host "  No '$TaskName' task was registered." -ForegroundColor DarkGray
 }
 
-Get-NetFirewallRule -DisplayName "FacilityFlow ($Port)" -ErrorAction SilentlyContinue |
+# Every FacilityFlow rule, whichever port it was for: the port can have been changed since
+# the install, and a rule left behind is a hole nobody remembers opening.
+Get-NetFirewallRule -DisplayName 'FacilityFlow (*', 'FacilityFlow HTTPS (*' -ErrorAction SilentlyContinue |
   Remove-NetFirewallRule -ErrorAction SilentlyContinue
-Write-Host "  Closed TCP $Port." -ForegroundColor Green
+Write-Host "  Closed every FacilityFlow port." -ForegroundColor Green
 Write-Host "`n  Your data folder was not touched.`n" -ForegroundColor DarkGray
