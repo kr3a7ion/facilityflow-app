@@ -4,7 +4,6 @@ import { requirePermission, requireSignedIn } from '../auth/guard.js';
 import { ulid } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { audit } from '../audit.js';
-import { ctxOf } from './_helpers.js';
 
 /**
  * The screen that covers the shift.

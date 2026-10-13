@@ -15,7 +15,7 @@ import { runBackup, stageRestore, applyPendingRestore, PENDING } from './db/back
 import { runDailyBackup } from './services/scheduler.js';
 import { runMirror } from './services/mirror.js';
 import { readHostFile, writeHostFile } from './config.js';
-import { hostStatus, backupSummary } from './services/host.js';
+import { hostStatus } from './services/host.js';
 import { nextRef } from './lib/refs.js';
 import { ulid } from './lib/ids.js';
 import { assertKobo, formatNaira, nairaToKobo } from './lib/money.js';

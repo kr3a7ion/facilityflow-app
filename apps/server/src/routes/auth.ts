@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { nowIso, addDays } from '../lib/time.js';
+import { nowIso } from '../lib/time.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import {
   createSession, revokeSession, revokeAllForUser, principalFromDevice, sessionCookie, COOKIE,

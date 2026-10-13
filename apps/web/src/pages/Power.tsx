@@ -609,7 +609,6 @@ function PhaseBars({ amps, breaker }: { amps: number[]; breaker: number | null }
 
 /** Entering a reading is three numbers and a tap. Anything longer and it goes back on paper. */
 function ClampDialog({ onClose }: { onClose: () => void }) {
-  const { can } = useSession();
   const qc = useQueryClient();
   const [sourceId, setSourceId] = useState('');
   const [f, setF] = useState({ l1: '', l2: '', l3: '', neutral: '', volts: '', pf: '', note: '' });

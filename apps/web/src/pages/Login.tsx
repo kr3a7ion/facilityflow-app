@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, ApiError, qk } from '../lib/api';
-import { Icon } from '../components/Icon';
+import { api, ApiError } from '../lib/api';
 import { LogoTile } from '../components/Logo';
 
 export function Login() {

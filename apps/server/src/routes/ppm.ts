@@ -67,7 +67,7 @@ export async function ppmRoutes(app: FastifyInstance): Promise<void> {
             d.locationId ?? null, d.triggerType, d.intervalValue, d.intervalUnit, d.leadDays ?? 0,
             d.checklistTemplateId ?? null, d.defaultTeamId ?? null, d.defaultTrade ?? null,
             d.priority ?? 'P4', d.estimatedMinutes ?? null, nextDueAt, nextDueMeter, at, at);
-    } catch (err) {
+    } catch {
       return reply.code(400).send({
         error: 'invalid_scope',
         message: 'A schedule must name the asset, category or location it applies to.',

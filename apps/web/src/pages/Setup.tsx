@@ -2,7 +2,6 @@ import { useState, type ChangeEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
-import { Icon } from '../components/Icon';
 import { LogoTile } from '../components/Logo';
 
 /** First run: the difference between software you can hand someone and software you install for them. */

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qk, ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
 import { titleCase, when } from '../lib/format';
-import { Card, Chip, Loading, ErrorNote, Empty, Btn, Modal, Field, Tabs, Flash, Tile,
+import { Card, Chip, Loading, ErrorNote, Empty, Btn, Modal, Field, Flash, Tile,
          DeleteBtn } from '../components/Bits';
 
 interface Apartment {

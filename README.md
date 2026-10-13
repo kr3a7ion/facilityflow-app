@@ -35,6 +35,7 @@ npm run seed         # a whole demo property, see below
 npm run build        # client then server
 npm start            # http://localhost:4700 — API and UI on one address
 npm run smoke        # the end-to-end checks, against throwaway databases
+npm run lint         # ESLint: unused code and hook mistakes, not formatting
 ```
 
 For client work, `npm run dev` (server, port 4700) and `npm run dev:web` (Vite on

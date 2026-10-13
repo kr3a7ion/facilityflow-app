@@ -20,6 +20,14 @@
     "smoke": "node scripts/design-tokens.mjs && npm run smoke -w @facilityflow/server",
     "typecheck": "npm run typecheck -w @facilityflow/server && npm run typecheck -w @facilityflow/web",
     "check:design": "node scripts/design-tokens.mjs",
-    "check:ui": "node scripts/contrast-audit.mjs"
+    "check:ui": "node scripts/contrast-audit.mjs",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^17.13.0",
+    "typescript-eslint": "^8.71.2"
   }
 }

@@ -254,7 +254,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
    * handed them.
    */
   app.get('/api/admin/tls', { preHandler: requirePermission('admin.settings.manage') },
-    async (req) => {
+    async () => {
       const paths = certPaths(app.config.dataDir);
       const have = fs.existsSync(paths.caCert) && fs.existsSync(paths.hostCert);
       if (!have) {
