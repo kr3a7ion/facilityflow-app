@@ -291,10 +291,22 @@ export function assign(
         });
       }
     } else if (target.teamId) {
-      for (const login of loginsForTeam(db, ctx.propertyId, target.teamId)) {
+      // The lead is told even when they lead the team without being on it, and told what
+      // is theirs to do: it rings them until it is in somebody's name. A lead whose role
+      // cannot hand work out is told as a member, like everybody else on the team.
+      const lead = db.prepare(
+        `SELECT u.id FROM teams t
+           JOIN users u ON u.staff_id = t.team_lead_staff_id AND u.is_active = 1
+           JOIN role_permissions rp ON rp.role_id = u.role_id AND rp.permission_code = 'wo.assign'
+          WHERE t.id = ? AND t.property_id = ? LIMIT 1`
+      ).get(target.teamId, ctx.propertyId) as { id: string } | undefined;
+      const told = new Set(loginsForTeam(db, ctx.propertyId, target.teamId));
+      if (lead) told.add(lead.id);
+      for (const login of told) {
         if (login === ctx.userId) continue;
         notifyUser(db, ctx.propertyId, login, {
-          kind: 'wo.assigned', title: `${wo.ref} is with your team`, body,
+          kind: 'wo.assigned', title: `${wo.ref} is with your team`,
+          body: login === lead?.id ? `${body} — put it in someone's name` : body,
           entityType: 'work_order', entityId: id, at,
         });
       }

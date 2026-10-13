@@ -272,6 +272,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | The **HTTPS switch** reaches the next start, and saving the port or address afterwards does not quietly drop it | `config.readHostFile` |
 | A **remote session left idle** past the property's timeout is signed out, however busily an open tab polls; the same idle time on the property network is not | `auth/sessions.ts` |
 | A job handed out — or sent back — **after its response deadline still rings** the person it went to, for a full response window from assignment, while the deadline it is judged against stays put | `workOrders.ringUntil` |
+| A job handed to a **team rather than a person rings the team's lead** — when their role can hand work out — until it is in somebody's name or accepted; leading a team puts its jobs within the lead's team scope | `routes/me.ts` · `auth/jobScope.ts` |
 | A phone shows as **not listening only when its last stream closes**, so a redial after a silent drop is not reported as a dead app | `devices.streamClosed` |
 | Setup **submitted twice at once** creates one property and one administrator, not two | `routes/setup.ts` |
 | Every API path the client calls **reaches a route the server registers** — a merge cannot drop one silently | `smoke.modules.ts` |
