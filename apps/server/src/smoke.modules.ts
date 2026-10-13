@@ -3944,6 +3944,42 @@ heading('Every call the screens make has a route behind it');
 }
 
 // --------------------------------------------------------------------------
+heading('The client is served from the same address');
+// --------------------------------------------------------------------------
+/*
+ * One process serves the API and the built client, so a phone needs one address. Nothing
+ * checked that half — which matters most on the day @fastify/static changes under it.
+ * Run after a build; CI builds before it runs this.
+ */
+{
+  const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
+  if (!fs.existsSync(path.join(dist, 'index.html'))) {
+    console.log('  --   the client has not been built here; npm run build first to check this section');
+  } else {
+    const asset = fs.readdirSync(path.join(dist, 'assets')).find((f) => f.endsWith('.js'))!;
+    const html = (res: { statusCode: number; headers: Record<string, unknown>; body: string }) =>
+      res.statusCode === 200 && String(res.headers['content-type']).startsWith('text/html')
+        && res.body.includes('<div id="root"');
+    r = await app.inject({ method: 'GET', url: '/' });
+    check('the address on its own opens the app', html(r), `${r.statusCode} ${r.headers['content-type']}`);
+    r = await app.inject({ method: 'GET', url: '/jobs/some-job-id' });
+    check('a link into the app opens the app, and its router takes it from there', html(r));
+    r = await app.inject({ method: 'GET', url: `/assets/${asset}` });
+    check('the built scripts are served as scripts',
+      r.statusCode === 200 && /javascript/.test(String(r.headers['content-type'])));
+    r = await app.inject({ method: 'GET', url: '/api/no-such-route' });
+    check('while an unknown API path is an API 404, not the app',
+      r.statusCode === 404 && r.json().error === 'not_found');
+    for (const url of ['/assets/../../../package.json', '/assets/..%2f..%2f..%2fpackage.json',
+                       '/%2e%2e/%2e%2e/package.json', '/assets%2f..%2f..%2fREADME.md']) {
+      r = await app.inject({ method: 'GET', url });
+      check(`climbing out of the client folder reaches nothing (${url})`,
+        !r.body.includes('"workspaces"') && !r.body.includes('# FacilityFlow'), r.body.slice(0, 80));
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
 heading('Integrity');
 // --------------------------------------------------------------------------
 check('no foreign key is left dangling', (db.pragma('foreign_key_check') as unknown[]).length === 0);
