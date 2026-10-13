@@ -16,6 +16,7 @@ import { openDb } from './db/connection.js';
 import { migrate } from './db/migrate.js';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
+import { API_DOC, apiReference } from './apiReference.js';
 import { litresFromDip, expectedLph, type Profile } from './services/fuel.js';
 import { compute as computeLoad } from './services/load.js';
 import { buildView } from './services/network.js';
@@ -4285,6 +4286,17 @@ heading('The client is served from the same address');
         !r.body.includes('"workspaces"') && !r.body.includes('# FacilityFlow'), r.body.slice(0, 80));
     }
   }
+}
+
+// --------------------------------------------------------------------------
+heading('The API reference');
+// --------------------------------------------------------------------------
+{
+  // Generated from the routes themselves, so a route added, removed or re-guarded without
+  // `npm run docs:api` shows up here rather than in somebody's integration a month later.
+  const written = fs.existsSync(API_DOC) ? fs.readFileSync(API_DOC, 'utf8') : '';
+  check('docs/API.md lists every route the server has, and what each one requires — npm run docs:api rewrites it',
+    written === await apiReference());
 }
 
 // --------------------------------------------------------------------------

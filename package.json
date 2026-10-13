@@ -17,6 +17,7 @@
     "migrate": "npm run migrate -w @facilityflow/server",
     "seed": "npm run seed -w @facilityflow/server",
     "backup": "npm run backup -w @facilityflow/server",
+    "docs:api": "npm run docs:api -w @facilityflow/server",
     "smoke": "node scripts/design-tokens.mjs && npm run smoke -w @facilityflow/server",
     "typecheck": "npm run typecheck -w @facilityflow/server && npm run typecheck -w @facilityflow/web",
     "check:design": "node scripts/design-tokens.mjs",

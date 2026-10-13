@@ -12,6 +12,7 @@
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
     "backup": "tsx src/db/backup.ts",
+    "docs:api": "tsx src/docs-api.ts",
     "smoke": "tsx src/smoke.ts && tsx src/smoke.modules.ts"
   },
   "dependencies": {
