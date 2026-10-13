@@ -50,7 +50,20 @@ declare module 'fastify' {
   }
 }
 
-export const APP_VERSION = '0.1.0';
+/**
+ * The version, from the server's package.json — one place to bump it, rather than a
+ * constant here that the Host PC screen and the health check reported long after the
+ * package moved on.
+ */
+export const APP_VERSION: string = (() => {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(fs.readFileSync(path.join(here, '../package.json'), 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
 
 /**
  * The built client, if it has been built. Resolves the same from `dist` and from
@@ -100,7 +113,7 @@ export async function buildApp(
     // Answered once per request, from the socket rather than a header, and carried for
     // the rest of the pipeline: the permission check below, the audit entry, and the
     // session list all need the same answer.
-    req.origin = remote.originOf(req);
+    req.origin = remote.originOf(req, db);
 
     const sid = req.cookies?.[COOKIE];
     if (sid) {
@@ -117,6 +130,31 @@ export async function buildApp(
       return;
     }
     req.principal = null;
+  });
+
+  /**
+   * What a paired phone may do: what the alert app does, and nothing else.
+   *
+   * A phone's token stands for its owner with no password behind it, never expires, and
+   * lives in the phone's own storage. It used to carry the owner's whole role, so an
+   * administrator's lost phone was a permanent administrator credential that never had to
+   * know a password. The app only ever listens, reads what it rings about, answers, accepts
+   * and unpairs itself — so that is all the token opens. Everything else is for the website,
+   * behind a password.
+   */
+  const PHONE_ROUTES = new Set([
+    'GET /api/events', 'GET /api/me', 'GET /api/me/outstanding',
+    'GET /api/me/rings', 'POST /api/me/rings/:id/ack',
+    'GET /api/alerts/emergency', 'POST /api/alerts/emergency/:id/ack',
+    'POST /api/jobs/:id/accept', 'DELETE /api/me/devices/:id',
+  ]);
+  app.addHook('preHandler', async (req, reply) => {
+    if (!req.deviceId) return;
+    if (PHONE_ROUTES.has(`${req.method} ${req.routeOptions.url ?? ''}`)) return;
+    return reply.code(403).send({
+      error: 'not_for_phones',
+      message: 'A paired phone can only do what the alert app does. Use the website for this.',
+    });
   });
 
   /**
@@ -168,6 +206,34 @@ export async function buildApp(
     }
   });
 
+  /**
+   * A temporary password is not an identity, on the property network either.
+   *
+   * Every account starts on a password an administrator chose and typed, and every reset
+   * puts it back on one. The browser walls those sessions off behind the change-password
+   * screen, but the server answered them in full, so the wall was only as good as the
+   * client drawing it: anything that spoke to the API directly, or a client that failed to
+   * draw it, could raise, assign and sign off work as that person on a password somebody
+   * else knows — in a log that is append-only and names them. Until the password is
+   * changed a session reaches only what the change itself needs.
+   *
+   * From outside the property the remote boundary below already refuses such an account
+   * outright. A paired phone is never held here: its token has no password behind it.
+   */
+  const BEFORE_A_NEW_PASSWORD = new Set([
+    'GET /api/me', 'POST /api/auth/password', 'POST /api/auth/logout', 'POST /api/auth/login',
+    'GET /api/health', 'GET /api/setup/status',
+  ]);
+  app.addHook('preHandler', async (req, reply) => {
+    if (!req.principal?.mustChangePassword || req.origin === 'remote') return;
+    if (!req.url.startsWith('/api/')) return;
+    if (BEFORE_A_NEW_PASSWORD.has(`${req.method} ${req.routeOptions.url ?? ''}`)) return;
+    return reply.code(403).send({
+      error: 'must_change_password',
+      message: 'Change the password you were given before doing anything else.',
+    });
+  });
+
   app.setErrorHandler((err: FastifyError, req, reply) => {
     /*
      * A service refusal carries `status`; fastify's own errors carry `statusCode`. Only
@@ -186,6 +252,32 @@ export async function buildApp(
       error: status === 500 ? 'server_error' : (err.code ?? 'error'),
       message: status === 500 ? 'Something went wrong on the server. The error has been logged.' : err.message,
     });
+  });
+
+  /*
+   * Headers every response carries.
+   *
+   * The client is all this host's own files — bundled fonts, no CDN, no inline script — so
+   * the policy can be strict about scripts: nothing runs that this host did not serve, and
+   * no other page can frame this one to make somebody click Verify or Approve without
+   * seeing it. Styles allow inline because the QR labels and a few components set style
+   * attributes; images allow data: and blob: for the same reason the browser builds them.
+   *
+   * No Strict-Transport-Security: plain HTTP on the LAN address is the address every
+   * device in the building uses, and HSTS would make a browser refuse it for a year.
+   */
+  const CSP = [
+    "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:", "font-src 'self' data:", "connect-src 'self'",
+    "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+  app.addHook('onSend', async (_req, reply, payload) => {
+    reply.header('content-security-policy', CSP);
+    reply.header('x-content-type-options', 'nosniff');
+    reply.header('x-frame-options', 'DENY');
+    reply.header('referrer-policy', 'same-origin');
+    return payload;
   });
 
   // One process serves the API and the client, so a phone on the office wifi only

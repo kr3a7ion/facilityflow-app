@@ -34,7 +34,7 @@ npm install          # Node 22+
 npm run seed         # a whole demo property, see below
 npm run build        # client then server
 npm start            # http://localhost:4700 — API and UI on one address
-npm run smoke        # 937 end-to-end checks against throwaway databases
+npm run smoke        # the end-to-end checks, against throwaway databases
 ```
 
 For client work, `npm run dev` (server, port 4700) and `npm run dev:web` (Vite on
@@ -232,10 +232,12 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | Rule | Where |
 |---|---|
 | A job can only be assigned to someone **marked present today** | `services/roster.ts` · `workOrders.assign` |
+| A technician works **only the jobs in their own name** — not a colleague's, not a team-pool job nobody has been named on; a team lead **assigns, verifies and sees within their own team**, plus the jobs nobody has been given yet. The board and every route that takes a job id apply the same rule | `auth/jobScope.ts` |
 | The person who **completes** a job never **verifies** it — checked in the service *and* by a table constraint | `workOrders.verify` · `0004` |
 | Time **on hold is excluded from the SLA**, so a store with no filters does not become a technician's problem | `workOrders.slaState` |
 | Deadlines are **computed once at creation and stored**, so editing the SLA matrix cannot rewrite history | `workOrders.create` |
 | A late job **escalates on its own**: response deadline → team lead, resolve → supervisor, a P1 at twice its deadline → HOD | `services/escalation.ts` |
+| An escalation to a role **nobody active holds** goes to everybody who can reassign work instead, says so in the job's history and on the host's log — a property with no team lead yet does not silently swallow the first step | `services/escalation.ts` |
 | PPM next-due is measured **from the due date, not the completion date**, so schedules do not drift later every cycle | `ppm.onWorkOrderVerified` |
 | PPM compliance counts **work that has actually fallen due** — a job raised for next month is not a failure, an overdue one counts before anyone closes it, and nothing judged reports “—”, not 0% | `ppm.compliance` |
 | Three consecutive generator runs above the deviation threshold **raise a job automatically** — injectors, air filter, fuel filter — before the set fails in an outage | `fuel.recordRun` |
@@ -267,15 +269,21 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | Every API path the client calls **reaches a route the server registers** — a merge cannot drop one silently | `smoke.modules.ts` |
 | Setup creates the **site** at the root of the location tree, so the first job on a brand-new install has somewhere to land | `routes/setup.ts` |
 | An applied migration that has been edited **stops the server**, rather than letting field databases diverge | `db/migrate.ts` |
+| A request is **from outside** if anything forwarded it (any `X-Forwarded-*`, `Forwarded`, `X-Real-IP` or Cloudflare header), if it asks for the address published under Admin → Host PC, or if it reaches the app over loopback asking for a name that is not this PC's — so a tunnel other than Cloudflare cannot walk past the remote rules as the property network. Running a reverse proxy in front of the app for LAN users would mark them as outside too | `services/remote.ts` |
 | A restore is **staged and applied at boot**, never swapped under a live WAL connection, and the current database is copied out of the way first — so restoring the wrong snapshot is survivable | `db/backup.ts` · `main.ts` |
 | A snapshot is **opened and integrity-checked before it can be staged**; a corrupt file is refused rather than written over a working database | `backup.stageRestore` |
+| Signing in **gives nothing away**: an unknown name takes as long and reads the same as a wrong password, a lock is only revealed to somebody who typed the right one, a lock that has run out starts the count again, and a device that fails thirty times in fifteen minutes is made to wait — counted per caller through the tunnel | `routes/auth.ts` |
 | Money is **integer kobo**; a float throws | `lib/money.ts` |
 | A CSV export **escapes cells beginning `=`, `+`, `-` or `@`**, so opening one in Excel cannot execute something somebody typed into a job title — and it ships a BOM and CRLF so Nigerian names and the ₦ sign survive | `lib/csv.ts` |
+| Every response **forbids framing, sniffing and foreign scripts** (CSP `script-src 'self'`, `frame-ancestors 'none'`, `nosniff`); the session cookie is **Secure whenever the browser came over TLS** — the HTTPS address, or the tunnel — and plain on the LAN address where a Secure cookie would never come back; the build ships **no source maps** | `app.ts` · `auth/sessions.ts` |
 | An export needs `report.export` **and** the permission guarding the screen its data came from — it is never a side door around a read right | `routes/exports.ts` |
 | A month is a **half-open range in the property's own timezone** — Lagos midnight, not UTC midnight, and `>= from AND < to`, because a `BETWEEN` on ISO text drops whatever was recorded in the last second of the month | `lib/time.ts` |
+| A file can only be attached to a record that **exists, in this property** — checked before a byte reaches the disk, so nothing hangs off an id that never existed | `services/attachments.ts` |
 | An uploaded file's **declared type is not evidence** — the first bytes are checked, and SVG is not accepted at all | `services/attachments.ts` |
 | Attachments **inherit the permission of what they hang off** — there is no separate "can see photos" right to drift out of step | `services/attachments.ts` |
+| A paired phone's token opens **only what the alert app does** — listen, read what it rings about, answer, accept, unpair — never its owner's whole role, so a lost phone is not a standing key to the system | `app.ts` |
 | Resetting a password **signs that person out of every device** and forces a change | `routes/admin.ts` |
+| Until a temporary password is changed, the **server** refuses that session everything but the change itself — on the property network too, not only behind the screen the browser draws | `app.ts` |
 | The **administrator role cannot be edited down**, and role changes are audited with the codes before and after | `routes/admin.ts` |
 | A malformed **SLA matrix is refused**, and editing it never rewrites a deadline somebody was already judged against | `routes/admin.ts` |
 
@@ -286,8 +294,8 @@ apps/server/src
   config.ts        data dir (anchored to the repo, not the shell's cwd), port, policy
   app.ts           fastify instance, principal resolution, error shape
   main.ts          entry point; prints the LAN addresses to hand out
-  smoke.ts         86 checks — schema, auth, RBAC, audit, backup and restore
-  smoke.modules.ts 851 checks — every rule in the table above, through HTTP,
+  smoke.ts         schema, auth, RBAC, audit, backup and restore
+  smoke.modules.ts every rule in the table above, through HTTP,
                    plus the payload shape each screen depends on
 apps/web/src
   lib/             fetch wrapper, formatting, session context
@@ -354,6 +362,8 @@ GET  /api/reports/dashboard          POST /api/reports/escalate
 
 ## Environment
 
+Read from the environment the server starts in; nothing reads a `.env` file.
+
 | Variable | Default | Notes |
 |---|---|---|
 | `FF_DATA_DIR` | `<repo>/data` | Database, attachments and backups |
@@ -362,6 +372,14 @@ GET  /api/reports/dashboard          POST /api/reports/escalate
 | `FF_SESSION_DAYS` | `7` | Cookie and session lifetime |
 | `FF_BACKUP_KEEP` | `14` | Snapshots retained |
 | `FF_LOG_LEVEL` | `info` | Fastify log level |
+
+### The one advisory `npm audit` still reports
+
+`node-forge` is flagged for accepting extra fields when it **verifies** an RSA PKCS#1 v1.5
+signature, and no fixed release exists. The host only uses it to **generate** the property's
+own root and server certificate (`services/tls.ts`); it never verifies a signature with it,
+so the flaw has nothing to act on here. Revisit if `tls.ts` ever starts checking certificates
+it did not make itself.
 
 `FF_PORT` beats `data/host.json` beats the default. The scheduled task sets no environment,
 so on the office PC the file is what decides — which is what makes the port changeable from

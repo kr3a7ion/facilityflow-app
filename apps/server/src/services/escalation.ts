@@ -17,7 +17,13 @@ import { slaState, type WorkOrder } from './workOrders.js';
  */
 export interface EscalationResult {
   scanned: number;
-  escalated: { id: string; ref: string; from: number; to: number; role: string }[];
+  escalated: {
+    id: string; ref: string; from: number; to: number; role: string;
+    /** How many people were told. Zero is the failure worth saying out loud. */
+    told: number;
+    /** Nobody active held the role, so it went to whoever can move the job anywhere. */
+    fellBack: boolean;
+  }[];
 }
 
 const OPEN_STATES = ['open', 'assigned', 'accepted', 'in_progress'];
@@ -45,18 +51,10 @@ export function tick(db: Db, propertyId: string, at: string = nowIso()): Escalat
 
     if (level <= wo.escalation_level) continue;
 
+    let told = 0;
+    let fellBack = false;
     db.transaction(() => {
-      db.prepare('UPDATE work_orders SET escalation_level = ?, updated_at = ? WHERE id = ?')
-        .run(level, at, wo.id);
-      db.prepare(
-        `INSERT INTO work_order_events (id, wo_id, at, actor_name, event_type, from_status, to_status, note, meta_json)
-         VALUES (?, ?, ?, 'System', 'escalated', ?, ?, ?, ?)`
-      ).run(ulid(), wo.id, at, wo.status, wo.status,
-            level === 1 ? 'Response deadline passed'
-              : level === 2 ? 'Resolve deadline passed'
-              : 'P1 at twice its resolve deadline',
-            JSON.stringify({ level, role, minutesLate: s.minutesRemaining }));
-      notifyRole(db, propertyId, role, {
+      const notice: Notice = {
         kind: 'escalation',
         title: `${wo.ref} · ${wo.priority} escalated`,
         // The most urgent message the system sends. It used to play the ordinary chime,
@@ -66,10 +64,35 @@ export function tick(db: Db, propertyId: string, at: string = nowIso()): Escalat
         entityType: 'work_order',
         entityId: wo.id,
         at,
-      });
+      };
+      told = notifyRole(db, propertyId, role, notice);
+      /*
+       * A role with nobody in it.
+       *
+       * Escalation names roles — team lead, supervisor, HOD — and a property with no team
+       * lead accounts yet, or whose only one has been disabled, sent the first step to
+       * nobody. Nothing failed; the job simply sat, and the first anybody heard was the next
+       * level an hour later, or a guest. When nobody active holds the role, it goes to
+       * everybody who can move the job anywhere instead.
+       */
+      if (told === 0) {
+        told = notifyHolders(db, propertyId, 'wo.assign', notice);
+        fellBack = true;
+      }
+      db.prepare('UPDATE work_orders SET escalation_level = ?, updated_at = ? WHERE id = ?')
+        .run(level, at, wo.id);
+      db.prepare(
+        `INSERT INTO work_order_events (id, wo_id, at, actor_name, event_type, from_status, to_status, note, meta_json)
+         VALUES (?, ?, ?, 'System', 'escalated', ?, ?, ?, ?)`
+      ).run(ulid(), wo.id, at, wo.status, wo.status,
+            level === 1 ? 'Response deadline passed'
+              : level === 2 ? 'Resolve deadline passed'
+              : 'P1 at twice its resolve deadline',
+            JSON.stringify({ level, role, minutesLate: s.minutesRemaining, told,
+                             ...(fellBack ? { nobodyInRole: true, toldInstead: 'wo.assign' } : {}) }));
     })();
 
-    escalated.push({ id: wo.id, ref: wo.ref, from: wo.escalation_level, to: level, role });
+    escalated.push({ id: wo.id, ref: wo.ref, from: wo.escalation_level, to: level, role, told, fellBack });
   }
 
   return { scanned: jobs.length, escalated };
@@ -88,6 +111,22 @@ export function notifyRole(db: Db, propertyId: string, roleKey: string, n: Notic
     `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id
       WHERE u.property_id = ? AND r.key = ? AND u.is_active = 1`
   ).all(propertyId, roleKey) as { id: string }[];
+  return notifyAll(db, propertyId, users, n);
+}
+
+/**
+ * Everybody active who holds a permission across the whole property — for wo.assign, the
+ * people who can move a job to anyone. Found by what they may do, not by a role's name.
+ */
+export function notifyHolders(db: Db, propertyId: string, code: string, n: Notice): number {
+  const users = db.prepare(
+    `SELECT DISTINCT u.id FROM users u JOIN role_permissions rp ON rp.role_id = u.role_id
+      WHERE u.property_id = ? AND u.is_active = 1 AND rp.permission_code = ? AND rp.scope = 'all'`
+  ).all(propertyId, code) as { id: string }[];
+  return notifyAll(db, propertyId, users, n);
+}
+
+function notifyAll(db: Db, propertyId: string, users: { id: string }[], n: Notice): number {
   const at = n.at ?? nowIso();
   const ins = db.prepare(
     `INSERT INTO notifications (id, property_id, user_id, kind, title, body, entity_type, entity_id, created_at, level)
