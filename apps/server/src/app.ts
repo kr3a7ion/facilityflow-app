@@ -36,6 +36,8 @@ declare module 'fastify' {
     db: Db;
     config: Config;
     appVersion: string;
+    /** Every route as it was registered: what docs/API.md is generated from. */
+    routeList: RouteEntry[];
   }
   interface FastifyRequest {
     principal: Principal | null;
@@ -75,6 +77,31 @@ function clientDir(): string | null {
   return fs.existsSync(path.join(guess, 'index.html')) ? guess : null;
 }
 
+/** One registered route, and the guard it declared. */
+export interface RouteEntry {
+  method: string;
+  url: string;
+  /** A permission code, 'signed in', or null when the route declared no guard. */
+  requires: string | null;
+}
+
+/**
+ * What a paired phone may do: what the alert app does, and nothing else.
+ *
+ * A phone's token stands for its owner with no password behind it, never expires, and
+ * lives in the phone's own storage. It used to carry the owner's whole role, so an
+ * administrator's lost phone was a permanent administrator credential that never had to
+ * know a password. The app only ever listens, reads what it rings about, answers, accepts
+ * and unpairs itself — so that is all the token opens. Everything else is for the website,
+ * behind a password.
+ */
+export const PHONE_ROUTES = new Set([
+  'GET /api/events', 'GET /api/me', 'GET /api/me/outstanding',
+  'GET /api/me/rings', 'POST /api/me/rings/:id/ack',
+  'GET /api/alerts/emergency', 'POST /api/alerts/emergency/:id/ack',
+  'POST /api/jobs/:id/accept', 'DELETE /api/me/devices/:id',
+]);
+
 export async function buildApp(
   db: Db, config: Config,
   /** Present only for the second, HTTPS server. The HTTP one is built without it. */
@@ -86,6 +113,17 @@ export async function buildApp(
     bodyLimit: 2 * 1024 * 1024,
     ...(tls ? { https: { key: tls.key, cert: tls.cert } } : {}),
   });
+
+  // Before anything registers a route, so the list is the whole API.
+  const routeList: RouteEntry[] = [];
+  app.addHook('onRoute', (route) => {
+    const guards = [route.preHandler ?? []].flat() as { requires?: string }[];
+    const requires = guards.find((g) => g.requires)?.requires ?? null;
+    for (const method of [route.method].flat()) {
+      if (method !== 'HEAD') routeList.push({ method, url: route.url, requires });
+    }
+  });
+  app.decorate('routeList', routeList);
 
   app.decorate('db', db);
   app.decorate('config', config);
@@ -132,22 +170,7 @@ export async function buildApp(
     req.principal = null;
   });
 
-  /**
-   * What a paired phone may do: what the alert app does, and nothing else.
-   *
-   * A phone's token stands for its owner with no password behind it, never expires, and
-   * lives in the phone's own storage. It used to carry the owner's whole role, so an
-   * administrator's lost phone was a permanent administrator credential that never had to
-   * know a password. The app only ever listens, reads what it rings about, answers, accepts
-   * and unpairs itself — so that is all the token opens. Everything else is for the website,
-   * behind a password.
-   */
-  const PHONE_ROUTES = new Set([
-    'GET /api/events', 'GET /api/me', 'GET /api/me/outstanding',
-    'GET /api/me/rings', 'POST /api/me/rings/:id/ack',
-    'GET /api/alerts/emergency', 'POST /api/alerts/emergency/:id/ack',
-    'POST /api/jobs/:id/accept', 'DELETE /api/me/devices/:id',
-  ]);
+  // A paired phone reaches only PHONE_ROUTES, above.
   app.addHook('preHandler', async (req, reply) => {
     if (!req.deviceId) return;
     if (PHONE_ROUTES.has(`${req.method} ${req.routeOptions.url ?? ''}`)) return;

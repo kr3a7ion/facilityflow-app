@@ -279,15 +279,10 @@ apps/server/src
   config.ts        data dir (anchored to the repo, not the shell's cwd), port, policy
   app.ts           fastify instance, principal resolution, error shape
   main.ts          entry point; prints the LAN addresses to hand out
+  apiReference.ts  docs/API.md, generated from the routes the server registers
   smoke.ts         schema, auth, RBAC, audit, backup and restore
   smoke.modules.ts every rule in the table above, through HTTP,
                    plus the payload shape each screen depends on
-apps/web/src
-  lib/             fetch wrapper, formatting, session context
-  components/      shell, status strip, shared pieces
-  pages/           login · setup · overview · jobs · job card · ppm · roster
-                   power · apartments · assets · stores · safety · money
-                   handover · admin
   db/
     connection.ts  pragmas that matter: foreign_keys, WAL, busy_timeout
     migrate.ts     numbered SQL, checksummed, transactional
@@ -309,8 +304,15 @@ apps/web/src
     stores.ts      the movement ledger, issue-to-job, requisitions
     reports.ts     the KPI set
     scheduler.ts   background work, catching up on boot
-  routes/          health · setup · auth · me · admin · registry · people · jobs
-                   ppm · power · stores · money · safety · reports
+  routes/          health · setup · auth · me · alerts · duty · jobs · ppm · registry
+                   people · power · stores · money · safety · reports · attachments
+                   exports · retire · admin
+apps/web/src
+  lib/             fetch wrapper, formatting, session context
+  components/      shell, status strip, shared pieces
+  pages/           login · setup · overview · jobs · job card · ppm · roster
+                   power · apartments · assets · stores · safety · money
+                   handover · admin
 ```
 
 ## API
@@ -319,31 +321,14 @@ apps/web/src
 never a role name — "the HOD wants team leads to issue permits now" is a settings
 change, not a release.
 
+**[docs/API.md](docs/API.md)** lists every route, the permission it requires, and which
+ones a paired phone may call. It is generated from the routes the server registers —
+`npm run docs:api` rewrites it — and the smoke suite fails when the file and the server
+disagree, so it cannot fall behind the way the hand-kept list that used to be here did.
+
 Every list that grows without limit takes **`?month=YYYY-MM`** and defaults to the
 current month in the property's timezone, answering with the range it used so the screen
 can label it honestly.
-
-```
-GET  /api/health                     GET  /api/me
-POST /api/setup                      POST /api/auth/login | logout | password
-GET  /api/locations                  POST /api/apartments/import   (dry run supported)
-GET  /api/assets?tag=GEN-01          POST /api/assets/:id/reading
-GET  /api/roster                     POST /api/roster/mark          (present | absent)
-GET  /api/handover/draft             POST /api/handover/:id/acknowledge
-GET  /api/jobs                       POST /api/jobs/:id/assign | accept | start | hold
-                                          | resume | complete | verify | reopen | cancel
-GET  /api/jobs/assignable            POST /api/jobs/:id/labour | parts | comment
-POST /api/requests/:id/convert       POST /api/ppm/generate
-GET  /api/ppm/compliance             POST /api/ppm/schedules
-POST /api/fuel/tanks/:id/dip         POST /api/fuel/deliveries      (two signatures)
-POST /api/gensets/runs               GET  /api/fuel/reconcile
-POST /api/power/clamp                GET  /api/power/load           (which set to start)
-GET  /api/power/sources              POST /api/power/sources        (incomers · CT ratios)
-GET  /api/stock                      POST /api/jobs/:id/parts
-POST /api/requisitions/:id/decide    POST /api/purchases | expenses
-POST /api/permits/:id/issue | close  POST /api/incidents
-GET  /api/reports/dashboard          POST /api/reports/escalate
-```
 
 ## Environment
 
