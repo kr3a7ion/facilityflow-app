@@ -720,8 +720,16 @@ release.
 ### Backups
 
 One a day, automatically, onto the same disk. **That is not a backup** — it survives a
-mistake, not a dead machine, a theft or a fire. Download one to a flash drive weekly and
-keep it somewhere else. The Host PC tab tells you how old the newest one is.
+mistake, not a dead machine, a theft or a fire. The Host PC tab tells you how old the newest
+one is.
+
+Get a copy off the machine. The simplest way: leave a flash drive in the host PC (or point at
+a shared folder on another computer) and enter its folder under **Backups → A second copy,
+off this PC**. Every day the host copies the newest snapshot there, and every job, permit and
+incident photo — which the snapshots themselves do not hold. The card shows when it last
+copied and whether it worked; if it says *failed*, the drive was unplugged or the share was
+unreachable. Without one, download a snapshot to a flash drive weekly and keep it elsewhere —
+and know that the photos are not in it.
 
 Restoring is staged and applied on the next restart, because swapping the database file
 under a running server is not survivable.

@@ -13,6 +13,7 @@ import { buildApp } from './app.js';
 import { loadConfig, defaultDataDir } from './config.js';
 import { runBackup, stageRestore, applyPendingRestore, PENDING } from './db/backup.js';
 import { runDailyBackup } from './services/scheduler.js';
+import { runMirror } from './services/mirror.js';
 import { readHostFile, writeHostFile } from './config.js';
 import { hostStatus, backupSummary } from './services/host.js';
 import { nextRef } from './lib/refs.js';
@@ -452,6 +453,51 @@ check('backup keeps snapshots in the backups folder', direct.file.startsWith(con
   reopened.close();
   check('applying again does nothing, because nothing is staged',
     applyPendingRestore(config) === null);
+}
+
+// ---- a second copy, off this PC --------------------------------------------------
+{
+  const put = (folder: string | null) => app.inject({ method: 'PUT', url: '/api/admin/backups/mirror',
+    headers: admin, payload: { folder } });
+  r = await put('relative/folder');
+  check('the second copy needs a whole path', r.statusCode === 400 && r.json().error === 'not_absolute');
+  r = await put(path.join(config.dataDir, 'copies'));
+  check('and refuses a folder inside the data folder it exists to survive',
+    r.statusCode === 400 && r.json().error === 'same_disk');
+  r = await put(path.join(os.tmpdir(), 'ff-no-such-drive', 'x'));
+  check('and a folder this PC cannot reach', r.statusCode === 400 && r.json().error === 'not_found');
+
+  // Something to copy: a photo, as the app files them, beside the snapshots already taken.
+  const photo = path.join(config.attachmentsDir, '2026', '10', 'mirror-test.jpg');
+  fs.mkdirSync(path.dirname(photo), { recursive: true });
+  fs.writeFileSync(photo, Buffer.alloc(2048, 7));
+
+  const usb = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-usb-'));
+  r = await put(usb);
+  check('a real folder is accepted and saved for the next start',
+    r.statusCode === 200 && readHostFile(config.dataDir).backupMirror === usb, r.body.slice(0, 160));
+
+  const first = await runMirror(config, usb);
+  const newest = fs.readdirSync(config.backupsDir).filter((f) => /^facilityflow-.+\.db$/.test(f)).sort().at(-1)!;
+  check('the newest snapshot is copied off the machine',
+    first.ok && fs.existsSync(path.join(usb, 'snapshots', newest)), first.message);
+  check('and so are the photos, which no snapshot ever held',
+    fs.readFileSync(path.join(usb, 'attachments', '2026', '10', 'mirror-test.jpg')).length === 2048);
+  const again = await runMirror(config, usb);
+  check('the next run copies only what is new', again.ok && again.photosCopied === 0, JSON.stringify(again));
+
+  r = await app.inject({ method: 'GET', url: '/api/admin/backups', headers: admin });
+  check('and the Backups screen shows where it went and how it went',
+    r.json().mirror.folder === usb && r.json().mirror.last?.ok === true, JSON.stringify(r.json().mirror));
+  r = await app.inject({ method: 'POST', url: '/api/admin/backups/mirror/run', headers: admin });
+  check('a copy can be asked for now', r.statusCode === 202);
+  await runMirror(config, usb);
+
+  r = await put(null);
+  check('and the second copy can be switched off',
+    r.statusCode === 200 && readHostFile(config.dataDir).backupMirror === undefined);
+  fs.rmSync(usb, { recursive: true, force: true });
+  fs.rmSync(photo, { force: true });
 }
 
 // ---- session lifecycle ------------------------------------------------------
