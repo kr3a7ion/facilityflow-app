@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { requirePermission, scopeOf } from '../auth/guard.js';
 import { assertJobInScope, jobScopeClause, teamOfStaff, teamsOfStaff } from '../auth/jobScope.js';
@@ -17,6 +17,19 @@ import { ctxOf, monthOf, send } from './_helpers.js';
  * and quietly start appearing in two list responses.
  */
 const WO_COST_COLUMNS = ['cost_labour_kobo', 'cost_parts_kobo', 'cost_vendor_kobo'] as const;
+
+/**
+ * A job row as this person may see it: without its three cost columns unless they hold
+ * wo.cost.read. Every route that hands back a job goes through here — the list and the
+ * card were gated, and every button on the card (accept, start, complete…) answered with
+ * the raw row, costs and all, to the technician who pressed it.
+ */
+function jobFor<T extends object>(req: FastifyRequest, wo: T): T {
+  if (req.principal!.permissions.has('wo.cost.read')) return wo;
+  const o = { ...wo } as Record<string, unknown>;
+  for (const k of WO_COST_COLUMNS) delete o[k];
+  return o as T;
+}
 
 /** withoutMoney, but for job money, which is gated on wo.cost.read rather than cost.read. */
 function withoutMoneyIf<T extends Record<string, unknown>>(
@@ -135,12 +148,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
      * who could read a job — which is every technician. Same gate, both places.
      */
     const costs = req.principal!.permissions.has('wo.cost.read');
-    const visible = costs ? rows
-      : rows.map((w) => {
-          const o = { ...w } as Record<string, unknown>;
-          for (const k of WO_COST_COLUMNS) delete o[k];
-          return o as typeof w;
-        });
+    const visible = rows.map((w) => jobFor(req, w));
 
     return {
       jobs: visible.map((w) => ({ ...w, sla: jobs.slaState(w) })),
@@ -159,15 +167,10 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
       assertJobInScope(app.db, req, (req.params as { id: string }).id);
       const wo = jobs.get(app.db, me.propertyId, (req.params as { id: string }).id);
       const costs = me.permissions.has('wo.cost.read');
-      // The `cost` block below was gated from the start; the raw `job` row beside it was
-      // not, and it carries the same three columns. A gate with a door next to it.
-      const job = costs ? wo : (() => {
-        const o: Record<string, unknown> = { ...wo };
-        for (const k of WO_COST_COLUMNS) delete o[k];
-        return o;
-      })();
       return {
-        job,
+        // The `cost` block below was gated from the start; the raw `job` row beside it was
+        // not, and it carries the same three columns. A gate with a door next to it.
+        job: jobFor(req, wo),
         showsCost: costs,
         sla: jobs.slaState(wo),
         // Which specific rule set this job's deadlines, when one did.
@@ -196,7 +199,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/jobs', { preHandler: requirePermission('wo.create') }, async (req, reply) => {
     const parsed = Create.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid', issues: parsed.error.issues });
-    return send(reply, () => ({ job: jobs.create(app.db, ctxOf(req), parsed.data) }), 201);
+    return send(reply, () => ({ job: jobFor(req, jobs.create(app.db, ctxOf(req), parsed.data)) }), 201);
   });
 
   app.get('/api/jobs/assignable', { preHandler: requirePermission('wo.assign') }, async (req) => {
@@ -237,7 +240,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
             'You can assign work within your own team. A supervisor can give it to another team.');
         }
       }
-      return { job: jobs.assign(app.db, ctxOf(req), id, { staffId, teamId }, note) };
+      return { job: jobFor(req, jobs.assign(app.db, ctxOf(req), id, { staffId, teamId }, note)) };
     });
   });
 
@@ -245,14 +248,14 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     send(reply, () => {
       const id = (req.params as { id: string }).id;
       assertJobInScope(app.db, req, id, ['wo.accept']);
-      return { job: jobs.accept(app.db, ctxOf(req), id) };
+      return { job: jobFor(req, jobs.accept(app.db, ctxOf(req), id)) };
     }));
 
   app.post('/api/jobs/:id/start', { preHandler: requirePermission('wo.update') }, async (req, reply) =>
     send(reply, () => {
       const id = (req.params as { id: string }).id;
       assertJobInScope(app.db, req, id, ['wo.update']);
-      return { job: jobs.start(app.db, ctxOf(req), id) };
+      return { job: jobFor(req, jobs.start(app.db, ctxOf(req), id)) };
     }));
 
   app.post('/api/jobs/:id/hold', { preHandler: requirePermission('wo.hold') }, async (req, reply) => {
@@ -264,7 +267,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     return send(reply, () => {
       const id = (req.params as { id: string }).id;
       assertJobInScope(app.db, req, id, ['wo.hold']);
-      return { job: jobs.hold(app.db, ctxOf(req), id, body.data.reason, body.data.note) };
+      return { job: jobFor(req, jobs.hold(app.db, ctxOf(req), id, body.data.reason, body.data.note)) };
     });
   });
 
@@ -272,7 +275,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     send(reply, () => {
       const id = (req.params as { id: string }).id;
       assertJobInScope(app.db, req, id, ['wo.hold']);
-      return { job: jobs.resume(app.db, ctxOf(req), id) };
+      return { job: jobFor(req, jobs.resume(app.db, ctxOf(req), id)) };
     }));
 
   app.post('/api/jobs/:id/complete', { preHandler: requirePermission('wo.complete') }, async (req, reply) => {
@@ -305,7 +308,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return send(reply, () => ({
-      job: jobs.complete(app.db, ctxOf(req), id, body.data),
+      job: jobFor(req, jobs.complete(app.db, ctxOf(req), id, body.data)),
     }));
   });
 
@@ -314,7 +317,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     return send(reply, () => {
       const id = (req.params as { id: string }).id;
       assertJobInScope(app.db, req, id, ['wo.verify']);
-      return { job: jobs.verify(app.db, ctxOf(req), id, note) };
+      return { job: jobFor(req, jobs.verify(app.db, ctxOf(req), id, note)) };
     });
   });
 
@@ -324,7 +327,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     return send(reply, () => {
       const id = (req.params as { id: string }).id;
       assertJobInScope(app.db, req, id, ['wo.assign']);
-      return { job: jobs.reopen(app.db, ctxOf(req), id, body.data.reason) };
+      return { job: jobFor(req, jobs.reopen(app.db, ctxOf(req), id, body.data.reason)) };
     });
   });
 
@@ -334,7 +337,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     return send(reply, () => {
       const id = (req.params as { id: string }).id;
       assertJobInScope(app.db, req, id, ['wo.cancel']);
-      return { job: jobs.cancel(app.db, ctxOf(req), id, body.data.reason) };
+      return { job: jobFor(req, jobs.cancel(app.db, ctxOf(req), id, body.data.reason)) };
     });
   });
 
@@ -349,7 +352,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
     return send(reply, () => {
       assertJobInScope(app.db, req, (req.params as { id: string }).id, ['wo.update']);
       jobs.logLabour(app.db, ctxOf(req), (req.params as { id: string }).id, staffId, body.data.minutes);
-      return { job: jobs.get(app.db, me.propertyId, (req.params as { id: string }).id) };
+      return { job: jobFor(req, jobs.get(app.db, me.propertyId, (req.params as { id: string }).id)) };
     });
   });
 
@@ -442,7 +445,7 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
       app.db.prepare(
         `UPDATE job_requests SET status = 'converted', converted_wo_id = ?, updated_at = ? WHERE id = ?`
       ).run(job.id, nowIso(), id);
-      return { job };
+      return { job: jobFor(req, job) };
     }, 201);
   });
 }

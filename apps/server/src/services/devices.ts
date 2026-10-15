@@ -90,6 +90,8 @@ export function createPairingCode(
 
 export interface PairedDevice {
   deviceId: string;
+  /** For the audit entry; not sent to the phone. */
+  propertyId: string;
   token: string;
   user: { id: string; displayName: string; username: string; role: string; roleName: string };
   property: { name: string; shortName: string };
@@ -140,6 +142,7 @@ export function redeemPairingCode(
 
   return {
     deviceId,
+    propertyId: row!.property_id,
     token,
     user: {
       id: user!.id, displayName: user!.display_name, username: user!.username,

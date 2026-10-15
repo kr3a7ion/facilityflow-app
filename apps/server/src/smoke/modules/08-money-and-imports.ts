@@ -87,6 +87,31 @@ r = await get('/api/jobs', grace);
 check('and does for a supervisor',
   (r.json().jobs as Record<string, unknown>[]).every((j) => 'cost_labour_kobo' in j));
 
+// Every button on the job card answers with the job. The list and the card were gated and
+// the answers were not, so the technician who pressed Accept was handed what it cost.
+{
+  const priced = (j: Record<string, unknown>) =>
+    'cost_labour_kobo' in j || 'cost_parts_kobo' in j || 'cost_vendor_kobo' in j;
+  const ifeomaStaff = (db.prepare(
+    `SELECT s.id FROM staff s JOIN users u ON u.staff_id = s.id WHERE u.username = 'ifeoma'`
+  ).get() as { id: string }).id;
+  const site = (db.prepare('SELECT id FROM locations WHERE parent_id IS NULL LIMIT 1').get() as { id: string }).id;
+  r = await post('/api/jobs', grace, { title: 'Costs stay with the money', locationId: site, priority: 'P3' });
+  const wo = r.json().job as Record<string, unknown> & { id: string };
+  check('a supervisor raising a job is answered with its costs', priced(wo), r.body.slice(0, 160));
+  r = await post(`/api/jobs/${wo.id}/assign`, grace, { staffId: ifeomaStaff });
+  check('and assigning it', r.statusCode === 200 && priced(r.json().job));
+  r = await post(`/api/jobs/${wo.id}/accept`, ifeoma);
+  check('a technician accepting it is answered without them',
+    r.statusCode === 200 && !priced(r.json().job), r.body.slice(0, 200));
+  r = await post(`/api/jobs/${wo.id}/start`, ifeoma);
+  check('and starting it', r.statusCode === 200 && !priced(r.json().job), r.body.slice(0, 200));
+  r = await post(`/api/jobs/${wo.id}/labour`, ifeoma, { minutes: 30 });
+  check('and logging time on it', r.statusCode === 200 && !priced(r.json().job), r.body.slice(0, 200));
+  r = await post(`/api/jobs/${wo.id}/complete`, ifeoma, { resolutionNotes: 'Done and tested.' });
+  check('and completing it', r.statusCode === 200 && !priced(r.json().job), r.body.slice(0, 200));
+}
+
 // ---- assets ---------------------------------------------------------------
 r = await get('/api/assets', ifeoma);
 check('the asset register loses its replacement values',

@@ -531,6 +531,10 @@ r = await post('/api/devices/pair', { cookie: '' } as Hdr, {
 check('a real one hands the phone its own token', r.statusCode === 201, r.body.slice(0, 160));
 const paired = r.json() as { deviceId: string; token: string; user: { username: string } };
 check('and tells it whose phone it now is', paired.user.username === 'ifeoma');
+check('and the pairing is in this property\u2019s audit log, not one with no property',
+  (db.prepare(`SELECT property_id FROM audit_log WHERE action = 'device.paired' AND entity_id = ?`)
+    .get(paired.deviceId) as { property_id: string } | undefined)?.property_id === propertyId);
+check('without handing the phone anything it did not get before', !('propertyId' in r.json()));
 
 r = await post('/api/devices/pair', { cookie: '' } as Hdr, {
   code: pairing.code, deviceName: 'Second phone', platform: 'android',
