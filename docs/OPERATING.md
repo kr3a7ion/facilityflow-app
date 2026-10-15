@@ -99,6 +99,12 @@ is the same as accepting on the website: the ringing stops everywhere at once.
 To set it up: **More → Ring my phone** on your own account, install the app, scan the
 square. You never type a password into it.
 
+To update everybody's app: download the newest **Build APK** run from GitHub, unzip it,
+and copy **app-release.apk** into the data folder as **app.apk**, over the old one.
+**Admin → Host PC → The phone app** then shows the new build number, and every paired phone
+on an older build is told a newer one is waiting and offered it — the phone opens it in its
+browser, so it installs the same way the first one did.
+
 Three things to know:
 
 - **It only works on the property wifi.** Out of range, the phone is deaf.

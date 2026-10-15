@@ -401,6 +401,7 @@ export function Host() {
         </Card>
       </div>
 
+      <PhoneApp dataDir={h.dataDir} />
       <OwnCertificate />
       <RemoteDoor />
 
@@ -411,6 +412,57 @@ export function Host() {
         {' '}Running FacilityFlow {h.version} on Node {h.node}, {h.platform}.
       </div>
     </>
+  );
+}
+
+interface Installer {
+  present: boolean; bytes?: number; updatedAt?: string;
+  version: string | null; build: number | null;
+}
+
+/**
+ * The alert app's installer: whether this host has one, and which build.
+ *
+ * The pairing dialog sends people here for the installer, and a phone on an older build
+ * is offered whatever is here — so the build number is what an administrator checks after
+ * copying a new one in.
+ */
+function PhoneApp({ dataDir }: { dataDir: string }) {
+  const q = useQuery<Installer>({ queryKey: ['installer'], queryFn: () => api.get('/api/admin/installer') });
+  if (q.isLoading || !q.data) return null;
+  const i = q.data;
+  const unreadable = i.present && i.build == null;
+
+  return (
+    <div className="mt-6">
+      <Card title="The phone app"
+            right={<Chip tone={!i.present || unreadable ? 'warn' : 'ok'} lamp>
+              {!i.present ? 'not on this host' : unreadable ? 'unreadable' : `build ${i.build}`}
+            </Chip>}>
+        {!i.present ? (
+          <p className="mt-0 mb-0 t-ui lh-loose c-2">
+            No installer here yet. Download the newest <b>Build APK</b> run of the alert app from
+            GitHub, unzip it, and copy <b>app-release.apk</b> into <b>{dataDir}</b> renamed
+            to <b>app.apk</b>. Phones then install it from this host's address
+            followed by <b>/app.apk</b>.
+          </p>
+        ) : (
+          <>
+            <p className="mt-0 mb-5 t-ui lh-loose c-2">
+              {unreadable
+                ? <>The file in the data folder could not be read as an app, so phones are not
+                    told about it. Copy <b>app-release.apk</b> in again, renamed to <b>app.apk</b>.</>
+                : <>Version <b>{i.version}</b>, build <b>{i.build}</b>
+                    {i.bytes != null && <> · {humanBytes(i.bytes)}</>}
+                    {i.updatedAt && <> · copied in {when(i.updatedAt)}</>}.
+                    {' '}A paired phone on an older build is told a newer one is waiting. To
+                    update everybody, copy the new <b>app.apk</b> over this one.</>}
+            </p>
+            <a className="btn sm" href="/app.apk" download>Download the installer</a>
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 

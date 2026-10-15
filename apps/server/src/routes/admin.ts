@@ -21,6 +21,7 @@ import * as alertRouting from '../services/alertRouting.js';
 import { certPaths, caFingerprint, expiryOf, namesOf } from '../services/tls.js';
 import * as mirror from '../services/mirror.js';
 import * as devices from '../services/devices.js';
+import { installer, installerFile } from '../services/installer.js';
 import * as bus from '../services/bus.js';
 import { isHttpError } from '../lib/errors.js';
 
@@ -527,11 +528,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
    * everything else, which means a department restoring onto a new PC restores the
    * installer too.
    *
-   * Open to anybody signed in: a technician standing next to the notice board with a
-   * QR code should not need an administrator to hand them a file.
+   * Open to anybody who can reach the host, with no sign-in: a technician standing next to
+   * the notice board with a QR code should not need an administrator to hand them a file,
+   * and a phone told an update is waiting opens it in its browser, which has no session.
+   * The APK holds nothing secret — pairing it to anybody still takes a code from their
+   * own signed-in account.
    */
   app.get('/app.apk', async (req, reply) => {
-    const file = path.join(app.config.dataDir, 'app.apk');
+    const file = installerFile(app.config.dataDir);
     if (!fs.existsSync(file)) {
       return reply.code(404).send({
         error: 'no_installer',
@@ -546,14 +550,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       .send(fs.createReadStream(file));
   });
 
-  /** Whether there is one to hand out, for the Host PC screen. */
+  /** Whether there is one to hand out, and which build, for the Host PC screen. */
   app.get('/api/admin/installer', { preHandler: requirePermission('admin.settings.manage') },
-    async () => {
-      const file = path.join(app.config.dataDir, 'app.apk');
-      if (!fs.existsSync(file)) return { present: false };
-      const stat = fs.statSync(file);
-      return { present: true, bytes: stat.size, updatedAt: stat.mtime.toISOString() };
-    });
+    async () => installer(app.config.dataDir));
 
   /**
    * The remote door.

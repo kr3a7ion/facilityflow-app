@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { appliedVersions } from '../db/migrate.js';
 import { certPaths } from '../services/tls.js';
+import { installer } from '../services/installer.js';
 
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
   /**
@@ -31,6 +32,7 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/health', async () => {
+    const app_ = installer(app.config.dataDir);
     const property = app.db.prepare('SELECT id, name, short_name, timezone FROM properties LIMIT 1').get() as
       { id: string; name: string; short_name: string; timezone: string } | undefined;
     return {
@@ -41,6 +43,10 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
       setupComplete: !!property,
       property: property ? { name: property.name, shortName: property.short_name, timezone: property.timezone } : null,
       time: new Date().toISOString(),
+      // The alert app this host hands out, so a phone can tell it is behind and offer the
+      // newer one. Null when there is no installer; version and build null when the file
+      // is there but could not be read.
+      app: app_.present ? { version: app_.version, build: app_.build } : null,
     };
   });
 }
