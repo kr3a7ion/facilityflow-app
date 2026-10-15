@@ -203,18 +203,33 @@ export async function buildApp(
    *
    * Everything on the property network is untouched by all of it.
    */
+  const REMOTE_CLOSED = {
+    error: 'remote_closed',
+    message: 'Remote access to this property is switched off. It is turned on under Admin → Host PC.',
+  };
+  /**
+   * Two routes answer before anybody is signed in and are still the property network's
+   * business: redeeming a pairing code, which mints a phone token, and the installer. With
+   * no principal the rules below never ran for them, so a tunnel left running reached both
+   * with the door shut. Refused whatever the request carries, so it cannot be used to tell
+   * a live pairing code from a dead one.
+   */
+  const INSIDE_BEFORE_SIGN_IN = new Set(['POST /api/devices/pair', 'GET /app.apk']);
   app.addHook('preHandler', async (req, reply) => {
     if (req.origin !== 'remote') return;
     const me = req.principal;
     // Signing in and the health check have to work before there is a principal; the login
     // route applies the same rules itself.
-    if (!me) return;
+    if (!me) {
+      if (INSIDE_BEFORE_SIGN_IN.has(`${req.method} ${req.routeOptions.url ?? ''}`)
+          && remote.closedToAnonymous(db)) {
+        return reply.code(403).send(REMOTE_CLOSED);
+      }
+      return;
+    }
 
     if (!remote.state(db, me.propertyId).enabled) {
-      return reply.code(403).send({
-        error: 'remote_closed',
-        message: 'Remote access to this property is switched off. It is turned on under Admin → Host PC.',
-      });
+      return reply.code(403).send(REMOTE_CLOSED);
     }
     if (!me.permissions.has('remote.access')) {
       return reply.code(403).send({

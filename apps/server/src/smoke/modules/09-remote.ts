@@ -79,6 +79,33 @@ check('while the same person on the property network is unaffected', r.statusCod
     (await ask('192.168.1.23', { host: '192.168.1.50:4700' })).statusCode === 200);
 }
 
+/*
+ * Two routes answer before anybody signs in: redeeming a pairing code, which mints a phone
+ * token, and the installer. With no principal the rules above never ran for them, so a
+ * tunnel left running reached both with the door shut.
+ */
+{
+  const tunnel = { 'cf-connecting-ip': '102.89.1.1' };
+  const code = (await post('/api/me/pairing-code', ifeoma)).json().code as string;
+  r = await app.inject({ method: 'POST', url: '/api/devices/pair', headers: tunnel,
+    payload: { code, deviceName: 'From the street', platform: 'android' } });
+  check('a pairing code cannot be redeemed from outside while the door is shut',
+    r.statusCode === 403 && r.json().error === 'remote_closed', r.body.slice(0, 160));
+  r = await app.inject({ method: 'POST', url: '/api/devices/pair', headers: tunnel,
+    payload: { code: 'NOTACODE1', deviceName: 'From the street', platform: 'android' } });
+  check('and a made-up one gets the same answer, so it tells nobody which codes are live',
+    r.statusCode === 403 && r.json().error === 'remote_closed', r.body.slice(0, 160));
+  r = await app.inject({ method: 'GET', url: '/app.apk', headers: tunnel });
+  check('nor is the installer handed out through the tunnel',
+    r.statusCode === 403 && r.json().error === 'remote_closed', r.body.slice(0, 160));
+  r = await app.inject({ method: 'POST', url: '/api/devices/pair', headers: {},
+    payload: { code, deviceName: 'Ifeoma on the wifi', platform: 'android' } });
+  check('while the same code still pairs a phone on the property network, unspent',
+    r.statusCode === 201, r.body.slice(0, 160));
+  r = await app.inject({ method: 'GET', url: '/api/health', headers: tunnel });
+  check('and the health check still answers from outside', r.statusCode === 200);
+}
+
 // ---- open the door --------------------------------------------------------
 r = await app.inject({ method: 'PATCH', url: '/api/admin/remote', headers: graceOwn,
   payload: { enabled: true } });
@@ -91,6 +118,9 @@ check('an administrator opens it', r.statusCode === 200 && r.json().enabled === 
 
 r = await get('/api/jobs', fromOutside);
 check('now a supervisor can read the board from outside', r.statusCode === 200, r.body.slice(0, 160));
+r = await app.inject({ method: 'GET', url: '/app.apk', headers: { 'cf-connecting-ip': '102.89.1.1' } });
+check('with the door open the installer is ordinary again', r.json().error !== 'remote_closed',
+  r.body.slice(0, 160));
 
 // The published address marks a request as outside however it arrives — even through a
 // router that hands it over from a LAN address.

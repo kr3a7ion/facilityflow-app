@@ -71,13 +71,17 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
     const paired = devices.redeemPairingCode(
       app.db, d.code, d.deviceName, d.platform, d.appVersion);
 
+    // Nobody is signed in on this request — the phone has only the code — so the property
+    // comes from the code, not the session. It was being written as '' and the entry fell
+    // out of the property's own audit log.
+    const { propertyId, ...forPhone } = paired;
     audit(app.db, {
-      propertyId: req.principal?.propertyId ?? '',
+      propertyId,
       userId: paired.user.id, actorName: paired.user.displayName,
       action: 'device.paired', entityType: 'device', entityId: paired.deviceId,
       after: { name: d.deviceName, platform: d.platform }, ip: req.ip,
     });
-    return reply.code(201).send(paired);
+    return reply.code(201).send(forPhone);
   });
 
   /** The phones this person has paired, and a way to let one go. */

@@ -190,6 +190,15 @@ export function setState(
  */
 const READ_ONLY = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/**
+ * Whether remote access is switched off, for a request that has nobody signed in to say
+ * which property it is for. There is one property per host.
+ */
+export function closedToAnonymous(db: Db): boolean {
+  const property = db.prepare('SELECT id FROM properties LIMIT 1').get() as { id: string } | undefined;
+  return !property || !state(db, property.id).enabled;
+}
+
 export function isWrite(method: string): boolean {
   return !READ_ONLY.has(method.toUpperCase());
 }
