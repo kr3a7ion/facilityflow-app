@@ -252,6 +252,32 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true, maySilence: maySilence };
   });
 
+  /**
+   * What a paired phone says about itself: whether a ring on it would be heard.
+   *
+   * The phone half of the report above. A connected phone is a running app, and that is
+   * all the stream can say; the alarm volume, the app's notifications and the battery
+   * manager live in the phone's settings, where only the phone can read them. Sent when
+   * the app starts and whenever one of them changes.
+   */
+  app.post('/api/me/phone', { preHandler: requireSignedIn() }, async (req, reply) => {
+    if (!req.deviceId) {
+      return reply.code(400).send({
+        error: 'not_a_phone', message: 'Only a paired phone reports this, with its own token.',
+      });
+    }
+    const body = z.object({
+      appVersion: z.string().max(30).optional(),
+      notificationsOn: z.boolean(),
+      fullScreenOn: z.boolean().nullable(),
+      batteryExempt: z.boolean(),
+      alarmVolume: z.number().int().min(0).max(100).nullable(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+
+    return { ok: true, problems: devices.recordReadiness(app.db, req.deviceId, body.data) };
+  });
+
   app.get('/api/me', { preHandler: requireSignedIn() }, async (req) => {
     const me = req.principal!;
     const property = app.db.prepare('SELECT name, short_name, timezone, currency FROM properties WHERE id = ?')

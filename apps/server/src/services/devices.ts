@@ -213,6 +213,62 @@ export function clearAllConnections(db: Db): void {
   db.prepare('UPDATE app_devices SET connected_at = NULL WHERE connected_at IS NOT NULL').run();
 }
 
+/** What a phone reads off its own settings: whether anybody will hear it ring. */
+export interface Readiness {
+  appVersion?: string;
+  notificationsOn: boolean;
+  /** Null where the phone cannot tell; Android before 14 always allows it. */
+  fullScreenOn: boolean | null;
+  batteryExempt: boolean;
+  /** Percent of the alarm stream's maximum, or null where the phone could not read it. */
+  alarmVolume: number | null;
+}
+
+/** Store what the phone said, and answer with what is wrong, so the phone can say so too. */
+export function recordReadiness(db: Db, deviceId: string, r: Readiness): PhoneProblem[] {
+  const at = nowIso();
+  const bit = (b: boolean | null) => (b === null ? null : b ? 1 : 0);
+  const row = {
+    notifications_on: bit(r.notificationsOn), full_screen_on: bit(r.fullScreenOn),
+    battery_exempt: bit(r.batteryExempt), alarm_volume: r.alarmVolume,
+  };
+  db.prepare(
+    `UPDATE app_devices
+        SET notifications_on = ?, full_screen_on = ?, battery_exempt = ?, alarm_volume = ?,
+            app_version = COALESCE(?, app_version), checked_at = ?, last_seen_at = ?
+      WHERE id = ?`
+  ).run(row.notifications_on, row.full_screen_on, row.battery_exempt, row.alarm_volume,
+        r.appVersion ?? null, at, at, deviceId);
+  return problemsOf(row);
+}
+
+/**
+ * What stands between this phone and somebody hearing it, worst first.
+ *
+ * Only volume_off means it will not be heard at all: it still vibrates, which is not
+ * the same as waking somebody in the plant room. The rest each take away part of it —
+ * the banner and its Accept button, the screen lighting up, or (battery_saver) the app
+ * itself, some time in the next hour, without warning.
+ */
+export type PhoneProblem =
+  'volume_off' | 'battery_saver' | 'notifications_off' | 'no_full_screen' | 'volume_low';
+
+/** Below this the alarm is easy to miss in a noisy plant room. */
+const LOW_VOLUME = 30;
+
+export function problemsOf(d: {
+  notifications_on: number | null; full_screen_on: number | null;
+  battery_exempt: number | null; alarm_volume: number | null;
+}): PhoneProblem[] {
+  const out: PhoneProblem[] = [];
+  if (d.alarm_volume === 0) out.push('volume_off');
+  if (d.battery_exempt === 0) out.push('battery_saver');
+  if (d.notifications_on === 0) out.push('notifications_off');
+  if (d.full_screen_on === 0) out.push('no_full_screen');
+  if (d.alarm_volume !== null && d.alarm_volume > 0 && d.alarm_volume < LOW_VOLUME) out.push('volume_low');
+  return out;
+}
+
 export interface DeviceRow {
   id: string; name: string; platform: string; app_version: string | null;
   created_at: string; last_seen_at: string | null; connected_at: string | null;

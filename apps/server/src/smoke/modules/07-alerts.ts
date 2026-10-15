@@ -600,6 +600,89 @@ check('the phone shows up in the list on the website',
   (r.json().devices as { id: string }[]).some((d) => d.id === paired.deviceId));
 
 /*
+ * Connected is not the same as heard. A phone holding the stream open with its alarm volume
+ * at zero showed as "Phone will ring", and a supervisor had no way to know otherwise: the
+ * volume, the app's notifications and the battery manager live in the phone's settings.
+ * The phone reads them and says; the list on the website shows what it said.
+ */
+{
+  type Reach = {
+    username: string; state: string;
+    phone: { app_version: string | null; checked_at: string | null; problems: string[] } | null;
+  };
+  const reachOf = async (who: Hdr, username: string) =>
+    ((await get('/api/admin/alerts', who)).json().people as Reach[]).find((p) => p.username === username);
+  devices.streamOpened(db, paired.deviceId);
+
+  check('before it has said anything, a connected phone is not reported as checked',
+    (await reachOf(grace, 'ifeoma'))?.phone?.checked_at === null);
+
+  r = await post('/api/me/phone', ifeoma,
+    { notificationsOn: true, fullScreenOn: true, batteryExempt: true, alarmVolume: 80 });
+  check('only a paired phone can say how it is set up, not a browser',
+    r.statusCode === 400 && r.json().error === 'not_a_phone', r.body.slice(0, 140));
+
+  r = await post('/api/me/phone', phone,
+    { appVersion: '1.1.0', notificationsOn: true, fullScreenOn: null, batteryExempt: true, alarmVolume: 80 });
+  check('a phone can say how it is set up', r.statusCode === 200, r.body.slice(0, 140));
+  check('and is told nothing is wrong when nothing is', (r.json().problems as string[]).length === 0);
+  let mine = await reachOf(grace, 'ifeoma');
+  check('a connected phone with its volume up will ring',
+    mine?.state === 'phone' && mine.phone?.checked_at !== null, JSON.stringify(mine));
+  check('and the version it is running is the one it last said, not the one it paired with',
+    mine?.phone?.app_version === '1.1.0');
+
+  r = await post('/api/me/phone', phone,
+    { notificationsOn: false, fullScreenOn: false, batteryExempt: false, alarmVolume: 0 });
+  check('a phone with its alarm volume at zero is told so',
+    JSON.stringify(r.json().problems)
+      === JSON.stringify(['volume_off', 'battery_saver', 'notifications_off', 'no_full_screen']),
+    JSON.stringify(r.json().problems));
+  mine = await reachOf(grace, 'ifeoma');
+  check('and shows as connected but silent, not as a phone that will ring',
+    mine?.state === 'phone_silent', JSON.stringify(mine));
+
+  r = await post('/api/me/phone', phone,
+    { notificationsOn: true, fullScreenOn: true, batteryExempt: false, alarmVolume: 15 });
+  mine = await reachOf(grace, 'ifeoma');
+  check('a quiet alarm or a battery saver that may stop the app still rings, and says what is wrong',
+    mine?.state === 'phone'
+      && JSON.stringify(mine.phone?.problems) === JSON.stringify(['battery_saver', 'volume_low']),
+    JSON.stringify(mine));
+
+  r = await post('/api/me/phone', phone,
+    { notificationsOn: true, fullScreenOn: true, batteryExempt: true, alarmVolume: 150 });
+  check('a volume that is not a percentage is refused', r.statusCode === 400);
+  await post('/api/me/phone', phone,
+    { notificationsOn: true, fullScreenOn: true, batteryExempt: true, alarmVolume: 80 });
+  devices.streamClosed(db, paired.deviceId);
+}
+
+/*
+ * A team lead assigns within their own team, and this list answers "will the person I am
+ * about to give this to hear it" — so a team lead's list is their own team, the way their
+ * job board and their Ring button already are.
+ */
+{
+  const musa = await login('musa', PW);
+  r = await get('/api/admin/alerts', musa);
+  check('a team lead can see who in their team will hear a job',
+    r.statusCode === 200 && r.json().scope === 'team', r.body.slice(0, 140));
+  const theirs = (r.json().people as { username: string }[]).map((p) => p.username).sort();
+  const team = (db.prepare(
+    `SELECT u.username FROM users u JOIN staff s ON s.id = u.staff_id
+      WHERE u.is_active = 1 AND s.team_id IN
+            (SELECT team_id FROM staff WHERE id = ?
+             UNION SELECT id FROM teams WHERE team_lead_staff_id = ? AND is_active = 1)
+      ORDER BY u.username`
+  ).all(musaStaff?.id, musaStaff?.id) as { username: string }[]).map((u) => u.username);
+  check('and only their team', theirs.length > 0 && JSON.stringify(theirs) === JSON.stringify(team),
+    `${theirs.join(',')} vs ${team.join(',')}`);
+  check('while a supervisor sees everybody',
+    ((await get('/api/admin/alerts', grace)).json().people as unknown[]).length > theirs.length);
+}
+
+/*
  * A phone that redials after a silent drop opens its new stream before the host notices
  * the old one has gone. When that stale socket finally closes, the phone is still
  * listening on the new one — and a supervisor told "Phone app not running" would chase

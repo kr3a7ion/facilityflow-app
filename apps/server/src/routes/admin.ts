@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { ulid } from '../lib/ids.js';
 import { nowIso } from '../lib/time.js';
 import { hashPassword } from '../auth/password.js';
-import { requirePermission } from '../auth/guard.js';
+import { requirePermission, scopeOf } from '../auth/guard.js';
+import { teamsOfStaff } from '../auth/jobScope.js';
 import { ROLE_SCOPES } from '../auth/permissions.js';
 import { revokeAllForUser } from '../auth/sessions.js';
 import { audit, redact } from '../audit.js';
@@ -453,15 +454,24 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
    * Who can actually be reached.
    *
    * Gated on wo.assign rather than an admin permission: the person who needs this is the
-   * supervisor about to hand somebody a P1 at two in the morning, not an administrator.
+   * supervisor about to hand somebody a P1 at two in the morning, not an administrator. A
+   * team lead assigns within their own team, so a team lead's list is their own team.
    *
-   * It reports three different silences and does not conflate them. An account that has
-   * never signed in on any device has nothing to report. One whose browser has not been
-   * touched since it loaded is set to alert and cannot. One that was switched off was
-   * switched off by somebody who was allowed to.
+   * It reports different silences and does not conflate them. An account that has never
+   * signed in on any device has nothing to report. One whose browser has not been touched
+   * since it loaded is set to alert and cannot. One that was switched off was switched off
+   * by somebody who was allowed to. And a phone that is connected but has its alarm volume
+   * at zero is running, listening, and will not be heard.
    */
   app.get('/api/admin/alerts', { preHandler: requirePermission('wo.assign') }, async (req) => {
     const me = req.principal!;
+    // Through the staff link, the way a team lead's jobs are: the team they are on and any
+    // they lead. An account with no staff record reaches nobody rather than everybody.
+    const teamOnly = scopeOf(req, 'wo.assign') === 'team';
+    const teams = teamOnly ? teamsOfStaff(app.db, me.staffId) : [];
+    const inTeams = teamOnly
+      ? ` AND u.staff_id IN (SELECT id FROM staff WHERE team_id IN (${teams.map(() => '?').join(', ') || 'NULL'}))`
+      : '';
     const rows = app.db.prepare(
       `SELECT u.id, u.display_name, u.username, r.name AS role_name,
               EXISTS (SELECT 1 FROM role_permissions rp
@@ -471,51 +481,79 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
               (SELECT COUNT(*) FROM alert_state a WHERE a.user_id = u.id AND a.sound_on = 1
                                                    AND a.audio_ready = 1) AS listening,
               (SELECT COUNT(*) FROM alert_state a WHERE a.user_id = u.id AND a.sound_on = 0) AS muted,
-              (SELECT MAX(a.last_seen_at) FROM alert_state a WHERE a.user_id = u.id) AS last_seen,
-              -- Paired phones, which are a different and much stronger signal than a
-              -- browser tab: a phone holding the stream open will ring with the screen
-              -- off, and one that has stopped holding it will not ring at all.
-              (SELECT COUNT(*) FROM app_devices d
-                WHERE d.user_id = u.id AND d.revoked_at IS NULL) AS phones,
-              (SELECT COUNT(*) FROM app_devices d
-                WHERE d.user_id = u.id AND d.revoked_at IS NULL
-                  AND d.connected_at IS NOT NULL) AS phones_live,
-              (SELECT MAX(d.last_seen_at) FROM app_devices d
-                WHERE d.user_id = u.id AND d.revoked_at IS NULL) AS phone_last_seen
+              (SELECT MAX(a.last_seen_at) FROM alert_state a WHERE a.user_id = u.id) AS last_seen
          FROM users u
          JOIN roles r ON r.id = u.role_id
-        WHERE u.property_id = ? AND u.is_active = 1
+        WHERE u.property_id = ? AND u.is_active = 1${inTeams}
         ORDER BY u.display_name`
-    ).all(me.propertyId) as {
+    ).all(me.propertyId, ...teams) as {
       id: string; display_name: string; username: string; role_name: string;
       may_silence: number; devices: number; listening: number; muted: number;
       last_seen: string | null;
-      phones: number; phones_live: number; phone_last_seen: string | null;
     }[];
 
+    // Paired phones, which are a different and much stronger signal than a browser tab: a
+    // phone holding the stream open will ring with the screen off, and one that has
+    // stopped holding it will not ring at all.
+    type Phone = {
+      user_id: string; connected_at: string | null; last_seen_at: string | null;
+      app_version: string | null; checked_at: string | null; alarm_volume: number | null;
+      notifications_on: number | null; full_screen_on: number | null; battery_exempt: number | null;
+    };
+    const phonesOf = new Map<string, Phone[]>();
+    for (const d of app.db.prepare(
+      `SELECT user_id, connected_at, last_seen_at, app_version, checked_at, alarm_volume,
+              notifications_on, full_screen_on, battery_exempt
+         FROM app_devices WHERE property_id = ? AND revoked_at IS NULL`
+    ).all(me.propertyId) as Phone[]) {
+      phonesOf.set(d.user_id, [...(phonesOf.get(d.user_id) ?? []), d]);
+    }
+
     return {
-      people: rows.map((p) => ({
-        ...p,
-        /*
-         * A paired phone outranks everything a browser can report.
-         *
-         * It rings with the screen off and the app in the background, which no browser on
-         * this network can do — so if one is connected, this person is reachable whatever
-         * their browser tabs are doing. If they have paired a phone and it is NOT
-         * connected, that is the single most important line on this screen: the thing
-         * that was supposed to wake them has been killed, most likely by the handset's
-         * own battery manager, and nobody would otherwise know.
-         */
-        state: p.phones_live > 0 ? 'phone'
-          : p.phones > 0 ? 'phone_offline'
-            // Not "never signed in": an account that signed in before this existed, or on
-            // a browser that could not store anything, has no device row either. What is
-            // true in all those cases is only that nothing has reported.
-            : p.devices === 0 ? 'unreported'
-              : p.muted > 0 ? 'muted'
-                : p.listening > 0 ? 'listening'
-                  : 'not_ready',
-      })),
+      scope: teamOnly ? 'team' : 'all',
+      people: rows.map((p) => {
+        const phones = phonesOf.get(p.id) ?? [];
+        const live = phones.filter((d) => d.connected_at !== null);
+        // The phone this person is most likely to hear: a connected one if there is one,
+        // and of those the one with the least wrong with it.
+        const best = (live.length ? live : phones)
+          .map((d) => ({ d, problems: devices.problemsOf(d) }))
+          .sort((a, b) => Number(a.problems.includes('volume_off')) - Number(b.problems.includes('volume_off'))
+            || a.problems.length - b.problems.length)[0];
+        return {
+          ...p,
+          phones: phones.length,
+          phones_live: live.length,
+          phone_last_seen: phones.reduce<string | null>(
+            (m, d) => (d.last_seen_at && (!m || d.last_seen_at > m) ? d.last_seen_at : m), null),
+          // What that phone last said about itself. checked_at is null for an app too old to
+          // say, which is not the same as nothing being wrong.
+          phone: best ? {
+            app_version: best.d.app_version, checked_at: best.d.checked_at,
+            alarm_volume: best.d.alarm_volume, problems: best.problems,
+          } : null,
+          /*
+           * A paired phone outranks everything a browser can report.
+           *
+           * It rings with the screen off and the app in the background, which no browser on
+           * this network can do — so if one is connected, this person is reachable whatever
+           * their browser tabs are doing, unless its alarm volume is at zero. If they have
+           * paired a phone and it is NOT connected, that is the single most important line
+           * on this screen: the thing that was supposed to wake them has been killed, most
+           * likely by the handset's own battery manager, and nobody would otherwise know.
+           */
+          state: live.length > 0
+            ? (best?.problems.includes('volume_off') ? 'phone_silent' : 'phone')
+            : phones.length > 0 ? 'phone_offline'
+              // Not "never signed in": an account that signed in before this existed, or on
+              // a browser that could not store anything, has no device row either. What is
+              // true in all those cases is only that nothing has reported.
+              : p.devices === 0 ? 'unreported'
+                : p.muted > 0 ? 'muted'
+                  : p.listening > 0 ? 'listening'
+                    : 'not_ready',
+        };
+      }),
     };
   });
 
