@@ -5,10 +5,14 @@
  *  - Alerts a technician cannot switch off
  *  - Told the moment it happens, and asked again until it is picked up
  *  - A phone paired to the alert app
+ *  - The alert app's installer, and which build it is
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import zlib from 'node:zlib';
 import * as bus from '../../services/bus.js';
 import * as devices from '../../services/devices.js';
-import { PW, app, check, day, db, get, heading, login, post, throws } from './harness.js';
+import { PW, app, check, config, day, db, get, heading, login, post, throws } from './harness.js';
 import type { Hdr, Res } from './harness.js';
 import { admin, afternoon, femi, grace, hod, ifeoma, propertyId, siteId } from './01-setup.js';
 import { musaAgain } from './04-records-and-admin.js';
@@ -783,4 +787,69 @@ check('nobody can unpair somebody else\u2019s phone through the path', r.statusC
     r.statusCode === 200 && r.json().phonesUnpaired === 1, r.body.slice(0, 160));
   await post(`/api/admin/users/${patId}/enable`, admin);
   check('and enabling it again does not bring the old phone back', !(await works(phone.hdr)));
+}
+
+// --------------------------------------------------------------------------
+heading('The alert app\u2019s installer, and which build it is');
+// --------------------------------------------------------------------------
+/*
+ * The installer is a file an administrator copies into the data folder, and nothing on
+ * the host knew which build it was — so no phone could be told a newer one was waiting.
+ * The host reads the version out of the APK itself. The fixture is the real manifest from
+ * build 1.0.0+14, wrapped in a zip the way an APK wraps it.
+ */
+{
+  const manifest = fs.readFileSync(path.join(import.meta.dirname, '../fixtures/AndroidManifest.bin'));
+  const zip = (entries: { name: string; data: Buffer }[]): Buffer => {
+    const locals: Buffer[] = [];
+    const centrals: Buffer[] = [];
+    let offset = 0;
+    for (const e of entries) {
+      const name = Buffer.from(e.name);
+      const packed = zlib.deflateRawSync(e.data);
+      const local = Buffer.alloc(30);
+      local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(8, 8);
+      local.writeUInt32LE(packed.length, 18); local.writeUInt32LE(e.data.length, 22);
+      local.writeUInt16LE(name.length, 26);
+      const central = Buffer.alloc(46);
+      central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6);
+      central.writeUInt16LE(8, 10); central.writeUInt32LE(packed.length, 20);
+      central.writeUInt32LE(e.data.length, 24); central.writeUInt16LE(name.length, 28);
+      central.writeUInt32LE(offset, 42);
+      locals.push(local, name, packed);
+      centrals.push(central, name);
+      offset += 30 + name.length + packed.length;
+    }
+    const cd = Buffer.concat(centrals);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8);
+    end.writeUInt16LE(entries.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+    return Buffer.concat([...locals, cd, end]);
+  };
+  const apk = path.join(config.dataDir, 'app.apk');
+  const health = async () => (await get('/api/health', { cookie: '' } as Hdr)).json().app as
+    { version: string | null; build: number | null } | null;
+
+  check('with no installer on the host, there is no version to offer', (await health()) === null);
+
+  fs.writeFileSync(apk, zip([
+    { name: 'classes.dex', data: Buffer.from('not the manifest') },
+    { name: 'AndroidManifest.xml', data: manifest },
+  ]));
+  let v = await health();
+  check('with one, the host says which build it hands out, read from the file itself',
+    v?.version === '1.0.0' && v.build === 14, JSON.stringify(v));
+  r = await get('/api/admin/installer', admin);
+  check('and the Host PC screen is told the same',
+    r.json().present === true && r.json().version === '1.0.0' && r.json().build === 14, r.body.slice(0, 160));
+
+  r = await app.inject({ method: 'GET', url: '/app.apk' });
+  check('a phone told there is a newer one can open it in its browser, which has no session',
+    r.statusCode === 200 && r.headers['content-type'] === 'application/vnd.android.package-archive');
+
+  fs.writeFileSync(apk, 'copied from the wrong folder');
+  v = await health();
+  check('a file that is not an APK is there but unknown — not a crash, and not offered as newer',
+    v !== null && v.version === null && v.build === null, JSON.stringify(v));
+  fs.unlinkSync(apk);
 }
