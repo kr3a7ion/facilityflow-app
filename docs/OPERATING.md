@@ -80,9 +80,10 @@ been in a pocket all morning is silent whatever its setting says. Tapping the sc
 the speaker button itself — is what lets the next alert through. The bell and the job
 board always show the work; only the noise depends on this.
 
-Supervisors and above can see the state of every account under **Admin → Users → Who can
-hear an alert**: who is reachable, who has switched theirs off, and whose screen has not
-been touched yet. When it matters, ring them rather than trusting the chime.
+Anybody who hands out work can see who will hear it under **Who can hear an alert**, at the
+bottom of the **Roster** (and under **Admin → Users**): who is reachable, who has switched
+theirs off, and whose screen has not been touched yet. A team lead sees their own team.
+When it matters, ring them rather than trusting the chime.
 
 ### The phone app — Android only
 
@@ -113,6 +114,12 @@ Because a phone can always be killed by its own manufacturer, the host watches r
 assumes: a paired phone that stops holding its connection shows as **"Phone app not
 running"** on the same screen. Chase those — it is the warning that somebody is unreachable
 before an outage proves it.
+
+The phone also says how it is set up, and the same screen shows what is wrong. **"Phone is
+silent"** means it is connected and its **alarm volume** is all the way down — the app rings
+on the alarm volume, not the ringer, which is how it gets through a phone set to silent.
+Underneath, a phone that will still ring may say its battery saver may stop the app, its
+notifications are blocked (so no Accept button), or it will not light up the screen.
 
 To change your password later: the **padlock** in the bottom-left on a computer, or
 **More → Change password** on a phone. You never need to ask an administrator to reset it

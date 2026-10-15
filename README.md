@@ -274,6 +274,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | A job handed out — or sent back — **after its response deadline still rings** the person it went to, for a full response window from assignment, while the deadline it is judged against stays put | `workOrders.ringUntil` |
 | A job handed to a **team rather than a person rings the team's lead** — when their role can hand work out — until it is in somebody's name or accepted — and accepting it puts it in the accepter's name; leading a team puts its jobs within the lead's team scope | `routes/me.ts` · `auth/jobScope.ts` |
 | A phone shows as **not listening only when its last stream closes**, so a redial after a silent drop is not reported as a dead app | `devices.streamClosed` |
+| A connected phone whose **alarm volume is at zero shows as silent**, not as a phone that will ring — the phone reports its own volume, notifications, full-screen permission and battery exemption, and the list of who can hear an alert names what is wrong. A team lead's list is **their own team** | `services/devices.ts` · `routes/admin.ts` |
 | Setup **submitted twice at once** creates one property and one administrator, not two | `routes/setup.ts` |
 | Every API path the client calls **reaches a route the server registers** — a merge cannot drop one silently | `smoke.modules.ts` |
 | Setup creates the **site** at the root of the location tree, so the first job on a brand-new install has somewhere to land | `routes/setup.ts` |
@@ -290,7 +291,7 @@ These are the reason the software exists rather than a spreadsheet. Each has a t
 | A file can only be attached to a record that **exists, in this property** — checked before a byte reaches the disk, so nothing hangs off an id that never existed | `services/attachments.ts` |
 | An uploaded file's **declared type is not evidence** — the first bytes are checked, and SVG is not accepted at all | `services/attachments.ts` |
 | Attachments **inherit the permission of what they hang off** — there is no separate "can see photos" right to drift out of step | `services/attachments.ts` |
-| A paired phone's token opens **only what the alert app does** — listen, read what it rings about, answer, accept, unpair — never its owner's whole role, so a lost phone is not a standing key to the system | `app.ts` |
+| A paired phone's token opens **only what the alert app does** — listen, read what it rings about and its owner's own notices (without marking them read), answer, accept, say whether it can be heard, unpair — never its owner's whole role, so a lost phone is not a standing key to the system | `app.ts` |
 | Resetting a password **signs that person out of every device** — paired phones included — and forces a change. So does changing your own password (except the browser you changed it in), and so does disabling the account; re-enabling it does not bring the old phones back | `routes/admin.ts` · `routes/auth.ts` · `services/devices.ts` |
 | Revoking a phone or signing somebody out **closes the event stream they already had open**, so a revoked phone stops hearing events at once and is not counted as reached by a ring | `services/bus.ts` |
 | Until a temporary password is changed, the **server** refuses that session everything but the change itself — on the property network too, not only behind the screen the browser draws | `app.ts` |
@@ -319,7 +320,7 @@ apps/server/src
                    0009 clamp load · 0010 genset log · 0011 alerts · 0012 paired phones
                    0013 money visibility · 0014 rings & emergencies · 0015 apartments
                    0016 remote access · 0017 duty device · 0018 SLA rules
-                   0019 alert routing & changeover
+                   0019 alert routing & changeover · 0020 phone readiness
   auth/            permission catalogue, argon2id, sessions, requirePermission(code)
   services/
     workOrders.ts  the lifecycle state machine and SLA

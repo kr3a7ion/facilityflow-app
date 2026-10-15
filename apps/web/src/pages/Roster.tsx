@@ -5,6 +5,7 @@ import { api, qk, ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
 import { initials, titleCase } from '../lib/format';
 import { Card, Chip, Tile, Loading, ErrorNote, Empty, Btn, Modal, Field, Flash } from '../components/Bits';
+import { AlertReach } from '../components/AlertReach';
 
 interface Entry {
   id: string; staff_id: string; work_date: string; status: string;
@@ -309,6 +310,9 @@ export function Roster() {
           </div>
         )}
       </div>
+
+      {/* Who is on today, and whether they will hear the job they are about to be given. */}
+      {can('wo.assign') && <div className="mt-6"><AlertReach /></div>}
 
       <div className="note mt-6">
         <b>The tick is the whole point.</b> A published roster is a plan; a supervisor marks present or
