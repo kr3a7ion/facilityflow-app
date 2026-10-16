@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import Database from 'better-sqlite3';
 import { openDb, integrityCheck } from './connection.js';
 import { loadConfig, type Config } from '../config.js';
 import { stamp } from '../lib/time.js';
@@ -87,12 +88,26 @@ export function stageRestore(cfg: Config, backupFile: string): StagedRestore {
 
   // Never stage a snapshot without opening it first. A corrupt file restored on top of a
   // working one loses everything the corruption had not yet reached.
-  const check = openDb(source);
-  const integrity = integrityCheck(check);
-  const tables = (check.prepare(
-    `SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table'`
-  ).get() as { n: number }).n;
-  check.close();
+  //
+  // Read-only, and closed whatever happens. Opened read-write, the check itself switched the
+  // snapshot into WAL mode — changing the file it was meant to be inspecting. And a file
+  // that is not a database throws partway through, which used to skip the close: on
+  // Windows that held the file locked, so the corrupt snapshot could not even be deleted
+  // until the host was restarted.
+  let integrity: string;
+  let tables: number;
+  let check: Db | null = null;
+  try {
+    check = new Database(source, { readonly: true, fileMustExist: true });
+    integrity = integrityCheck(check);
+    tables = (check.prepare(
+      `SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table'`
+    ).get() as { n: number }).n;
+  } catch (e) {
+    throw new Error(`That file is not a readable database: ${(e as Error).message}`);
+  } finally {
+    check?.close();
+  }
   if (integrity !== 'ok') throw new Error(`That snapshot fails its integrity check: ${integrity}`);
   if (tables < 10) throw new Error('That file does not look like a FacilityFlow database.');
 

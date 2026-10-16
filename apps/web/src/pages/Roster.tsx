@@ -356,7 +356,8 @@ function FillPattern({ people, patterns, from, onClose, onDone }: {
   const [restDays, setRestDays] = useState<number[]>([0]); // Sunday
   const [err, setErr] = useState<string | null>(null);
 
-  const days = start && end && end >= start ? datesBetween(start, end) : [];
+  const days = useMemo(
+    () => (start && end && end >= start ? datesBetween(start, end) : []), [start, end]);
 
   // Built here rather than on the server so the count below is exactly what gets written.
   const entries = useMemo(() => {

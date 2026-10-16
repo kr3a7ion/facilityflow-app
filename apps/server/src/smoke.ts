@@ -440,19 +440,40 @@ check('backup keeps snapshots in the backups folder', direct.file.startsWith(con
   check('and the staged file is gone', !fs.existsSync(path.join(config.dataDir, PENDING)));
 
   // The whole point, proved end to end: stage, apply the way boot does, and read it back.
+  //
+  // In a data folder of its own, because boot applies a restore before anything has the
+  // database open — and this suite's database is open. Linux lets an open file be deleted,
+  // so doing it here passed in CI; Windows does not, so it failed on the host PC itself.
   const before = (db.prepare('SELECT COUNT(*) n FROM users').get() as { n: number }).n;
-  const staged = stageRestore(config, name);
+  const bootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-boot-'));
+  const bootCfg = loadConfig({ dataDir: bootDir });
+  fs.mkdirSync(bootCfg.backupsDir, { recursive: true });
+  fs.copyFileSync(path.join(config.backupsDir, name), path.join(bootCfg.backupsDir, name));
+  // A database for the restore to replace, with the WAL sidecar a live one leaves behind.
+  const old = openDb(bootCfg.dbPath);
+  old.prepare('CREATE TABLE replaced_by_restore (a)').run();
+  old.close();
+
+  const staged = stageRestore(bootCfg, name);
   check('staging returns the snapshot it staged', staged.from === name);
-  const applied = applyPendingRestore(config);
-  check('applying moves it into place where the database lives', applied === config.dbPath);
-  const reopened = openDb(config.dbPath);
+  // Left behind by the database being replaced. Written after staging, because staging
+  // opens and cleanly closes that database, and a clean close removes its WAL itself.
+  fs.writeFileSync(`${bootCfg.dbPath}-wal`, 'stale');
+  const applied = applyPendingRestore(bootCfg);
+  check('applying moves it into place where the database lives', applied === bootCfg.dbPath);
+  check('and clears the old database’s WAL so the two are never mixed',
+    !fs.existsSync(`${bootCfg.dbPath}-wal`));
+  const reopened = openDb(bootCfg.dbPath);
   check('the restored database opens and passes its integrity check',
     integrityCheck(reopened) === 'ok');
   check('and it holds the records the snapshot held',
     (reopened.prepare('SELECT COUNT(*) n FROM users').get() as { n: number }).n === before);
+  check('and nothing of the database it replaced',
+    !reopened.prepare(`SELECT 1 FROM sqlite_master WHERE name = 'replaced_by_restore'`).get());
   reopened.close();
   check('applying again does nothing, because nothing is staged',
-    applyPendingRestore(config) === null);
+    applyPendingRestore(bootCfg) === null);
+  fs.rmSync(bootDir, { recursive: true, force: true });
 }
 
 // ---- a second copy, off this PC --------------------------------------------------

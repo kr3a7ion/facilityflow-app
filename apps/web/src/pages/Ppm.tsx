@@ -84,7 +84,7 @@ export function Ppm() {
     onError: (e) => setMsg({ text: (e as ApiError).message, bad: true }),
   });
 
-  const rows = schedules.data?.schedules ?? [];
+  const rows = useMemo(() => schedules.data?.schedules ?? [], [schedules.data]);
   const overdue = useMemo(
     () => rows.filter((s) => s.is_active && s.trigger_type === 'calendar' && (daysTo(s.next_due_at) ?? 1) < 0),
     [rows]

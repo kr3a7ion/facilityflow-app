@@ -71,18 +71,22 @@ export function Alarm({ live }: { live: boolean }) {
    * unanswered, and stops the moment it is acknowledged — by this device or any other.
    */
   const lastPlayed = useRef(0);
+  // Keyed on the ids, not the objects: a refetch hands back new objects for the same ring,
+  // and restarting the timer on each one would make it sound early and unevenly.
+  const ringId = ring?.id;
+  const alertId = alert?.id;
   useEffect(() => {
-    if (!ring && !alert) { lastPlayed.current = 0; return; }
+    if (!ringId && !alertId) { lastPlayed.current = 0; return; }
     const sound = () => {
       // Deliberately not gated on the sound preference: see the note at the top.
       play('urgent');
       lastPlayed.current = Date.now();
     };
     sound();
-    const every = alert ? 8_000 : 12_000;
+    const every = alertId ? 8_000 : 12_000;
     const timer = setInterval(sound, every);
     return () => clearInterval(timer);
-  }, [ring?.id, alert?.id]);
+  }, [ringId, alertId]);
 
   const ackRing = useMutation({
     mutationFn: (id: string) => api.post(`/api/me/rings/${id}/ack`),

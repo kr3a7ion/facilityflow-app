@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qk } from '../lib/api';
@@ -78,7 +78,9 @@ export function Outstanding() {
     },
   });
 
-  const jobs = q.data?.unaccepted ?? [];
+  // Memoised so "no data yet" is the same empty list every render, rather than a new one
+  // that re-runs both effects below on every render.
+  const jobs = useMemo(() => q.data?.unaccepted ?? [], [q.data]);
 
   useEffect(() => {
     if (!enabled || jobs.length === 0) return;
