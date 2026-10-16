@@ -63,6 +63,9 @@ export function DutyBar({ live }: { live: boolean }) {
   });
 
   const overdue = board.data?.overdue ?? [];
+  // Which jobs are overdue, as one string: the effect below restarts only when that set
+  // changes, not every time a refetch returns the same jobs as new objects.
+  const overdueKey = overdue.map((w) => w.id).join(',');
   const seen = useRef<Set<string>>(new Set());
 
   /*
@@ -72,13 +75,14 @@ export function DutyBar({ live }: { live: boolean }) {
    * duty screen that will be, and then the department thinks it is covered when it is not.
    */
   useEffect(() => {
-    if (!on || overdue.length === 0) { seen.current = new Set(); return; }
-    const fresh = overdue.some((w) => !seen.current.has(w.id));
+    const ids = overdueKey ? overdueKey.split(',') : [];
+    if (!on || ids.length === 0) { seen.current = new Set(); return; }
+    const fresh = ids.some((id) => !seen.current.has(id));
     if (fresh) play('urgent');
-    seen.current = new Set(overdue.map((w) => w.id));
+    seen.current = new Set(ids);
     const timer = setInterval(() => play('urgent'), 60_000);
     return () => clearInterval(timer);
-  }, [on, overdue.map((w) => w.id).join(',')]);
+  }, [on, overdueKey]);
 
   if (!on) return null;
 

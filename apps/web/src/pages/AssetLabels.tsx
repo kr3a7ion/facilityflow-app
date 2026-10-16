@@ -39,7 +39,7 @@ export function AssetLabels({ onClose }: { onClose: () => void }) {
   const list = useQuery<{ assets: Asset[] }>({
     queryKey: qk.assets, queryFn: () => api.get('/api/assets'),
   });
-  const assets = list.data?.assets ?? [];
+  const assets = useMemo(() => list.data?.assets ?? [], [list.data]);
 
   // Everything is selected to begin with: printing the whole register is the common case,
   // and deselecting a handful is less work than picking sixty.

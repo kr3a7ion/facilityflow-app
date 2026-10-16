@@ -59,9 +59,11 @@ export function Assets() {
     if (hit) { setOpen(hit.id); setMsg(null); }
     else setMsg(`No asset carries the tag "${scanned}". The label may be for a different property.`);
     // The tag has done its job; leaving it in the URL reopens the drawer on every back-press.
-    params.delete('tag');
-    setParams(params, { replace: true });
-  }, [scanned, list.data]);
+    // A copy rather than editing the router's own object in place.
+    const next = new URLSearchParams(params);
+    next.delete('tag');
+    setParams(next, { replace: true });
+  }, [scanned, list.data, params, setParams]);
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();

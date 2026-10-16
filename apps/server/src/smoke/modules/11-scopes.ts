@@ -246,9 +246,12 @@ heading('The API reference');
 {
   // Generated from the routes themselves, so a route added, removed or re-guarded without
   // `npm run docs:api` shows up here rather than in somebody's integration a month later.
+  // Line endings are not content: a Windows checkout (core.autocrlf) holds this file with
+  // CRLF, and the check failed there on a reference that was exactly up to date.
+  const lf = (t: string) => t.replace(/\r\n/g, '\n');
   const written = fs.existsSync(API_DOC) ? fs.readFileSync(API_DOC, 'utf8') : '';
   check('docs/API.md lists every route the server has, and what each one requires — npm run docs:api rewrites it',
-    written === await apiReference());
+    lf(written) === lf(await apiReference()));
 }
 
 // --------------------------------------------------------------------------

@@ -9,10 +9,17 @@ import type { Database as Db } from 'better-sqlite3';
  */
 export function openDb(dbPath: string): Db {
   const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 5000');
-  db.pragma('synchronous = NORMAL');
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 5000');
+    db.pragma('synchronous = NORMAL');
+  } catch (e) {
+    // A file that is not a database fails here. Closing it matters on Windows, where an
+    // open handle keeps the file locked against deletion.
+    db.close();
+    throw e;
+  }
   return db;
 }
 

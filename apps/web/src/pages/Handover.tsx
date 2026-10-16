@@ -31,10 +31,11 @@ export function Handover() {
     queryKey: ['handovers'], queryFn: () => api.get('/api/handover'),
   });
 
+  // Prefilled once from the draft, and never over something the person has typed.
   useEffect(() => {
-    if (draft.data && !keys) {
-      setKeys(draft.data.openPermits.map((p) => `${p.ref} · ${titleCase(p.type)}`).join(', '));
-    }
+    if (!draft.data) return;
+    const suggested = draft.data.openPermits.map((p) => `${p.ref} · ${titleCase(p.type)}`).join(', ');
+    setKeys((typed) => typed || suggested);
   }, [draft.data]);
 
   const submit = useMutation({
