@@ -306,7 +306,6 @@ export function Host() {
   const h = q.data!;
 
   const backupStale = h.backups.ageHours == null || h.backups.ageHours > 48;
-  const advertised = h.advertise ? `http://${h.advertise}:${h.port}` : null;
 
   return (
     <>
@@ -333,12 +332,9 @@ export function Host() {
         </div>
       )}
 
-      <div className="mb-6"><NetworkCard h={h} /></div>
+      <div className="mb-6"><AddressCard h={h} /></div>
 
       <div className="grid g2 mb-6">
-        <JoinCard url={advertised} port={h.port}
-                  nic={h.network.nics.find((n) => n.address === h.advertise) ?? null} />
-
         <Card title="How it is running"
               right={<Chip tone={h.bootService.state === 'registered' ? 'ok'
                 : h.bootService.state === 'missing' ? 'warn' : ''} lamp>
@@ -386,20 +382,18 @@ export function Host() {
             </div>
           )}
         </Card>
-      </div>
 
-      <div className="grid g2">
         <PortCard current={h.port} pending={h.pendingPort} />
-
-        <Card title="Doing this on the host PC">
-          <p className="sub mt-0 mb-5">
-            Starting, stopping and installing the boot service all happen on the host PC itself —
-            this page is served by the server it would be acting on. Double-click
-            {' '}<b>FacilityFlow.cmd</b> in the app folder for a menu, or copy a command.
-          </p>
-          <CmdList windows={h.isWindows} />
-        </Card>
       </div>
+
+      <Card title="Doing this on the host PC">
+        <p className="sub mt-0 mb-5">
+          Starting, stopping and installing the boot service all happen on the host PC itself —
+          this page is served by the server it would be acting on. Double-click
+          {' '}<b>FacilityFlow.cmd</b> in the app folder for a menu, or copy a command.
+        </p>
+        <CmdList windows={h.isWindows} />
+      </Card>
 
       <PhoneApp dataDir={h.dataDir} />
       <OwnCertificate />
@@ -466,19 +460,38 @@ function PhoneApp({ dataDir }: { dataDir: string }) {
   );
 }
 
-/** The address, big, with a code a phone can scan to join. */
 /**
- * Which of this PC's networks the department is given.
+ * The address the department is given, and the network it comes from — in one card.
+ *
+ * These used to be three: which network, the address with its code, and the port, with the
+ * same "the router can change this" warning printed once per adapter and again under the
+ * code. Somebody looking for "what do I write on the notice board" read all three to find it.
  *
  * A host PC is rarely on one network. It has a cable, and wifi, and — once anybody has
  * installed VirtualBox, Docker or WSL — two or three adapters that look exactly like a
- * network and reach nobody. Somebody has to decide which address goes on the wall, and
- * until now that decision was made by whichever adapter Node happened to list first.
+ * network and reach nobody. So the choice of which address goes on the wall stays here,
+ * under the address it decides, rather than being left to whichever adapter Node lists first.
  */
-function NetworkCard({ h }: { h: HostStatus }) {
+function AddressCard({ h }: { h: HostStatus }) {
   const qc = useQueryClient();
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [advanced, setAdvanced] = useState(false);
+  const [svg, setSvg] = useState('');
+
+  const url = h.advertise ? `http://${h.advertise}:${h.port}` : null;
+  const nic = h.network.nics.find((n) => n.address === h.advertise) ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!url) { setSvg(''); return; }
+    // Generated in the browser: the host has no route to the internet, so a code from
+    // an image service would be a permanently broken square on the wall.
+    QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 0,
+                           color: { dark: '#000000', light: '#ffffff' } })
+      .then((out) => { if (!cancelled) setSvg(out); })
+      .catch(() => { if (!cancelled) setSvg(''); });
+    return () => { cancelled = true; };
+  }, [url]);
 
   const save = useMutation({
     mutationFn: (body: { advertise?: string | null; bindTo?: string | null }) =>
@@ -495,163 +508,140 @@ function NetworkCard({ h }: { h: HostStatus }) {
   const kindWord = (n: Nic) =>
     n.kind === 'ethernet' ? 'Cable' : n.kind === 'wifi' ? 'Wifi'
       : n.kind === 'virtual' ? 'Virtual' : 'Other';
+  // Unknown counts as "may change": the warning is cheap, a reprinted sticker sheet is not.
+  const mayChange = nic != null && nic.dhcp !== false;
 
   return (
-    <Card title="Which network the department reaches this PC on"
-          right={h.network.ssid ? <Chip>Wifi: {h.network.ssid}</Chip> : undefined}>
-      {msg && <div className={`note ${msg.bad ? 'crit' : ''} mb-5`}
-                   role="status">{msg.text}</div>}
-
-      {h.network.nics.length === 0 ? (
-        <Empty title="This PC is not on any network"
-               hint="No cable and no wifi, so nothing in the department can reach it. Connect it to the office network, then reload this page." />
-      ) : (
-        <>
-          <div className="niclist">
-            {usable.map((n) => (
-              <label key={n.address + n.name} className={n.recommended ? 'nic on' : 'nic'}>
-                <input type="radio" name="advertise" checked={n.recommended}
-                       onChange={() => save.mutate({ advertise: n.address })} />
-                <span className="nname">
-                  {n.name}
-                  <Chip>{kindWord(n)}</Chip>
-                  {n.ssid && <Chip>{n.ssid}</Chip>}
-                </span>
-                <span className="naddr">{n.address}</span>
-                {n.note && <span className="nnote">{n.note}</span>}
-                {n.dhcp === true && (
-                  <span className="nnote">
-                    This address was handed out by the router and can change — after a power cut,
-                    or overnight. Ask whoever runs the network to reserve it for this PC, or every
-                    phone in the department loses the system on the same morning.
-                  </span>
+    <>
+      <Flash msg={msg} />
+      <Card title="The address to hand out" right={<Chip>Port {h.port}</Chip>}>
+        {h.network.nics.length === 0 ? (
+          <Empty title="This PC is not on any network"
+                 hint="No cable and no wifi, so nothing in the department can reach it. Connect it to the office network, then reload this page." />
+        ) : (
+          <>
+            {url ? (
+              <div className="row gap-7 start">
+                {svg && (
+                  <div className="p-4" style={{ width: 132, height: 132, flex: 'none', background: '#fff', borderRadius: 'var(--r-lg)', border: '1px solid var(--line)' }}
+                       dangerouslySetInnerHTML={{ __html: svg }} />
                 )}
-              </label>
-            ))}
-          </div>
-
-          {usable.length === 0 && (
-            <div className="note warn">
-              <b>Nothing here can be reached from a phone.</b> Every address this PC has belongs
-              to virtual software or is one the PC gave itself because nothing answered. Plug it
-              into the office network, or join it to the staff wifi.
-            </div>
-          )}
-
-          {rest.length > 0 && (
-            <details className="mt-5">
-              <summary className="sub clickable">
-                {rest.length} more {rest.length === 1 ? 'address' : 'addresses'} on this PC that
-                cannot be used
-              </summary>
-              <div className="niclist mt-4 dim">
-                {rest.map((n) => (
-                  <div key={n.address + n.name} className="nic dead">
-                    <span className="nname">{n.name} <Chip>{kindWord(n)}</Chip></span>
-                    <span className="naddr">{n.address}</span>
-                    {n.note && <span className="nnote">{n.note}</span>}
-                  </div>
-                ))}
+                <div className="joinaddr">
+                  <div className="url f-mono t-lede fw-5 mb-3">{url}</div>
+                  {nic && (
+                    <p className="sub mt-0 mb-4">
+                      {nic.name}{nic.ssid ? ` · ${nic.ssid}` : ''}
+                    </p>
+                  )}
+                  <p className="t-ui mt-0 mb-0">
+                    Anyone on {nic?.kind === 'wifi' && nic.ssid
+                      ? <>the <b>{nic.ssid}</b> wifi</> : 'the office network'} opens this and
+                    signs in. On a phone, <b>Add to home screen</b> and it behaves like an app.
+                  </p>
+                </div>
               </div>
-            </details>
-          )}
-
-          <div className="note mt-6">
-            This is the address on the QR code and the one to write on the notice board. The host
-            answers on <b>{h.boundTo ? `${h.boundTo} only` : 'every network above'}</b> whichever
-            you pick — choosing here changes what people are told, not what the server listens on.
-          </div>
-
-          <button className="btn sm mt-5"
-                  onClick={() => setAdvanced((v) => !v)} aria-expanded={advanced}>
-            {advanced ? 'Hide' : 'Show'} advanced: answer on one network only
-          </button>
-
-          {advanced && (
-            <div className="note warn mt-5">
-              <b>Only if this PC can be reached from a network the department should not be on</b>
-              {' '}— a guest wifi, for instance. Narrowing it here means the system refuses every
-              other network from the next restart.
-              <p className="mt-4 mb-0">
-                The risk is the address itself. Most are handed out by the router and can change
-                overnight; if that happens the host cannot answer on the old one. It will fall back
-                to every network and say so when it starts, rather than dying — but until somebody
-                notices, the narrowing is not doing its job. A reserved or static address first.
-              </p>
-              <div className="row gap-4 mt-5">
-                {usable.map((n) => (
-                  <Btn key={n.address} size="sm"
-                       tone={h.boundTo === n.address ? 'pri' : undefined}
-                       onClick={() => save.mutate({ bindTo: n.address })}>
-                    Only {n.name} ({n.address})
-                  </Btn>
-                ))}
-                {h.boundTo && (
-                  <Btn size="sm" onClick={() => save.mutate({ bindTo: null })}>
-                    Answer on every network again
-                  </Btn>
-                )}
+            ) : (
+              <div className="note warn">
+                <b>Nothing here can be reached from a phone.</b> Every address this PC has belongs
+                to virtual software or is one the PC gave itself because nothing answered. Plug it
+                into the office network, or join it to the staff wifi.
               </div>
-            </div>
-          )}
-        </>
-      )}
-    </Card>
-  );
-}
-
-function JoinCard({ url, port, nic }: { url: string | null; port: number; nic: Nic | null }) {
-  const [svg, setSvg] = useState('');
-  // One address, chosen deliberately. This used to be addresses[0] — whichever adapter the
-  // operating system happened to enumerate first, printed onto a code for the wall.
-  const primary = url;
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!primary) { setSvg(''); return; }
-    // Generated in the browser: the host has no route to the internet, so a code from
-    // an image service would be a permanently broken square on the wall.
-    QRCode.toString(primary, { type: 'svg', errorCorrectionLevel: 'M', margin: 0,
-                               color: { dark: '#000000', light: '#ffffff' } })
-      .then((out) => { if (!cancelled) setSvg(out); })
-      .catch(() => { if (!cancelled) setSvg(''); });
-    return () => { cancelled = true; };
-  }, [primary]);
-
-  return (
-    <Card title="The address to hand out" right={<Chip>Port {port}</Chip>}>
-      {!primary ? (
-        <Empty title="No address to hand out"
-               hint="This PC has no cable or wifi connection the department could reach it on. Connect it to the office network and this fills in." />
-      ) : (
-        <div className="row gap-7 start">
-          {svg && (
-            <div className="p-4" style={{ width: 132, height: 132, flex: 'none', background: '#fff', borderRadius: 8, border: '1px solid var(--line)' }}
-                 dangerouslySetInnerHTML={{ __html: svg }} />
-          )}
-          <div className="joinaddr">
-            <div className="url f-mono t-body fw-5 mb-3">
-              {primary}
-            </div>
-            {nic && (
-              <p className="sub mt-0 mb-4">
-                over {nic.name}{nic.ssid ? ` on ${nic.ssid}` : ''}
-                {nic.kind === 'wifi' ? ' — phones must be on this same wifi' : ''}
-              </p>
             )}
-            <p className="t-ui mt-5 mb-0">
-              Anyone on the office wifi opens this and signs in. On a phone, <b>Add to home
-              screen</b> and it behaves like an app.
-            </p>
-          </div>
-        </div>
-      )}
-      <div className="note warn mt-6">
-        <b>Ask IT to reserve this address before printing it on anything.</b> If this PC is on
-        DHCP the address will change, and every bookmark and every QR sticker on the plant breaks
-        at the same moment.
-      </div>
-    </Card>
+
+            {mayChange && (
+              <div className="note warn mt-6">
+                <b>Ask IT to reserve {h.advertise} for this PC before printing it on anything.</b>
+                {' '}{nic.dhcp
+                  ? 'The router handed this address out, and it can change after a power cut or overnight'
+                  : 'If the router hands this PC its address, it can change after a power cut or overnight'}
+                {' '}— and every bookmark, home-screen shortcut and QR sticker breaks the same morning.
+              </div>
+            )}
+
+            {usable.length > 0 && (
+              <>
+                <p className="eyebrow mt-6 mb-3">
+                  {usable.length > 1 ? 'Which network to hand out' : 'The network it comes from'}
+                </p>
+                <div className="niclist">
+                  {usable.map((n) => (
+                    <label key={n.address + n.name} className={n.recommended ? 'nic on' : 'nic'}>
+                      <input type="radio" name="advertise" checked={n.recommended}
+                             onChange={() => save.mutate({ advertise: n.address })} />
+                      <span className="nname">
+                        {n.name}
+                        <Chip>{kindWord(n)}</Chip>
+                        {n.ssid && <Chip>{n.ssid}</Chip>}
+                        {n.dhcp === true && <Chip tone="warn">Can change</Chip>}
+                      </span>
+                      <span className="naddr">{n.address}</span>
+                      {n.note && <span className="nnote">{n.note}</span>}
+                    </label>
+                  ))}
+                </div>
+                <p className="sub mt-4 mb-0">
+                  The host answers on <b>{h.boundTo ? `${h.boundTo} only` : 'every network listed'}</b>
+                  {' '}whichever you pick — this changes what people are told, not what the server
+                  listens on.
+                </p>
+              </>
+            )}
+
+            {rest.length > 0 && (
+              <details className="mt-5">
+                <summary className="sub clickable">
+                  {rest.length} more {rest.length === 1 ? 'address' : 'addresses'} on this PC that
+                  cannot be used
+                </summary>
+                <div className="niclist mt-4 dim">
+                  {rest.map((n) => (
+                    <div key={n.address + n.name} className="nic dead">
+                      <span className="nname">{n.name} <Chip>{kindWord(n)}</Chip></span>
+                      <span className="naddr">{n.address}</span>
+                      {n.note && <span className="nnote">{n.note}</span>}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {usable.length > 0 && (
+              <Btn size="sm" className="mt-5"
+                   onClick={() => setAdvanced((v) => !v)} aria-expanded={advanced}>
+                {advanced ? 'Hide' : 'Show'} advanced: answer on one network only
+              </Btn>
+            )}
+
+            {advanced && (
+              <div className="note warn mt-5">
+                <b>Only if this PC can be reached from a network the department should not be on</b>
+                {' '}— a guest wifi, for instance. Narrowing it here means the system refuses every
+                other network from the next restart.
+                <p className="mt-4 mb-0">
+                  Reserve the address first. If it moves, the host cannot answer on the old one: it
+                  falls back to every network and says so when it starts, but until somebody notices,
+                  the narrowing is not doing its job.
+                </p>
+                <div className="row gap-4 mt-5">
+                  {usable.map((n) => (
+                    <Btn key={n.address} size="sm"
+                         tone={h.boundTo === n.address ? 'pri' : undefined}
+                         onClick={() => save.mutate({ bindTo: n.address })}>
+                      Only {n.name} ({n.address})
+                    </Btn>
+                  ))}
+                  {h.boundTo && (
+                    <Btn size="sm" onClick={() => save.mutate({ bindTo: null })}>
+                      Answer on every network again
+                    </Btn>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+    </>
   );
 }
 
