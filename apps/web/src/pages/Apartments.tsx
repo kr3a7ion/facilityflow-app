@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qk, ApiError } from '../lib/api';
@@ -56,6 +56,17 @@ function floorHeading(label: string | null): string {
   return `Floor ${t}`;
 }
 
+/**
+ * How a block reads as a heading. A code — "A", "B-12" — is "Block A"; a name of more than
+ * one word, or one that says what it is ("MAIN BUILDING", "Studio C Wing"), is shown as
+ * written, because "Block MAIN BUILDING" says it twice.
+ */
+function blockHeading(block: string): string {
+  if (block === 'Unassigned') return 'Unassigned to a block';
+  return /\s/.test(block.trim()) || /(block|building|wing|tower|house|court)/i.test(block)
+    ? block : `Block ${block}`;
+}
+
 /** Floors of one block, lowest first, each with its units in door-number order. */
 function byFloor(units: Apartment[]): [string | null, Apartment[]][] {
   const map = new Map<string, { label: string | null; units: Apartment[] }>();
@@ -87,7 +98,7 @@ export function Apartments() {
   const { can } = useSession();
   const [filter, setFilter] = useState<string>('');
   const [open, setOpen] = useState<Apartment | null>(null);
-  const [modal, setModal] = useState<'add' | 'import' | 'merge' | 'delete' | 'retire' | null>(null);
+  const [modal, setModal] = useState<'add' | 'import' | 'merge' | 'delete' | 'retire' | 'floor' | null>(null);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   // Select mode: tapping a unit picks it instead of opening it, for acting on many at once.
   const [picking, setPicking] = useState(false);
@@ -173,6 +184,9 @@ export function Apartments() {
           <span className="sub">Tap units to select them, or select a whole floor or block.</span>
           <span className="fill" />
           <Btn size="sm" disabled={picked.size === 0} onClick={() => setPicked(new Set())}>Clear</Btn>
+          <Btn size="sm" disabled={picked.size === 0} onClick={() => setModal('floor')}>
+            Set floor
+          </Btn>
           <Btn size="sm" disabled={picked.size === 0} onClick={() => setModal('retire')}>
             Retire selected
           </Btn>
@@ -203,7 +217,7 @@ export function Apartments() {
                            : 'An administrator has to load the unit list first.'} /></Card>
         : blocks.length === 0 ? <Card><Empty title="No units match that filter" /></Card>
         : blocks.map(([block, units]) => (
-          <Card key={block} title={block === 'Unassigned' ? 'Unassigned to a block' : `Block ${block}`}
+          <Card key={block} title={blockHeading(block)}
                 right={<>
                   {picking && (() => {
                     const all = units.every((u) => picked.has(u.id));
@@ -224,7 +238,19 @@ export function Apartments() {
               const floors = byFloor(units);
               // One floor nobody named: a heading would only say "Floor not given".
               const plain = floors.length === 1 && floors[0]![0] == null;
-              return floors.map(([floor, onFloor]) => {
+              /*
+               * A whole block with no floors is one undivided grid, and the page cannot split
+               * what was never recorded. Say so where it shows, with the two ways to fix it.
+               */
+              const noFloors = plain && can('apartment.manage') && !picking && (
+                <p key="no-floors" className="sub mt-0 mb-5">
+                  No floors recorded for these units, so they are not split by floor.
+                  {' '}Choose <b>Select</b>, pick a floor's units and <b>Set floor</b>
+                  {can('apartment.import') && <> — or <b>Import a unit list</b> again, which
+                  {' '}fills in missing floors without changing anything already set</>}.
+                </p>
+              );
+              return [noFloors, ...floors.map(([floor, onFloor]) => {
                 const jobs = onFloor.reduce((s, u) => s + u.open_jobs, 0);
                 const all = onFloor.every((u) => picked.has(u.id));
                 return (
@@ -257,7 +283,7 @@ export function Apartments() {
                     </div>
                   </section>
                 );
-              });
+              })];
             })()}
           </Card>
         ))}
@@ -267,6 +293,14 @@ export function Apartments() {
       {modal === 'import' && <ImportUnits onClose={() => setModal(null)} onDone={done} />}
       {modal === 'merge' && (
         <MergeDuplicates duplicates={duplicates} onClose={() => setModal(null)} onDone={done} />
+      )}
+      {modal === 'floor' && (
+        <SetFloor units={pickedUnits}
+                  known={[...new Set((q.data?.apartments ?? []).map((a) => a.floor?.trim())
+                    .filter((f): f is string => !!f))].sort((a, b) =>
+                      (floorLevel(a) ?? 1e9) - (floorLevel(b) ?? 1e9) || a.localeCompare(b))}
+                  onClose={() => setModal(null)}
+                  onDone={(text) => { stopPicking(); done(text); }} />
       )}
       {(modal === 'delete' || modal === 'retire') && (
         <BatchAction mode={modal} units={pickedUnits} onClose={() => setModal(null)}
@@ -351,6 +385,64 @@ function MergeDuplicates({ duplicates, onClose, onDone }: {
         <Btn onClick={onClose}>Cancel</Btn>
         <Btn tone="pri" disabled={pairs.length === 0 || merge.isPending} onClick={() => merge.mutate()}>
           {merge.isPending ? 'Merging…' : `Merge ${pairs.length}`}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Name the floor of the selected units.
+ *
+ * Units added by hand often went in with no floor, which leaves a block as one undivided
+ * grid. This is somebody saying what the floor is, so it replaces what was there; an empty
+ * box clears it. The floors already in use are offered, so "9" does not become "Floor 9" on
+ * one unit and "09" on the next.
+ */
+function SetFloor({ units, known, onClose, onDone }: {
+  units: Apartment[]; known: string[];
+  onClose: () => void; onDone: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [floor, setFloor] = useState(() => {
+    const now = new Set(units.map((u) => u.floor?.trim() ?? ''));
+    return now.size === 1 ? [...now][0]! : '';
+  });
+  const n = units.length;
+  const plural = (k: number) => `${k} unit${k === 1 ? '' : 's'}`;
+  const listId = useId();
+
+  const run = useMutation({
+    mutationFn: () => api.post<{ changed: number }>('/api/apartments/floor', {
+      ids: units.map((u) => u.id), floor: floor.trim() || null,
+    }),
+    onSuccess: async (r) => {
+      await qc.invalidateQueries({ queryKey: qk.apartments });
+      onDone(floor.trim()
+        ? `${plural(r.changed)} set to ${floorHeading(floor.trim())}.`
+        : `Floor cleared on ${plural(r.changed)}.`);
+    },
+  });
+  const err = run.error as ApiError | null;
+
+  return (
+    <Modal title={`Set the floor of ${plural(n)}`} onClose={onClose}>
+      <p className="mt-0 mb-5 lh">
+        {units.slice(0, 12).map(unitLabel).join(', ')}{n > 12 ? ` and ${n - 12} more` : ''}.
+      </p>
+      <Field label="Floor" hint="Ground, 1, 12 — as the department says it. Leave it empty to clear the floor.">
+        <input className="inp" autoFocus value={floor} maxLength={20} list={listId}
+               placeholder="12" onChange={(e) => setFloor(e.target.value)} />
+        <datalist id={listId}>
+          {known.map((f) => <option key={f} value={f} />)}
+        </datalist>
+      </Field>
+      {err && <div className="note crit mb-5" role="alert">{err.message}</div>}
+      <div className="modal-foot">
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn tone="pri" icon="check" disabled={run.isPending || n === 0}
+             onClick={() => run.mutate()}>
+          {run.isPending ? 'Saving…' : 'Set floor'}
         </Btn>
       </div>
     </Modal>
@@ -641,6 +733,9 @@ interface ReadResult {
   ignored: string[];
   rowsRead: number;
   wouldCreate: number;
+  /** Units already here that the list gives a missing floor, name, type or bedroom count. */
+  wouldFill: number;
+  fills: Fill[];
   alreadyHere: string[];
   repeatedInFile: string[];
   rejected: { line: number; reason: string; raw: string }[];
@@ -651,6 +746,17 @@ interface ReadResult {
 interface Unit {
   unitNo: string; block?: string; name?: string;
   floor?: string; unitType?: string; bedrooms?: number;
+}
+
+interface Fill {
+  id: string; label: string; block: string | null; unitNo: string;
+  floor?: string; name?: string; unitType?: string; bedrooms?: number;
+}
+
+/** What a fill adds, in a few words: "floor 9, Seville". */
+function fillWords(f: Fill): string {
+  return [f.floor != null && `floor ${f.floor}`, f.name, f.unitType,
+          f.bedrooms != null && `${f.bedrooms} bed`].filter(Boolean).join(', ');
 }
 
 const FIELD_LABEL: Record<string, string> = {
@@ -719,22 +825,37 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
       // to be written. One source of parsing truth, used twice.
       const full = await api.post<ReadResult & { sample: Unit[] }>(
         '/api/apartments/import/read', { text, mapping, all: true });
-      return api.post<{ created: number; skipped: number }>('/api/apartments/import', {
+      // Units already here go back too, as the rows that fill their gaps; the server plans
+      // the list again and fills only what is still empty.
+      const fills: Unit[] = full.fills.map((f) => ({
+        unitNo: f.unitNo, block: f.block ?? undefined, floor: f.floor, name: f.name,
+        unitType: f.unitType, bedrooms: f.bedrooms,
+      }));
+      return api.post<{ created: number; filled: number; skipped: number }>('/api/apartments/import', {
         source: read?.format === 'json' ? 'json' : 'csv',
         sourceRef: fileName || undefined,
-        units: full.sample,
+        units: [...full.sample, ...fills],
       });
     },
     onSuccess: async (r) => {
       await qc.invalidateQueries({ queryKey: qk.apartments });
       await qc.invalidateQueries({ queryKey: qk.locations });
-      onDone(`${r.created} unit${r.created === 1 ? '' : 's'} imported`
-        + (r.skipped ? `, ${r.skipped} already here` : '') + '.');
+      const parts = [
+        r.created ? `${r.created} unit${r.created === 1 ? '' : 's'} imported` : null,
+        r.filled ? `${r.filled} filled in` : null,
+        r.skipped ? `${r.skipped} already here` : null,
+      ].filter(Boolean);
+      onDone((parts.join(', ') || 'Nothing to change') + '.');
     },
     onError: (e) => setErr((e as ApiError).message),
   });
 
-  const ready = !!read && read.missing.length === 0 && !read.mappingProblem && read.wouldCreate > 0;
+  const ready = !!read && read.missing.length === 0 && !read.mappingProblem
+    && (read.wouldCreate > 0 || read.wouldFill > 0);
+  const commitLabel = !read ? 'Import'
+    : read.wouldCreate > 0 && read.wouldFill > 0 ? `Import ${read.wouldCreate}, fill in ${read.wouldFill}`
+    : read.wouldFill > 0 ? `Fill in ${read.wouldFill}`
+    : `Import ${read.wouldCreate}`;
 
   return (
     <Modal title="Import units" onClose={onClose} wide>
@@ -808,10 +929,13 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
 
               {read.missing.length === 0 && (
                 <>
-                  <div className="grid g3 mt-6 mb-5">
+                  <div className="grid g4 mt-6 mb-5">
                     <Tile label="Will be added" value={read.wouldCreate}
-                          tone={read.wouldCreate ? 'ok' : 'warn'}
+                          tone={read.wouldCreate || read.wouldFill ? 'ok' : 'warn'}
                           sub={`of ${read.rowsRead} rows`} />
+                    <Tile label="Filled in" value={read.wouldFill}
+                          tone={read.wouldFill ? 'ok' : undefined}
+                          sub={read.wouldFill ? 'already here, missing details' : 'nothing missing'} />
                     <Tile label="Already here"
                           value={read.alreadyHere.length + read.repeatedInFile.length}
                           sub={read.alreadyHere.length || read.repeatedInFile.length
@@ -850,8 +974,16 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
                     </>
                   )}
 
-                  <p className="eyebrow mb-4">The first few, as they will land</p>
-                  <div className="tw">
+                  {read.wouldFill > 0 && (
+                    <p className="t-ui c-2 mt-0 mb-5">
+                      <b>Filled in:</b>{' '}
+                      {read.fills.map((f) => `${f.label} (${fillWords(f)})`).join(', ')}
+                      {read.wouldFill > read.fills.length ? ` and ${read.wouldFill - read.fills.length} more` : ''}.
+                    </p>
+                  )}
+
+                  {read.sample.length > 0 && <p className="eyebrow mb-4">The first few, as they will land</p>}
+                  {read.sample.length > 0 && <div className="tw">
                     <table className="wide">
                       <thead><tr><th>Block</th><th>Unit</th><th>Name</th>
                         <th>Floor</th><th className="num">Beds</th><th>Type</th></tr></thead>
@@ -868,13 +1000,14 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </div>}
 
                   <div className="note mt-6">
                     Each unit also becomes a place, so a job can be raised against it straight
-                    away. A unit already on the system is skipped rather than duplicated —
-                    and a unit number that appears in more than one block is kept in each,
-                    because on most properties those are different flats.
+                    away. A unit already on the system is not duplicated: it only takes a floor,
+                    name, type or bedroom count from the list where it has none, and anything
+                    already set is left as it is. A unit number that appears in more than one
+                    block is kept in each, because on most properties those are different flats.
                   </div>
                 </>
               )}
@@ -885,7 +1018,7 @@ function ImportUnits({ onClose, onDone }: { onClose: () => void; onDone: (msg: s
             <Btn onClick={onClose}>Cancel</Btn>
             <Btn tone="pri" icon="check" disabled={!ready || commit.isPending}
                  onClick={() => commit.mutate()}>
-              {commit.isPending ? 'Importing…' : `Import ${read?.wouldCreate ?? ''}`}
+              {commit.isPending ? 'Importing…' : commitLabel}
             </Btn>
           </div>
         </>

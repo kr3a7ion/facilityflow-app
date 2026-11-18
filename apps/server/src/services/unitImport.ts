@@ -269,3 +269,100 @@ export function mappingProblem(
   if (named.length >= 3 && same.length >= named.length * 0.8) return sentence;
   return null;
 }
+
+/** A unit already on the register, as much of it as an import can match and fill. */
+export interface HereRow {
+  id: string; location_id: string;
+  block: string | null; unit_no: string; name: string | null;
+  floor: string | null; unit_type: string | null; bedrooms: number | null;
+}
+
+/** Details a list carries for a unit that is already here, where the register has none. */
+export interface Fill {
+  id: string; locationId: string; label: string;
+  block: string | null; unitNo: string;
+  floor?: string; name?: string; unitType?: string; bedrooms?: number;
+}
+
+export interface Plan<U extends Unit = Unit> {
+  toAdd: U[];
+  fills: Fill[];
+  /** Already here, with nothing new to say about them. */
+  already: string[];
+  repeated: string[];
+  ambiguous: string[];
+}
+
+const blank = (v: string | null | undefined) => v == null || v.trim() === '';
+
+/**
+ * What one list does to the register: which rows are new units, which fill in details on a
+ * unit already here, and which are skipped and why.
+ *
+ * Both the preview and the write call this, so what somebody is shown is what is written.
+ *
+ * **Filling never overwrites.** A unit already here only takes a floor, name, type or
+ * bedroom count from the list where its own is empty. Somebody who added units by hand
+ * and left the floor blank fixes that by importing the department's list again; a floor
+ * somebody corrected on the system is never put back to what an old file says.
+ */
+export function plan<U extends Unit>(here: HereRow[], units: U[]): Plan<U> {
+  const byKey = new Map(here.map((r) => [unitKey(r.block, r.unit_no), r]));
+  const byName = namesHere(here);
+  const out: Plan<U> = { toAdd: [], fills: [], already: [], repeated: [], ambiguous: [] };
+  const seen = new Set<string>();
+  const filled = new Set<string>();
+
+  for (const raw of units) {
+    const unitNo = raw.unitNo.trim();
+    if (!unitNo) continue;
+    const block = raw.block?.trim() || undefined;
+    const u: U = { ...raw, unitNo, block };
+    const key = unitKey(block, unitNo);
+    const label = block ? `${block} · ${unitNo}` : unitNo;
+
+    let match = byKey.get(key);
+    if (!match && byName.has(key)) {
+      // The same list with the name column as the unit number: `Seville` in MAIN
+      // BUILDING is unit 001, already here. Not filled from — the columns are suspect.
+      out.already.push(`${label} (= ${byName.get(key)})`);
+      continue;
+    }
+    /*
+     * A row that names no block, against a property that uses them. Strictly a different
+     * record, but almost never meant as one: matched to the one unit of that number when
+     * there is exactly one, and skipped by name when there are several.
+     */
+    if (!match && !block) {
+      const ms = here.filter((x) => x.unit_no.trim().toLowerCase() === unitNo.toLowerCase());
+      if (ms.length > 1) { out.ambiguous.push(label); continue; }
+      match = ms[0];
+    }
+
+    if (match) {
+      if (filled.has(match.id)) { out.repeated.push(label); continue; }
+      const f: Fill = { id: match.id, locationId: match.location_id, label,
+                        block: match.block, unitNo: match.unit_no };
+      if (blank(match.floor) && !blank(u.floor)) f.floor = u.floor!.trim();
+      if (blank(match.name) && !blank(u.name)) f.name = u.name!.trim();
+      if (blank(match.unit_type) && !blank(u.unitType)) f.unitType = u.unitType!.trim();
+      if (match.bedrooms == null && u.bedrooms != null) f.bedrooms = u.bedrooms;
+      if (f.floor != null || f.name != null || f.unitType != null || f.bedrooms != null) {
+        out.fills.push(f);
+        filled.add(match.id);
+      } else {
+        out.already.push(label);
+      }
+      continue;
+    }
+
+    if (seen.has(key)) { out.repeated.push(label); continue; }
+    seen.add(key);
+    out.toAdd.push(u);
+  }
+  return out;
+}
+
+/** The register as `plan` needs it. */
+export const HERE_SQL =
+  'SELECT id, location_id, block, unit_no, name, floor, unit_type, bedrooms FROM apartments WHERE property_id = ?';

@@ -540,6 +540,73 @@ r = await post('/api/apartments/import', admin,
 check('importing the same file twice adds nothing and says so',
   r.json().created === 0 && r.json().skipped === 5, r.body.slice(0, 160));
 
+// ---- filling in what units already here are missing ------------------------
+/*
+ * Units added by hand often went in with no floor, which leaves a block as one undivided
+ * grid. Importing the department's list again fills those gaps — and only those: a floor
+ * somebody corrected on the system is never put back to what the file says.
+ */
+{
+  const unitId = (block: string, no: string) => (db.prepare(
+    'SELECT id FROM apartments WHERE property_id = ? AND block = ? AND unit_no = ?'
+  ).get(propertyId, block, no) as { id: string }).id;
+  const cairo = unitId('MAIN BUILDING', '101');
+  const kyoto = unitId('STUDIO A WING', '003');
+  db.prepare(`UPDATE apartments SET floor = NULL, name = '' WHERE id = ?`).run(cairo);
+  db.prepare(`UPDATE apartments SET floor = 'Mezzanine' WHERE id = ?`).run(kyoto);
+
+  r = await post('/api/apartments/import/read', admin, { text: UNIT_CSV, all: true });
+  const again = r.json() as { wouldCreate: number; wouldFill: number; sample: unknown[];
+    fills: { id: string; unitNo: string; block: string | null; floor?: string; name?: string }[] };
+  check('the preview counts a unit with a missing floor as one to fill in',
+    again.wouldCreate === 0 && again.wouldFill === 1 && again.fills[0]?.id === cairo,
+    JSON.stringify({ c: again.wouldCreate, f: again.wouldFill, fills: again.fills }));
+  check('and fills only what is empty: the floor and the name, not a set floor',
+    again.fills[0]?.floor === 'First' && again.fills[0]?.name === 'Cairo'
+    && !again.fills.some((f) => f.id === kyoto), JSON.stringify(again.fills));
+
+  const fillRows = again.fills.map((f) => ({ unitNo: f.unitNo, block: f.block ?? undefined,
+    floor: f.floor, name: f.name }));
+  r = await post('/api/apartments/import', admin,
+    { source: 'csv', sourceRef: 'apartments.csv', units: [...again.sample, ...fillRows] });
+  check('importing again fills it in', r.statusCode === 201
+    && r.json().created === 0 && r.json().filled === 1, r.body.slice(0, 160));
+  const after = db.prepare('SELECT floor, name FROM apartments WHERE id = ?')
+    .get(cairo) as { floor: string; name: string };
+  check('the unit now has its floor and name', after.floor === 'First' && after.name === 'Cairo',
+    JSON.stringify(after));
+  const loc = db.prepare(
+    'SELECT l.name FROM locations l JOIN apartments a ON a.location_id = l.id WHERE a.id = ?'
+  ).get(cairo) as { name: string };
+  check('and its place reads by the name it gained', loc.name === 'Cairo (MAIN BUILDING · 101)',
+    loc.name);
+  check('a floor somebody set on the system is not put back to the file\'s',
+    (db.prepare('SELECT floor FROM apartments WHERE id = ?').get(kyoto) as { floor: string }).floor
+      === 'Mezzanine');
+
+  // ---- naming the floor of several units by hand ------------------------------
+  const three = [cairo, kyoto, unitId('STUDIO B WING', '003')];
+  r = await post('/api/apartments/floor', ifeoma, { ids: three, floor: '7' });
+  check('a technician cannot change floors',
+    r.statusCode === 403 && r.json().required === 'apartment.manage');
+  r = await post('/api/apartments/floor', admin, { ids: three, floor: ' 7 ' });
+  check('an administrator sets the floor of several units at once',
+    r.statusCode === 200 && r.json().changed === 3, r.body.slice(0, 160));
+  check('every one of them is on that floor, trimmed',
+    three.every((id) => (db.prepare('SELECT floor FROM apartments WHERE id = ?')
+      .get(id) as { floor: string }).floor === '7'));
+  r = await post('/api/apartments/floor', admin, { ids: three, floor: '7' });
+  check('setting the floor they already have changes nothing', r.json().changed === 0,
+    r.body.slice(0, 160));
+  r = await post('/api/apartments/floor', admin, { ids: [kyoto], floor: '' });
+  check('an empty floor clears it',
+    r.json().changed === 1 && (db.prepare('SELECT floor FROM apartments WHERE id = ?')
+      .get(kyoto) as { floor: string | null }).floor === null, r.body.slice(0, 160));
+  check('each change is audited with what it was',
+    (db.prepare(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'apartment.floor'`)
+      .get() as { n: number }).n === 4);
+}
+
 // ---- JSON ------------------------------------------------------------------
 r = await post('/api/apartments/import/read', admin, {
   text: JSON.stringify([
