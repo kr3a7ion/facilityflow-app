@@ -8,7 +8,11 @@ export interface SlaRow {
   escalateToRole: string;
 }
 
-const FALLBACK_SLA: SlaRow[] = [
+/**
+ * The targets a property starts with, and goes back to on "Reset to defaults". One list, so
+ * a new property and a reset one cannot disagree.
+ */
+export const DEFAULT_SLA: readonly SlaRow[] = [
   { priority: 'P1', label: 'Emergency', respondMinutes: 15, resolveMinutes: 240, escalateToRole: 'supervisor' },
   { priority: 'P2', label: 'Urgent', respondMinutes: 60, resolveMinutes: 1440, escalateToRole: 'supervisor' },
   { priority: 'P3', label: 'Routine', respondMinutes: 240, resolveMinutes: 4320, escalateToRole: 'team_lead' },
@@ -31,10 +35,10 @@ export function setSetting(db: Db, propertyId: string, key: string, value: unkno
 }
 
 export function slaFor(db: Db, propertyId: string, priority: string): SlaRow {
-  const matrix = getSetting<SlaRow[]>(db, propertyId, 'sla_matrix', FALLBACK_SLA);
+  const matrix = getSetting<readonly SlaRow[]>(db, propertyId, 'sla_matrix', DEFAULT_SLA);
   return matrix.find((r) => r.priority === priority)
-    ?? FALLBACK_SLA.find((r) => r.priority === priority)
-    ?? FALLBACK_SLA[2]!;
+    ?? DEFAULT_SLA.find((r) => r.priority === priority)
+    ?? DEFAULT_SLA[2]!;
 }
 
 export function fuelTolerancePct(db: Db, propertyId: string): number {

@@ -13,15 +13,26 @@ interface SlaRow {
 export function Settings() {
   const qc = useQueryClient();
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [draft, setDraft] = useState<SlaRow[] | null>(null);
   const [tolerance, setTolerance] = useState<string>('');
+  const [editing, setEditing] = useState<SlaRow | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const settings = useQuery<{ settings: { sla_matrix: SlaRow[] | null; trades: string[] | null;
                                           fuel_variance_tolerance_pct: number | null } }>({
     queryKey: ['admin-settings'], queryFn: () => api.get('/api/admin/settings'),
   });
 
-  const sla = draft ?? settings.data?.settings.sla_matrix ?? [];
+  // Read on its own so a property that never saved targets still shows the defaults it runs on.
+  const targets = useQuery<{ targets: SlaRow[]; defaults: SlaRow[] }>({
+    queryKey: ['admin-sla'], queryFn: () => api.get('/api/admin/sla'),
+  });
+  const sla = targets.data?.targets ?? [];
+  const isDefault = (row: SlaRow) => {
+    const d = targets.data?.defaults.find((x) => x.priority === row.priority);
+    return !!d && d.label === row.label && d.respondMinutes === row.respondMinutes
+      && d.resolveMinutes === row.resolveMinutes && d.escalateToRole === row.escalateToRole;
+  };
+  const allDefault = sla.length > 0 && sla.every(isDefault);
   // Who a breach can go to. Read from the roles that exist, so a renamed or new role is
   // offered without a code change; falls back to showing the key if roles cannot be read.
   const roles = useQuery<{ roles: { key: string; name: string }[] }>({
@@ -32,14 +43,21 @@ export function Settings() {
 
   const put = useMutation({
     mutationFn: (v: { key: string; value: unknown }) => api.post('/api/admin/settings', v),
-    onSuccess: async (_r, v) => {
-      setMsg({ text: v.key === 'sla_matrix'
-        ? 'SLA targets saved. They apply to jobs raised from now on — deadlines already set do not move.'
-        : 'Saved.' });
-      setDraft(null);
+    onSuccess: async () => {
+      setMsg({ text: 'Saved.' });
       await qc.invalidateQueries({ queryKey: ['admin-settings'] });
     },
     onError: (e) => setMsg({ text: (e as ApiError).message, bad: true }),
+  });
+
+  const reset = useMutation({
+    mutationFn: () => api.post('/api/admin/sla/reset', {}),
+    onSuccess: async () => {
+      setConfirmReset(false);
+      setMsg({ text: 'Targets are back to the defaults. They apply to jobs raised from now on — deadlines already set do not move.' });
+      await qc.invalidateQueries({ queryKey: ['admin-sla'] });
+    },
+    onError: (e) => { setConfirmReset(false); setMsg({ text: (e as ApiError).message, bad: true }); },
   });
 
   if (settings.isLoading) return <Card><Loading rows={5} /></Card>;
@@ -47,61 +65,69 @@ export function Settings() {
 
   return (
     <>
-      {msg && <div className={`note ${msg.bad ? 'crit' : ''} mb-6`} role="status">{msg.text}</div>}
+      <Flash msg={msg} />
 
       <Card title="Response and resolve targets" flush
-            right={<Btn size="sm" tone="pri" disabled={!draft || put.isPending}
-                        onClick={() => put.mutate({ key: 'sla_matrix', value: sla })}>Save</Btn>}>
-        <div className="tw">
-          <table className="wide">
-            <thead><tr><th>Priority</th><th>Label</th><th className="num">Respond (min)</th>
-              <th className="num">Resolve (min)</th><th>Escalates to</th></tr></thead>
-            <tbody>
-              {sla.map((row, i) => (
-                <tr key={row.priority}>
-                  <td className="mono">{row.priority}</td>
-                  <td>
-                    <input className="inp py-2 px-4 compact" value={row.label}
-                           onChange={(e) => {
-                             const next = sla.map((r, j) => j === i ? { ...r, label: e.target.value } : r);
-                             setDraft(next);
-                           }} />
-                  </td>
-                  {(['respondMinutes', 'resolveMinutes'] as const).map((field) => (
-                    <td className="num" key={field}>
-                      <input className="inp py-2 px-4 tar compact"
-                             inputMode="numeric" value={row[field]}
-                             onChange={(e) => {
-                               const n = Number(e.target.value);
-                               const next = sla.map((r, j) => j === i ? { ...r, [field]: Number.isFinite(n) ? n : 0 } : r);
-                               setDraft(next);
-                             }} />
-                    </td>
+            right={confirmReset ? <>
+              <Btn size="sm" onClick={() => setConfirmReset(false)}>Keep these</Btn>
+              <Btn size="sm" tone="danger" disabled={reset.isPending} onClick={() => reset.mutate()}>
+                {reset.isPending ? 'Resetting…' : 'Yes, reset all four'}
+              </Btn>
+            </> : (
+              <Btn size="sm" disabled={allDefault || sla.length === 0}
+                   title={allDefault ? 'Every row already has its default targets.' : undefined}
+                   onClick={() => setConfirmReset(true)}>Reset to defaults</Btn>
+            )}>
+        {confirmReset && (
+          <div className="note warn m-6">
+            Every priority goes back to its default label, times and escalation. Jobs already
+            raised keep their deadlines.
+          </div>
+        )}
+        {targets.isLoading ? <div className="p-6"><Loading rows={4} /></div>
+          : targets.isError ? <div className="p-6"><ErrorNote error={targets.error} /></div>
+          : (
+            <div className="tw">
+              <table className="wide">
+                <thead><tr><th>Priority</th><th>Label</th><th className="num">Respond</th>
+                  <th className="num">Resolve</th><th>Escalates to</th><th /></tr></thead>
+                <tbody>
+                  {sla.map((row) => (
+                    <tr key={row.priority}>
+                      <td className="mono">{row.priority}</td>
+                      <td>
+                        {row.label}
+                        {!isDefault(row) && <span className="sub">changed from the default</span>}
+                      </td>
+                      <td className="num">{duration(row.respondMinutes)}</td>
+                      <td className="num">{duration(row.resolveMinutes)}</td>
+                      <td>{roleName(row.escalateToRole)}</td>
+                      <td className="tar">
+                        <Btn size="sm" onClick={() => setEditing(row)}
+                             aria-label={`Edit ${row.priority} targets`}>Edit</Btn>
+                      </td>
+                    </tr>
                   ))}
-                  <td>
-                    {roleList.length ? (
-                      <select className="inp py-2 px-4 compact" value={row.escalateToRole}
-                              aria-label={`${row.priority} escalates to`}
-                              onChange={(e) => setDraft(sla.map((r, j) => j === i ? { ...r, escalateToRole: e.target.value } : r))}>
-                        {!roleList.some((r) => r.key === row.escalateToRole) && (
-                          <option value={row.escalateToRole}>{row.escalateToRole}</option>)}
-                        {roleList.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}
-                      </select>
-                    ) : <span className="mono">{row.escalateToRole}</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                </tbody>
+              </table>
+            </div>
+          )}
       </Card>
+
+      {editing && (
+        <TargetModal row={editing} roles={roleList}
+                     defaults={targets.data?.defaults.find((d) => d.priority === editing.priority)}
+                     roleName={roleName}
+                     onClose={() => setEditing(null)}
+                     onDone={(text) => { setEditing(null); setMsg({ text }); }} />
+      )}
 
       <div className="note mt-6 mb-6">
         A job's deadline is computed once when it is raised and stored on the job. Changing these
         targets shapes future work — <b>it never rewrites a deadline somebody was already judged against.</b>
       </div>
 
-      <SlaRules base={settings.data?.settings.sla_matrix ?? []}
+      <SlaRules base={sla}
                 trades={settings.data?.settings.trades ?? []}
                 roles={roleList} roleName={roleName} />
 
@@ -125,6 +151,90 @@ export function Settings() {
 
       <AlertRoutingCard />
     </>
+  );
+}
+
+/**
+ * One priority's targets.
+ *
+ * Saved on its own, so a half-typed change to another row never goes with it, and the audit
+ * log says which priority changed. The minutes are shown back as words ("4h 0m", "3d") under
+ * each box, because 4320 is easy to type and hard to read.
+ */
+function TargetModal({ row, defaults, roles, roleName, onClose, onDone }: {
+  row: SlaRow; defaults: SlaRow | undefined;
+  roles: { key: string; name: string }[]; roleName: (key: string) => string;
+  onClose: () => void; onDone: (text: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [f, setF] = useState({
+    label: row.label, respond: String(row.respondMinutes), resolve: String(row.resolveMinutes),
+    role: row.escalateToRole,
+  });
+  const [err, setErr] = useState<string | null>(null);
+  const respond = Number(f.respond);
+  const resolve = Number(f.resolve);
+  const whole = (n: number) => Number.isInteger(n) && n > 0;
+
+  const save = useMutation({
+    mutationFn: () => api.patch(`/api/admin/sla/${row.priority}`, {
+      label: f.label.trim(), respondMinutes: respond, resolveMinutes: resolve, escalateToRole: f.role,
+    }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['admin-sla'] });
+      onDone(`${row.priority} saved. It applies to jobs raised from now on — deadlines already set do not move.`);
+    },
+    onError: (e) => setErr((e as ApiError).message),
+  });
+
+  const problem = !f.label.trim() ? 'Give it a name, such as "Urgent".'
+    : !whole(respond) || !whole(resolve) ? 'Respond and resolve are whole minutes above zero.'
+    : resolve < respond ? 'Resolve has to be at least as long as respond.'
+    : null;
+  const unchanged = f.label.trim() === row.label && respond === row.respondMinutes
+    && resolve === row.resolveMinutes && f.role === row.escalateToRole;
+  const hintFor = (n: number, d: number | undefined) =>
+    `${whole(n) ? `= ${duration(n)}` : 'Whole minutes'}${d != null ? ` · default ${duration(d)}` : ''}`;
+
+  return (
+    <Modal title={`Edit ${row.priority} targets`} onClose={onClose}>
+      {err && <div className="note crit" role="alert">{err}</div>}
+      <Field label="Label" hint="What people see beside the priority on a job.">
+        <input className="inp" autoFocus value={f.label} maxLength={40}
+               onChange={(e) => setF({ ...f, label: e.target.value })} />
+      </Field>
+      <div className="g2">
+        <Field label="Respond within (minutes)" hint={hintFor(respond, defaults?.respondMinutes)}>
+          <input className="inp" inputMode="numeric" value={f.respond}
+                 onChange={(e) => setF({ ...f, respond: e.target.value.replace(/[^0-9]/g, '') })} />
+        </Field>
+        <Field label="Resolve within (minutes)" hint={hintFor(resolve, defaults?.resolveMinutes)}>
+          <input className="inp" inputMode="numeric" value={f.resolve}
+                 onChange={(e) => setF({ ...f, resolve: e.target.value.replace(/[^0-9]/g, '') })} />
+        </Field>
+      </div>
+      <Field label="Escalates to" hint="Who is told when a job of this priority misses a target.">
+        <select className="inp" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
+          {!roles.some((r) => r.key === f.role) && <option value={f.role}>{roleName(f.role)}</option>}
+          {roles.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}
+        </select>
+      </Field>
+      {problem && !unchanged && <div className="note">{problem}</div>}
+      <div className="modal-foot">
+        {defaults && (
+          <Btn disabled={save.isPending} onClick={() => setF({
+            label: defaults.label, respond: String(defaults.respondMinutes),
+            resolve: String(defaults.resolveMinutes), role: defaults.escalateToRole,
+          })}>Use the default</Btn>
+        )}
+        <span className="fill" />
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn tone="pri" disabled={save.isPending || !!problem || unchanged}
+             onClick={() => { setErr(null); save.mutate(); }}>
+          {save.isPending ? 'Saving…' : `Save ${row.priority}`}
+        </Btn>
+      </div>
+    </Modal>
   );
 }
 

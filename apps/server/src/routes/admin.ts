@@ -9,7 +9,7 @@ import { ROLE_SCOPES } from '../auth/permissions.js';
 import { revokeAllForUser } from '../auth/sessions.js';
 import { audit, redact } from '../audit.js';
 import { runBackup, stageRestore, pendingRestore, cancelRestore } from '../db/backup.js';
-import { getSetting, setSetting } from '../services/settings.js';
+import { getSetting, setSetting, DEFAULT_SLA, type SlaRow } from '../services/settings.js';
 import { hostStatus } from '../services/host.js';
 import { networkView } from '../services/network.js';
 import { writeHostFile, readHostFile, lanAddresses } from '../config.js';
@@ -935,6 +935,93 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         before, after: body.data.value, ip: req.ip,
       });
       return { ok: true };
+    });
+
+  // ---- one priority's targets at a time ---------------------------------------
+  /*
+   * The table on Admin → Settings is edited one row at a time, so saving P2 cannot carry a
+   * half-typed P3 with it, and the audit log says which priority changed rather than
+   * "the matrix". P1-P4 stay fixed: jobs, planned work and rules all store one of them.
+   */
+  const SLA_PRIORITIES = ['P1', 'P2', 'P3', 'P4'] as const;
+  const currentSla = (propertyId: string): SlaRow[] => {
+    const saved = getSetting<SlaRow[] | null>(app.db, propertyId, 'sla_matrix', null);
+    // A property whose matrix was never saved, or lost a row, reads as the defaults.
+    return SLA_PRIORITIES.map((p) => ({
+      ...(saved?.find((r) => r.priority === p) ?? DEFAULT_SLA.find((r) => r.priority === p)!),
+    }));
+  };
+  /** What is wrong with a row, in a sentence — or null. */
+  const slaProblem = (propertyId: string, row: SlaRow): string | null => {
+    if (!row.label.trim()) return `${row.priority} needs a name, such as "Urgent".`;
+    if (!app.db.prepare('SELECT 1 FROM roles WHERE key = ? AND property_id = ?')
+      .get(row.escalateToRole, propertyId)) {
+      return `${row.priority} escalates to "${row.escalateToRole}", which is not a role here.`;
+    }
+    if (row.resolveMinutes < row.respondMinutes) {
+      return `${row.priority}: resolve has to be at least as long as respond.`;
+    }
+    return null;
+  };
+
+  app.get('/api/admin/sla', { preHandler: requirePermission('admin.settings.manage') }, async (req) => {
+    const me = req.principal!;
+    return { targets: currentSla(me.propertyId), defaults: DEFAULT_SLA };
+  });
+
+  app.patch('/api/admin/sla/:priority', { preHandler: requirePermission('admin.settings.manage') },
+    async (req, reply) => {
+      const me = req.principal!;
+      const priority = (req.params as { priority: string }).priority.toUpperCase();
+      if (!(SLA_PRIORITIES as readonly string[]).includes(priority)) {
+        return reply.code(404).send({ error: 'not_found', message: 'Priorities are P1 to P4.' });
+      }
+      const body = z.object({
+        label: z.string().max(40).optional(),
+        respondMinutes: z.number().int().positive().max(100000).optional(),
+        resolveMinutes: z.number().int().positive().max(1000000).optional(),
+        escalateToRole: z.string().min(2).max(40).optional(),
+      }).safeParse(req.body);
+      if (!body.success) {
+        return reply.code(400).send({ error: 'invalid',
+          message: 'Respond and resolve are whole minutes above zero.', issues: body.error.issues });
+      }
+      const matrix = currentSla(me.propertyId);
+      const i = matrix.findIndex((r) => r.priority === priority);
+      const before = { ...matrix[i]! };
+      const after: SlaRow = { ...before, ...body.data,
+        label: (body.data.label ?? before.label).trim() };
+      const problem = slaProblem(me.propertyId, after);
+      if (problem) return reply.code(400).send({ error: 'invalid_sla', message: problem });
+
+      matrix[i] = after;
+      setSetting(app.db, me.propertyId, 'sla_matrix', matrix, nowIso(), me.userId ?? undefined);
+      audit(app.db, {
+        propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+        action: 'sla.target_changed', entityType: 'setting', entityId: `sla_matrix:${priority}`,
+        before, after, ip: req.ip,
+      });
+      return { ok: true, row: after };
+    });
+
+  app.post('/api/admin/sla/reset', { preHandler: requirePermission('admin.settings.manage') },
+    async (req, reply) => {
+      const me = req.principal!;
+      const defaults = DEFAULT_SLA.map((r) => ({ ...r }));
+      // A property that deleted one of the default escalation roles would otherwise be
+      // reset into a table that tells nobody about a breach.
+      for (const row of defaults) {
+        const problem = slaProblem(me.propertyId, row);
+        if (problem) return reply.code(409).send({ error: 'invalid_sla', message: problem });
+      }
+      const before = currentSla(me.propertyId);
+      setSetting(app.db, me.propertyId, 'sla_matrix', defaults, nowIso(), me.userId ?? undefined);
+      audit(app.db, {
+        propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+        action: 'sla.reset', entityType: 'setting', entityId: 'sla_matrix',
+        before, after: defaults, ip: req.ip,
+      });
+      return { ok: true, matrix: defaults };
     });
 
   // ---- specific response and resolve targets -----------------------------------
