@@ -254,6 +254,37 @@ r = await post('/api/records/apartment/delete-batch', ifeoma, { ids: [porto.id] 
 check('a technician cannot batch delete', r.statusCode === 403);
 
 // --------------------------------------------------------------------------
+heading('Editing one priority\'s targets at a time');
+// --------------------------------------------------------------------------
+{
+  type T = { priority: string; label: string; respondMinutes: number };
+  const targets = async () => (await get('/api/admin/sla', admin)).json().targets as T[];
+  const p1Before = (await targets()).find((x) => x.priority === 'P1')!.respondMinutes;
+  r = await patch('/api/admin/sla/P3', ifeoma, { respondMinutes: 30 });
+  check('a technician cannot edit a target', r.statusCode === 403);
+  r = await patch('/api/admin/sla/P3', admin, { label: 'Normal', respondMinutes: 120 });
+  check('one priority saves on its own', r.statusCode === 200, r.body.slice(0, 160));
+  const t = await targets();
+  check('and only that row changed',
+    t.find((x) => x.priority === 'P3')?.label === 'Normal'
+    && t.find((x) => x.priority === 'P3')?.respondMinutes === 120
+    && t.find((x) => x.priority === 'P1')?.respondMinutes === p1Before, JSON.stringify(t));
+  r = await patch('/api/admin/sla/P3', admin, { resolveMinutes: 60 });
+  check('resolve shorter than respond is refused with a sentence',
+    r.statusCode === 400 && /at least as long/.test(String(r.json().message)), r.body.slice(0, 160));
+  r = await patch('/api/admin/sla/P3', admin, { escalateToRole: 'nobody' });
+  check('escalating to a role that does not exist is refused', r.statusCode === 400);
+  r = await patch('/api/admin/sla/P9', admin, { respondMinutes: 30 });
+  check('there is no P9', r.statusCode === 404);
+  r = await post('/api/admin/sla/reset', admin, {});
+  check('reset puts all four back to the defaults', r.statusCode === 200
+    && (await targets()).map((x) => x.respondMinutes).join() === '15,60,240,1440');
+  check('editing and resetting are audited',
+    (db.prepare(`SELECT COUNT(*) AS n FROM audit_log WHERE action IN ('sla.target_changed','sla.reset')`)
+      .get() as { n: number }).n === 2);
+}
+
+// --------------------------------------------------------------------------
 heading('Specific response and resolve targets');
 // --------------------------------------------------------------------------
 {

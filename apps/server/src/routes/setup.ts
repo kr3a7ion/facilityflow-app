@@ -5,6 +5,7 @@ import { nowIso } from '../lib/time.js';
 import { hashPassword } from '../auth/password.js';
 import { PERMISSIONS, ROLES, ALL_CODES, ROLE_SCOPES } from '../auth/permissions.js';
 import { audit } from '../audit.js';
+import { DEFAULT_SLA } from '../services/settings.js';
 
 const SetupBody = z.object({
   property: z.object({
@@ -135,13 +136,6 @@ export async function setupRoutes(app: FastifyInstance): Promise<void> {
   });
 }
 
-/** Editable in Admin afterwards — never hard-coded in a handler. */
-const DEFAULT_SLA = [
-  { priority: 'P1', label: 'Emergency',  respondMinutes: 15,  resolveMinutes: 240,  escalateToRole: 'supervisor' },
-  { priority: 'P2', label: 'Urgent',     respondMinutes: 60,  resolveMinutes: 1440, escalateToRole: 'supervisor' },
-  { priority: 'P3', label: 'Routine',    respondMinutes: 240, resolveMinutes: 4320, escalateToRole: 'team_lead' },
-  { priority: 'P4', label: 'Scheduled',  respondMinutes: 1440, resolveMinutes: 10080, escalateToRole: 'team_lead' },
-];
 const DEFAULT_TRADES = ['electrical', 'plumbing', 'hvac', 'carpentry', 'civil', 'mechanical', 'general', 'vendor'];
 const DEFAULT_HOLD_REASONS = ['awaiting_parts', 'awaiting_access', 'awaiting_vendor', 'awaiting_approval'];
 const DEFAULT_FAILURE_CAUSES = ['wear', 'misuse', 'power', 'age', 'installation', 'no_fault_found'];
