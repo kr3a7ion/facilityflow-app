@@ -197,6 +197,44 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * Set the floor on several units at once.
+   *
+   * Units added by hand often went in with no floor, and a block of forty doors with no
+   * floors is one undivided grid. Selecting a floor's worth and naming it is the quickest
+   * way to put that right. Unlike an import, this is somebody saying what the floor is, so
+   * it replaces whatever was there; an empty floor clears it.
+   */
+  app.post('/api/apartments/floor', { preHandler: requirePermission('apartment.manage') }, async (req, reply) => {
+    const body = z.object({
+      ids: z.array(z.string().min(1)).min(1).max(1000),
+      floor: z.string().max(20).nullable(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
+    const me = req.principal!; const at = nowIso();
+    const floor = body.data.floor?.trim() || null;
+    const ids = [...new Set(body.data.ids)];
+
+    const changed = app.db.transaction(() => {
+      const get = app.db.prepare('SELECT floor FROM apartments WHERE id = ? AND property_id = ?');
+      const set = app.db.prepare('UPDATE apartments SET floor = ?, updated_at = ? WHERE id = ? AND property_id = ?');
+      let n = 0;
+      for (const id of ids) {
+        const before = get.get(id, me.propertyId) as { floor: string | null } | undefined;
+        if (!before || (before.floor ?? null) === floor) continue;
+        set.run(floor, at, id, me.propertyId);
+        audit(app.db, {
+          propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+          action: 'apartment.floor', entityType: 'apartment', entityId: id,
+          before, after: { floor }, ip: req.ip,
+        });
+        n++;
+      }
+      return n;
+    })();
+    return { ok: true, changed };
+  });
+
+  /**
    * Read a unit list and say what it contains.
    *
    * Separate from the import itself so the person sees the file through the system's eyes
@@ -235,34 +273,9 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
         const { units, rejected } = mappingProblem ? { units: [], rejected: [] } : parsed;
 
         const me = req.principal!;
-        const hereRows = app.db.prepare(
-          'SELECT block, unit_no, name FROM apartments WHERE property_id = ?'
-        ).all(me.propertyId) as { block: string | null; unit_no: string; name: string | null }[];
-        const here = new Map(hereRows.map((r) => [unitImport.unitKey(r.block, r.unit_no), true]));
-        const byName = unitImport.namesHere(hereRows);
-
-        const seen = new Set<string>();
-        const already: string[] = [];
-        const repeated: string[] = [];
-        const ambiguous: string[] = [];
-        const toAdd: unitImport.Unit[] = [];
-        for (const u of units) {
-          const key = unitImport.unitKey(u.block, u.unitNo);
-          const label = u.block ? `${u.block} · ${u.unitNo}` : u.unitNo;
-          if (here.has(key)) { already.push(label); continue; }
-          // A unit number that is an existing unit's *name* is that unit, listed by name.
-          if (byName.has(key)) { already.push(`${label} (= ${byName.get(key)})`); continue; }
-          // Same rule as the write below, so the preview is the truth and not an estimate.
-          if (!u.block) {
-            const matches = hereRows.filter(
-              (x) => x.unit_no.trim().toLowerCase() === u.unitNo.trim().toLowerCase());
-            if (matches.length === 1) { already.push(label); continue; }
-            if (matches.length > 1) { ambiguous.push(label); continue; }
-          }
-          if (seen.has(key)) { repeated.push(label); continue; }
-          seen.add(key);
-          toAdd.push(u);
-        }
+        // The same plan the write uses, so the preview is the truth and not an estimate.
+        const here = app.db.prepare(unitImport.HERE_SQL).all(me.propertyId) as unitImport.HereRow[];
+        const { toAdd, fills, already, repeated, ambiguous } = unitImport.plan(here, units);
 
         return {
           format: file.format,
@@ -276,6 +289,10 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
           ignored: file.headers.filter((h) => h && !Object.values(mapping).includes(h)),
           rowsRead: file.rows.length,
           wouldCreate: toAdd.length,
+          // Units already here that the list fills in — a floor, a name — where theirs is
+          // empty. Never an overwrite.
+          wouldFill: fills.length,
+          fills: body.data.all ? fills : fills.slice(0, 12),
           alreadyHere: already.slice(0, 25),
           repeatedInFile: [...new Set(repeated)].slice(0, 25),
           // Named, because "we could not tell which block you meant" is a sentence
@@ -319,48 +336,11 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
     const problem = unitImport.mappingProblem({}, body.data.units.map((u) => ({ unitNo: u.unitNo, name: u.name })));
     if (problem) return reply.code(409).send({ error: 'names_as_numbers', message: problem });
 
-    const here = app.db.prepare(
-      'SELECT block, unit_no, name FROM apartments WHERE property_id = ?'
-    ).all(me.propertyId) as { block: string | null; unit_no: string; name: string | null }[];
-    const existing = new Set(here.map((r) => unitImport.unitKey(r.block, r.unit_no)));
-    const byName = unitImport.namesHere(here);
-
-    const seen = new Set<string>();
-    const alreadyHere: string[] = [];
-    const repeated: string[] = [];
-    const ambiguous: string[] = [];
-    const toAdd: typeof body.data.units = [];
-    for (const u of body.data.units) {
-      const unitNo = u.unitNo.trim();
-      if (!unitNo) continue;
-      const block = u.block?.trim() || undefined;
-      const key = unitImport.unitKey(block, unitNo);
-      const label = block ? `${block} · ${unitNo}` : unitNo;
-
-      if (existing.has(key)) { alreadyHere.push(label); continue; }
-      // The same list imported again with the name column as the unit number: `Seville`
-      // in MAIN BUILDING is unit 001, which is already here.
-      if (byName.has(key)) { alreadyHere.push(`${label} (= ${byName.get(key)})`); continue; }
-
-      /*
-       * A row that names no block, against a property that uses them.
-       *
-       * Strictly these are different records, and importing it would add a second unit
-       * "A-1204" alongside the one in block A. That is almost never what somebody meant,
-       * so a blockless row is matched to an existing unit of that number — but only when
-       * there is exactly one. Where the number exists in several blocks there is no
-       * honest answer, so it is skipped and reported by name rather than guessed at.
-       */
-      if (!block) {
-        const matches = here.filter((x) => x.unit_no.trim().toLowerCase() === unitNo.toLowerCase());
-        if (matches.length === 1) { alreadyHere.push(label); continue; }
-        if (matches.length > 1) { ambiguous.push(label); continue; }
-      }
-
-      if (seen.has(key)) { repeated.push(label); continue; }
-      seen.add(key);
-      toAdd.push({ ...u, unitNo, block });
-    }
+    // Uniqueness, the blockless-row rule and filling gaps all live in unitImport.plan.
+    const here = app.db.prepare(unitImport.HERE_SQL).all(me.propertyId) as unitImport.HereRow[];
+    const planned = unitImport.plan(here, body.data.units);
+    const { toAdd, fills, repeated, ambiguous } = planned;
+    const alreadyHere = planned.already;
     const skipped = alreadyHere.length + repeated.length + ambiguous.length;
 
     // Show the mapping before writing anything.
@@ -368,6 +348,7 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
       return {
         dryRun: true,
         wouldCreate: toAdd.length,
+        wouldFill: fills.length,
         wouldSkip: skipped,
         alreadyHere: alreadyHere.slice(0, 20),
         repeatedInList: [...new Set(repeated)].slice(0, 20),
@@ -412,20 +393,48 @@ export async function registryRoutes(app: FastifyInstance): Promise<void> {
                    u.status ?? 'vacant_ready', at, at);
         n++;
       }
+
+      /*
+       * Fill in what units already here are missing. Each column keeps its own value when it
+       * has one — the COALESCE is the "never overwrite" rule in the one place that writes,
+       * so a stale file cannot undo a correction even if the plan above were wrong.
+       */
+      const fillApt = app.db.prepare(
+        `UPDATE apartments SET
+           floor = COALESCE(NULLIF(TRIM(floor), ''), ?),
+           name = COALESCE(NULLIF(TRIM(name), ''), ?),
+           unit_type = COALESCE(NULLIF(TRIM(unit_type), ''), ?),
+           bedrooms = COALESCE(bedrooms, ?),
+           updated_at = ?
+         WHERE id = ? AND property_id = ?`
+      );
+      // A unit that gains a name reads by it on job cards, as an imported one does.
+      const renameLoc = app.db.prepare(
+        'UPDATE locations SET name = ?, updated_at = ? WHERE id = ? AND property_id = ?'
+      );
+      for (const f of fills) {
+        fillApt.run(f.floor ?? null, f.name ?? null, f.unitType ?? null, f.bedrooms ?? null,
+                    at, f.id, me.propertyId);
+        if (f.name) {
+          const where = f.block ? `${f.block} · ${f.unitNo}` : `Unit ${f.unitNo}`;
+          renameLoc.run(`${f.name} (${where})`.slice(0, 120), at, f.locationId, me.propertyId);
+        }
+      }
+
       app.db.prepare(
         `INSERT INTO apartment_imports (id, property_id, source, source_ref, imported_at, imported_by,
           row_count, mapping_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(ulid(), me.propertyId, body.data.source, body.data.sourceRef ?? null, at, me.userId, n,
-            JSON.stringify({ submitted: body.data.units.length, created: n, skipped }));
+            JSON.stringify({ submitted: body.data.units.length, created: n, filled: fills.length, skipped }));
       audit(app.db, {
         propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
         action: 'apartment.import', entityType: 'property', entityId: me.propertyId,
-        after: { source: body.data.source, created: n, skipped }, ip: req.ip,
+        after: { source: body.data.source, created: n, filled: fills.length, skipped }, ip: req.ip,
       });
       return n;
     })();
 
-    return reply.code(201).send({ ok: true, created, skipped, ambiguous });
+    return reply.code(201).send({ ok: true, created, filled: fills.length, skipped, ambiguous });
   });
 
   // ---- assets ----------------------------------------------------------------
