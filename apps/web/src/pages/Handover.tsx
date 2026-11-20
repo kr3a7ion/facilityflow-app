@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qk, ApiError } from '../lib/api';
 import { useSession } from '../lib/session';
+import { Icon } from '../components/Icon';
 import { duration, hours, litres, titleCase, when } from '../lib/format';
 import { Card, Chip, Loading, ErrorNote, Empty, Btn, PrintBtn, SignOff, Modal, Field } from '../components/Bits';
 
@@ -71,8 +72,11 @@ export function Handover() {
 
   const acknowledge = useMutation({
     mutationFn: (id: string) => api.post(`/api/handover/${id}/acknowledge`),
-    onSuccess: async () => { setMsg('Acknowledged.'); await qc.invalidateQueries({ queryKey: ['handovers'] }); },
-    onError: (e) => setMsg((e as ApiError).message),
+    onSuccess: async (_r, id) => {
+      setMsg('Acknowledged.');
+      await qc.invalidateQueries({ queryKey: ['handovers'] });
+      await qc.invalidateQueries({ queryKey: ['handover', id] });
+    },
   });
 
   if (draft.isLoading) return <main className="view"><Card><Loading rows={6} /></Card></main>;
@@ -167,7 +171,7 @@ export function Handover() {
               <table>
                 <tbody>
                   {past.data!.handovers.map((h) => (
-                    <tr key={h.id} className="clickable" onClick={() => open(h.id)}>
+                    <tr key={h.id} className="click" onClick={() => open(h.id)}>
                       <td>
                         <span className="ttl">{when(h.at)}</span>
                         <span className="sub">
@@ -190,10 +194,12 @@ export function Handover() {
         </Card>
       </div>
       {openId && (
-        <HandoverDetail id={openId} canAck={can('handover.acknowledge')}
-                        onClose={() => open(null)}
+        // Keyed, so following a bell link to another handover starts fresh.
+        <HandoverDetail key={openId} id={openId} canAck={can('handover.acknowledge')}
+                        onClose={() => { acknowledge.reset(); open(null); }}
                         onAck={(id) => acknowledge.mutate(id, { onSuccess: () => open(null) })}
-                        acking={acknowledge.isPending} />
+                        acking={acknowledge.isPending}
+                        ackError={acknowledge.error ? (acknowledge.error as ApiError).message : null} />
       )}
     </main>
   );
@@ -216,7 +222,7 @@ function TagPicker({ people, tags, onTag }: {
       {shift.length > 0 ? (
         <div className="row gap-3 mb-4">
           {shift.map((p) => (
-            <Btn key={p.id} size="sm" tone={tags.has(p.id) ? 'pri' : undefined} aria-pressed={tags.has(p.id)}
+            <Btn key={p.id} size="sm" tone={tags.has(p.id) ? 'on' : undefined} aria-pressed={tags.has(p.id)}
                  onClick={() => onTag(p.id, tags.has(p.id) ? null : 'shift')}>{p.name}</Btn>
           ))}
           <Btn size="sm" onClick={() => shift.forEach((p) => onTag(p.id, 'shift'))}>Everyone on shift</Btn>
@@ -225,8 +231,8 @@ function TagPicker({ people, tags, onTag }: {
       {added.length > 0 && (
         <div className="row gap-3 mb-4">
           {added.map((p) => (
-            <Btn key={p.id} size="sm" tone="pri" aria-label={`Remove ${p.name}`}
-                 onClick={() => onTag(p.id, null)}>{p.name} ✕</Btn>
+            <Btn key={p.id} size="sm" tone="on" aria-label={`Remove ${p.name}`}
+                 onClick={() => onTag(p.id, null)}>{p.name} <Icon name="x" size={13} /></Btn>
           ))}
         </div>
       )}
@@ -254,8 +260,9 @@ interface Detail {
  * opened it, and the incoming shift's acknowledgement — the gate before they take work.
  * Opening it as somebody tagged marks it seen.
  */
-function HandoverDetail({ id, canAck, onClose, onAck, acking }: {
+function HandoverDetail({ id, canAck, onClose, onAck, acking, ackError }: {
   id: string; canAck: boolean; onClose: () => void; onAck: (id: string) => void; acking: boolean;
+  ackError: string | null;
 }) {
   const qc = useQueryClient();
   const { me } = useSession();
@@ -268,8 +275,10 @@ function HandoverDetail({ id, canAck, onClose, onAck, acking }: {
       await qc.invalidateQueries({ queryKey: ['handovers'] });
     },
   });
+  // Once per opening: a failed /seen is not retried on every render.
+  const tried = useRef(false);
   useEffect(() => {
-    if (mine && !mine.seen_at && !seen.isPending && !seen.isSuccess) seen.mutate();
+    if (mine && !mine.seen_at && !tried.current) { tried.current = true; seen.mutate(); }
   }, [mine, seen]);
 
   const h = q.data?.handover;
@@ -279,7 +288,7 @@ function HandoverDetail({ id, canAck, onClose, onAck, acking }: {
         <>
           <p className="sub mt-0 mb-5">{h.from_name ?? '—'} → {h.to_name ?? 'next shift'}</p>
           <Field label="What the next shift must know">
-            <p className="m-0 lh" style={{ whiteSpace: 'pre-wrap' }}>{h.notes || '—'}</p>
+            <p className="m-0 lh pre-wrap">{h.notes || '—'}</p>
           </Field>
           {h.keys_held && <Field label="Keys and permits held"><p className="m-0">{h.keys_held}</p></Field>}
           {(h.carried_jobs?.length ?? 0) > 0 && (
@@ -304,6 +313,7 @@ function HandoverDetail({ id, canAck, onClose, onAck, acking }: {
           {h.status === 'acknowledged'
             ? <div className="note ok">Acknowledged by <b>{h.acknowledged_by_name ?? '—'}</b> {when(h.acknowledged_at)}.</div>
             : <div className="note warn">Not acknowledged yet. The incoming shift signs for it here; the supervisor is alerted if nobody has after two hours.</div>}
+          {ackError && <div className="note crit mt-5" role="alert">{ackError}</div>}
           <div className="modal-foot">
             <Btn onClick={onClose}>Close</Btn>
             {h.status !== 'acknowledged' && canAck && (
