@@ -416,7 +416,9 @@ export function Shell() {
                           {/* A notification that cannot be opened is just an interruption. */}
                           {n.entity_type === 'work_order' && n.entity_id
                             ? <Link to={`/jobs/${n.entity_id}`} onClick={() => setBell(false)}>{body}</Link>
-                            : <span className="row">{body}</span>}
+                            : n.entity_type === 'handover' && n.entity_id
+                              ? <Link to={`/handover?open=${n.entity_id}`} onClick={() => setBell(false)}>{body}</Link>
+                              : <span className="row">{body}</span>}
                         </li>
                       );
                     })}

@@ -38,7 +38,7 @@ export const CONTEXT_LABELS: Record<Context, string> = {
 
 export interface EventDef {
   key: string;
-  group: 'Jobs' | 'Planned work' | 'Power' | 'Diesel' | 'Stores';
+  group: 'Jobs' | 'Planned work' | 'Power' | 'Diesel' | 'Stores' | 'Handover';
   label: string;
   /** When it fires, in a sentence, for the settings screen. */
   when: string;
@@ -106,6 +106,13 @@ export const EVENTS: EventDef[] = [
   { key: 'stock_low', group: 'Stores', label: 'Stock at or below minimum',
     when: 'An item is issued or counted down to its minimum level.',
     roles: ['storekeeper', 'supervisor'], context: [], contextOn: [], level: 'chime' },
+
+  { key: 'handover.submitted', group: 'Handover', label: 'Handover written',
+    when: 'The outgoing shift submits a handover. People tagged in it are always told.',
+    roles: ['supervisor'], context: [], contextOn: [], level: 'quiet' },
+  { key: 'handover.unacknowledged', group: 'Handover', label: 'Handover not acknowledged',
+    when: 'A handover has waited two hours with nobody from the incoming shift acknowledging it. Once per handover.',
+    roles: ['supervisor'], context: [], contextOn: [], level: 'chime' },
 ];
 
 const BY_KEY = new Map(EVENTS.map((e) => [e.key, e]));
@@ -245,4 +252,25 @@ export function alert(db: Db, propertyId: string, key: string, n: Notice, who: W
     bus.publishTo(userId, 'notification');
   }
   return people.size;
+}
+
+/**
+ * A handover nobody has acknowledged after two hours: the incoming shift may never have seen
+ * it, which is the failure a handover book exists to prevent. Once per handover.
+ */
+export function remindHandovers(db: Db, propertyId: string, at: string = new Date().toISOString()): number {
+  const cutoff = new Date(new Date(at).getTime() - 2 * 3600_000).toISOString();
+  const waiting = db.prepare(
+    `SELECT id, at FROM shift_handovers
+      WHERE property_id = ? AND status = 'submitted' AND reminded_at IS NULL AND at <= ?`
+  ).all(propertyId, cutoff) as { id: string; at: string }[];
+  for (const h of waiting) {
+    db.prepare('UPDATE shift_handovers SET reminded_at = ? WHERE id = ?').run(at, h.id);
+    alert(db, propertyId, 'handover.unacknowledged', {
+      entityType: 'handover', entityId: h.id, at,
+      title: 'A handover has not been acknowledged',
+      body: 'Written over two hours ago and nobody from the incoming shift has signed for it.',
+    });
+  }
+  return waiting.length;
 }

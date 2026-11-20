@@ -857,3 +857,54 @@ heading('The alert app\u2019s installer, and which build it is');
     v !== null && v.version === null && v.build === null, JSON.stringify(v));
   fs.unlinkSync(apk);
 }
+
+// --------------------------------------------------------------------------
+heading('Handover: tagging people, and what happens after it is raised');
+// --------------------------------------------------------------------------
+{
+  const { remindHandovers } = await import('../../services/alertRouting.js');
+  const uid = (u: string) => (db.prepare('SELECT id FROM users WHERE username = ?').get(u) as { id: string }).id;
+  let r = await get('/api/handover/draft', grace);
+  const people = r.json().people as { id: string; name: string; onShift: boolean }[];
+  check('the draft offers everyone to tag, but not the writer',
+    people.some((p) => p.id === uid('femi')) && !people.some((p) => p.id === uid('grace')),
+    JSON.stringify(people.slice(0, 3)));
+
+  r = await post('/api/handover', grace, {
+    notes: 'Gen 2 tripped twice on load.\nWatch it overnight.',
+    tags: [{ userId: uid('ifeoma'), reason: 'shift' }, { userId: uid('femi'), reason: 'attention' },
+           { userId: uid('grace'), reason: 'attention' }, { userId: 'nobody', reason: 'shift' }],
+  });
+  const id = r.json().id as string;
+  check('a handover is raised with the people it tags — not the writer, not strangers',
+    r.statusCode === 201 && r.json().tagged === 2, r.body.slice(0, 160));
+  const told = db.prepare(
+    `SELECT title, body FROM notifications WHERE user_id = ? AND kind = 'handover.tagged' AND entity_id = ?`
+  ).get(uid('femi'), id) as { title: string; body: string } | undefined;
+  check('each tagged person is told, with the first line of the notes',
+    !!told && told.body === 'Gen 2 tripped twice on load.', JSON.stringify(told));
+
+  r = await get(`/api/handover/${id}`, femi);
+  check('a tagged person without handover access can still open it',
+    r.statusCode === 200 && r.json().tags.length === 2, r.body.slice(0, 160));
+  r = await post('/api/handover', grace, { notes: 'A second one, femi is not in it.' });
+  const other = r.json().id as string;
+  r = await get(`/api/handover/${other}`, femi);
+  check('but not one they were not tagged in', r.statusCode === 403);
+
+  r = await post(`/api/handover/${id}/seen`, femi);
+  check('a tagged person marks it seen', r.statusCode === 200);
+  r = await post(`/api/handover/${other}/seen`, femi);
+  check('and cannot mark one they were not tagged in', r.statusCode === 404);
+  r = await get('/api/handover', grace);
+  const row = (r.json().handovers as { id: string; tagged: number; seen: number }[]).find((h) => h.id === id);
+  check('the list says how many have seen it', row?.tagged === 2 && row?.seen === 1, JSON.stringify(row));
+
+  r = await post(`/api/handover/${id}/acknowledge`, hod);
+  check('the incoming shift acknowledges it', r.statusCode === 200, r.body.slice(0, 160));
+
+  // Nobody signs for the other one: two hours later the supervisor is told, once.
+  db.prepare('UPDATE shift_handovers SET at = ? WHERE id = ?').run(new Date(Date.now() - 3 * 3600_000).toISOString(), other);
+  check('a handover left unacknowledged for two hours raises an alert', remindHandovers(db, propertyId) === 1);
+  check('only once', remindHandovers(db, propertyId) === 0);
+}
