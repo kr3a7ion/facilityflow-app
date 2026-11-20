@@ -7,6 +7,8 @@ import { audit } from '../audit.js';
 import { availableStaff, mark, propertyTimezone } from '../services/roster.js';
 import { localDate } from '../lib/time.js';
 import { ctxOf, send } from './_helpers.js';
+import { notifyUser } from '../services/escalation.js';
+import { alert } from '../services/alertRouting.js';
 
 export async function peopleRoutes(app: FastifyInstance): Promise<void> {
   // `?all=1` adds people who have left, for the Staff tab that can bring them back. Every
@@ -344,8 +346,17 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
         ORDER BY started_at DESC LIMIT 1`
     ).get(me.propertyId) as { started_at: string } | undefined;
 
+    // Everyone who can be tagged, with who is rostered on today first: they are the shift.
+    const onShift = new Set(availableStaff(app.db, me.propertyId).map((s) => s.staff_id));
+    const people = (app.db.prepare(
+      `SELECT id, display_name AS name, staff_id FROM users
+        WHERE property_id = ? AND is_active = 1 AND id <> ? ORDER BY display_name`
+    ).all(me.propertyId, me.userId ?? '') as { id: string; name: string; staff_id: string | null }[])
+      .map((u) => ({ id: u.id, name: u.name, onShift: !!u.staff_id && onShift.has(u.staff_id) }));
+
     return {
       at,
+      people,
       plantState: { tanks, gensets, utilityOffSince: outage?.started_at ?? null },
       carriedJobs: carried,
       openPermits,
@@ -360,9 +371,16 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
       plantState: z.unknown().optional(), carriedJobs: z.unknown().optional(),
       notes: z.string().max(5000).optional(), openPermits: z.string().max(1000).optional(),
       keysHeld: z.string().max(1000).optional(),
+      tags: z.array(z.object({ userId: z.string(), reason: z.enum(['shift', 'attention']) }))
+        .max(100).optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid', issues: body.error.issues });
     const me = req.principal!; const at = nowIso(); const id = ulid(); const d = body.data;
+    // Only people on this property; the writer cannot tag themselves.
+    const tags = [...new Map((d.tags ?? []).map((t) => [t.userId, t])).values()]
+      .filter((t) => t.userId !== me.userId && app.db.prepare(
+        'SELECT 1 FROM users WHERE id = ? AND property_id = ? AND is_active = 1').get(t.userId, me.propertyId));
+    app.db.transaction(() => {
     app.db.prepare(
       `INSERT INTO shift_handovers (id, property_id, at, from_shift_pattern_id, to_shift_pattern_id,
         from_staff_id, to_staff_id, plant_state_json, carried_jobs_json, notes, open_permits, keys_held,
@@ -373,7 +391,30 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
           d.plantState ? JSON.stringify(d.plantState) : null,
           d.carriedJobs ? JSON.stringify(d.carriedJobs) : null,
           d.notes ?? null, d.openPermits ?? null, d.keysHeld ?? null, at, at);
-    return reply.code(201).send({ ok: true, id });
+    // The writer was never recorded, so "from" read "—" and anyone could acknowledge their own.
+    if (!d.fromStaffId && me.staffId) {
+      app.db.prepare('UPDATE shift_handovers SET from_staff_id = ? WHERE id = ?').run(me.staffId, id);
+    }
+    const tag = app.db.prepare('INSERT INTO handover_tags (handover_id, user_id, reason) VALUES (?, ?, ?)');
+    const first = (d.notes ?? '').trim().split('\n')[0]!.slice(0, 140);
+    for (const t of tags) {
+      tag.run(id, t.userId, t.reason);
+      notifyUser(app.db, me.propertyId, t.userId, {
+        kind: 'handover.tagged', level: 'chime', entityType: 'handover', entityId: id, at,
+        title: `${me.displayName} tagged you in a handover`, body: first || undefined,
+      });
+    }
+    alert(app.db, me.propertyId, 'handover.submitted', {
+      entityType: 'handover', entityId: id, at,
+      title: `Handover from ${me.displayName}`, body: first || undefined,
+    });
+    audit(app.db, {
+      propertyId: me.propertyId, userId: me.userId, actorName: me.displayName,
+      action: 'handover.submit', entityType: 'handover', entityId: id,
+      after: { tagged: tags.length }, ip: req.ip,
+    });
+    })();
+    return reply.code(201).send({ ok: true, id, tagged: tags.length });
   });
 
   /** Acknowledgement is a gate, not a courtesy. */
@@ -396,18 +437,66 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
         `UPDATE shift_handovers SET status = 'acknowledged', acknowledged_by = ?, acknowledged_at = ?, updated_at = ?
           WHERE id = ?`
       ).run(me.userId, at, at, id);
+      app.db.prepare('UPDATE handover_tags SET seen_at = COALESCE(seen_at, ?) WHERE handover_id = ? AND user_id = ?')
+        .run(at, id, me.userId);
       return { ok: true };
     });
+
+  /** One handover, as written, with who it was addressed to and who has opened it. */
+  app.get('/api/handover/:id', async (req, reply) => {
+    if (!req.principal) return notSignedIn(req, reply);
+    const me = req.principal; const id = (req.params as { id: string }).id;
+    // Shift staff read every handover; anyone else only the ones they were tagged in.
+    if (!me.permissions.has('handover.write') && !app.db.prepare(
+      'SELECT 1 FROM handover_tags WHERE handover_id = ? AND user_id = ?').get(id, me.userId)) {
+      return reply.code(403).send({ error: 'forbidden', required: 'handover.write',
+        message: 'You can open a handover you are tagged in, or every handover with handover access.' });
+    }
+    const h = app.db.prepare(
+      `SELECT h.*, fs.first_name || ' ' || fs.last_name AS from_name,
+              ts.first_name || ' ' || ts.last_name AS to_name, au.display_name AS acknowledged_by_name
+         FROM shift_handovers h
+         LEFT JOIN staff fs ON fs.id = h.from_staff_id
+         LEFT JOIN staff ts ON ts.id = h.to_staff_id
+         LEFT JOIN users au ON au.id = h.acknowledged_by
+        WHERE h.id = ? AND h.property_id = ?`
+    ).get(id, me.propertyId) as Record<string, unknown> | undefined;
+    if (!h) return reply.code(404).send({ error: 'not_found', message: 'That handover does not exist.' });
+    const tags = app.db.prepare(
+      `SELECT t.user_id, t.reason, t.seen_at, u.display_name AS name
+         FROM handover_tags t JOIN users u ON u.id = t.user_id
+        WHERE t.handover_id = ? ORDER BY t.reason DESC, u.display_name`
+    ).all(id);
+    const parse = (v: unknown) => { try { return v ? JSON.parse(String(v)) : null; } catch { return null; } };
+    return { handover: { ...h, plant_state: parse(h.plant_state_json), carried_jobs: parse(h.carried_jobs_json) }, tags };
+  });
+
+  /** A tagged person says they have read it. Not an acknowledgement: that is the shift's. */
+  app.post('/api/handover/:id/seen', async (req, reply) => {
+    if (!req.principal) return notSignedIn(req, reply);
+    const me = req.principal; const id = (req.params as { id: string }).id;
+    const r = app.db.prepare(
+      `UPDATE handover_tags SET seen_at = COALESCE(seen_at, ?)
+        WHERE handover_id = ? AND user_id = ?
+          AND handover_id IN (SELECT id FROM shift_handovers WHERE property_id = ?)`
+    ).run(nowIso(), id, me.userId, me.propertyId);
+    if (r.changes === 0) return reply.code(404).send({ error: 'not_tagged', message: 'You are not tagged in that handover.' });
+    return { ok: true };
+  });
 
   app.get('/api/handover', { preHandler: requirePermission('handover.write') }, async (req) => ({
     handovers: app.db.prepare(
       `SELECT h.*, fs.first_name || ' ' || fs.last_name AS from_name,
-              ts.first_name || ' ' || ts.last_name AS to_name
+              ts.first_name || ' ' || ts.last_name AS to_name,
+              (SELECT COUNT(*) FROM handover_tags t WHERE t.handover_id = h.id) AS tagged,
+              (SELECT COUNT(*) FROM handover_tags t WHERE t.handover_id = h.id AND t.seen_at IS NOT NULL) AS seen,
+              (SELECT CASE WHEN t.seen_at IS NULL THEN 1 ELSE 0 END FROM handover_tags t
+                WHERE t.handover_id = h.id AND t.user_id = ?) AS mine_unseen
          FROM shift_handovers h
          LEFT JOIN staff fs ON fs.id = h.from_staff_id
          LEFT JOIN staff ts ON ts.id = h.to_staff_id
         WHERE h.property_id = ? ORDER BY h.at DESC LIMIT 50`
-    ).all(req.principal!.propertyId),
+    ).all(req.principal!.userId ?? '', req.principal!.propertyId),
   }));
 
   app.get('/api/notifications', async (req, reply) => {

@@ -1,3 +1,4 @@
+import { remindHandovers } from './alertRouting.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Db } from '../db/connection.js';
@@ -40,6 +41,8 @@ export function runEscalationSweep(db: Db, log: (msg: string) => void = () => {}
   for (const propertyId of properties(db)) {
     const r = tick(db, propertyId);
     total += r.escalated.length;
+    const unsigned = remindHandovers(db, propertyId);
+    if (unsigned) log(`[handover] ${unsigned} handover(s) still not acknowledged after two hours`);
     if (r.escalated.length) {
       log(`[escalation] ${r.escalated.length} job(s) escalated: ${r.escalated.map((e) => e.ref).join(', ')}`);
     }
